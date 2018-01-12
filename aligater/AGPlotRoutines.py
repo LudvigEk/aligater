@@ -13,13 +13,18 @@
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	http://nilssonlab.org
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.colors
+import aligater as ag
 
-fcsDF=pd.DataFrame()
-
-def plotHeatmap(x, y, vI_X=fcsDF.index, vI_Y=fcsDF.index, bins=300):
+sentinel = object()
+def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300):
+	if vI is sentinel:
+		vI=fcsDF.index
 	matplotlib.rcParams['image.cmap'] = 'jet'
-	vX=getGatedVector(x, vI_X)
-	vY=getGatedVector(y, vI_Y)
+	vX=ag.getGatedVector(fcsDF, x, vI)
+	vY=ag.getGatedVector(fcsDF, y, vI)
 	heatmap, xedges, yedges = np.histogram2d(vX, vY, bins=300)
 	extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
 	heatmap=np.ma.masked_where(heatmap == 0, heatmap)

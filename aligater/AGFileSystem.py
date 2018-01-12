@@ -12,8 +12,12 @@
 #
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	http://nilssonlab.org
+import aligater as ag
+import pandas as pd
 
-
-def getGatedVector(gate, index_array):
-    gated_vector=fcsDF[gate].loc[index_array]
+sentinel = object()
+def getGatedVector(fcsDF, gate, vI=sentinel):
+    if vI is sentinel:
+        vI=fcsDF.index
+    gated_vector=fcsDF[gate].loc[vI]
     return gated_vector
