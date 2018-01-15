@@ -25,7 +25,7 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300):
 	matplotlib.rcParams['image.cmap'] = 'jet'
 	vX=ag.getGatedVector(fcsDF, x, vI)
 	vY=ag.getGatedVector(fcsDF, y, vI)
-	heatmap, xedges, yedges = np.histogram2d(vX, vY, bins=300)
+	heatmap, xedges, yedges = np.histogram2d(vX, vY, bins)
 	extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
 	heatmap=np.ma.masked_where(heatmap == 0, heatmap)
 	plt.clf()
@@ -34,8 +34,8 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300):
 	cmap.set_bad(color='white') #Zeroes should be white, not blue
 	plt.show()
 
-if __name__ == '__main__':
-	main()
-
 def main():
 	return None
+
+if __name__ == '__main__':
+	main()
