@@ -8,5 +8,5 @@ setup(name='aligater',
       author_email='med-lue@med.lu.se',
       license='MIT',
       packages=['aligater'],
-      install_requires=['numpy','pandas', 'seaborn']
+      install_requires=['numpy','pandas', 'seaborn'],
       zip_safe=False)
