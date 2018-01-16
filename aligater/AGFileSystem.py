@@ -12,22 +12,40 @@
 #	http://nilssonlab.org
 
 import aligater as ag
+import numpy as np
 import pandas as pd
 import os
+import sys
 
-sentinel = object()
-def getGatedVector(fcsDF, gate, vI=sentinel):
-    if vI is sentinel:
-        vI=fcsDF.index
-    gated_vector=fcsDF[gate].loc[vI]
-    return gated_vector
+#TODO: Perhaps try to avoid conversion from DF -> nparray and back, performance hit?
+def compensateDF(fcsDF, metaDict):
+    spill_matrix=metaDict['SPILL'].split(',')
+    n = int(spill_matrix[0]) #number of colors
+    
+    colNames=fcsDF.columns[4:(n+4)]
+    fcsArray = fcsDF[colNames]
+    
+    comp_matrix = np.array(spill_matrix[n+1:]).reshape(n, n).astype(float)
+    inv_comp_matrix = np.linalg.inv(comp_matrix)
+    compensatedArray=np.dot(fcsArray, inv_comp_matrix)
+    
+    fcsDF.update(pd.DataFrame(compensatedArray,columns=colNames))
+    
+    return fcsDF
 
-def getGatedVectors(fcsDF, gate1, gate2, vI=sentinel):
-    if vI is sentinel:
-        vI=fcsDF.index
-    gated_vector1=fcsDF[gate1].loc[vI]
-    gated_vector2=fcsDF[gate2].loc[vI]
-    return gated_vector1, gated_vector2
+def loadFCS(path, compensate=True, metadata=False):
+    metaDict,fcsDF = ag.parse(path,output_format='DataFrame')
+    rows=fcsDF.shape[0]
+    cols=fcsDF.columns[4:-1]
+    sys.stderr.write("Loaded dataset with "+str(rows)+" rows.\nMarker labels: ")
+    for elem in cols:
+        sys.stderr.write(elem+ " ")
+    if compensate:
+        fcsDF=compensateDF(fcsDF, metaDict)
+    if metadata:
+        return metaDict, fcsDF
+    else:
+        return fcsDF
 
 def getParent(sSrc):
     parentDir=os.path.abspath(os.path.join(sSrc, os.pardir))
@@ -60,6 +78,8 @@ def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
         if lFilter is not None:
             if type(lFilter) is not list:
                 raise TypeError("lFilter is not of type List, do lFilter=['filter'] for single filter strings")
+            if ".fcs" not in lFilter:
+                lFilter.extend(".fsc")
             if any(sFilter not in fileName for sFilter in lFilter): 
                 lFlaggedIndicies.append(index)
                 continue    

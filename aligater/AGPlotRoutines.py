@@ -17,22 +17,33 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors
 import aligater as ag
+import sys
 
 sentinel = object()
 def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300):
-	if vI is sentinel:
-		vI=fcsDF.index
-	matplotlib.rcParams['image.cmap'] = 'jet'
-	vX=ag.getGatedVector(fcsDF, x, vI)
-	vY=ag.getGatedVector(fcsDF, y, vI)
-	heatmap, xedges, yedges = np.histogram2d(vX, vY, bins)
-	extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
-	heatmap=np.ma.masked_where(heatmap == 0, heatmap)
-	plt.clf()
-	plt.imshow(heatmap.T, extent=extent, origin='lower')
-	cmap=plt.get_cmap()
-	cmap.set_bad(color='white') #Zeroes should be white, not blue
-	plt.show()
+    if vI is sentinel:
+        vI=fcsDF.index
+    elif len(vI)==0:
+        sys.stderr.write("Passed index contains no events")
+        return None
+    
+    vX=ag.getGatedVector(fcsDF, x, vI)
+    vY=ag.getGatedVector(fcsDF, y, vI)
+    
+    matplotlib.rcParams['image.cmap'] = 'jet'
+    heatmap, xedges, yedges = np.histogram2d(vX, vY, bins)
+    extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+    heatmap=np.ma.masked_where(heatmap == 0, heatmap)
+    
+    plt.clf()
+    fig, ax = plt.subplots()
+    plt.imshow(heatmap.T, extent=extent, origin='lower')
+    plt.xlabel(x)
+    plt.ylabel(y)
+    cmap=plt.get_cmap()
+    cmap.set_bad(color='white') #Zeroes should be white, not blue
+    plt.show()
+    return fig, ax
 
 def main():
 	return None
