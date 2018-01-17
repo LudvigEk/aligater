@@ -45,6 +45,14 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300):
     plt.show()
     return fig, ax
 
+def addLine(fig, ax, lStartCoordinate, lEndCoordinate, size=2):
+    ax.plot([lStartCoordinate[0], lEndCoordinate[0]], [lStartCoordinate[1], lEndCoordinate[1]], color='r', linestyle='-', linewidth=size)
+    return fig
+
+def addArrow(fig, ax, lStartCoordinate, lEndCoordinate, size=5000):
+    ax.arrow(lStartCoordinate[0], lStartCoordinate[1], lEndCoordinate[0]-lStartCoordinate[0], lEndCoordinate[1]-lStartCoordinate[1], head_width=size, head_length=size, fc='r', ec='r')
+    return fig
+
 def main():
 	return None
 

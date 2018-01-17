@@ -37,7 +37,7 @@ def loadFCS(path, compensate=True, metadata=False):
     metaDict,fcsDF = ag.parse(path,output_format='DataFrame')
     rows=fcsDF.shape[0]
     cols=fcsDF.columns[4:-1]
-    sys.stderr.write("Loaded dataset with "+str(rows)+" rows.\nMarker labels: ")
+    sys.stderr.write("Loaded dataset with "+str(rows)+" events.\nMarker labels: ")
     for elem in cols:
         sys.stderr.write(elem+ " ")
     if compensate:
@@ -52,6 +52,17 @@ def getParent(sSrc):
     return parentDir
 
 def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
+    if lIgnoreTypes is not None:
+        if type(lIgnoreTypes) is not list:
+            raise TypeError("lIgnoreTypes is not of type List, do lIgnoreTypes=['.FileEnding'] for single file ending strings")
+    if lMask is not None:
+            if type(lMask) is not list:
+                raise TypeError("lMask is not of type List, do lMask=['mask'] for single mask strings")
+    if lFilter is not None:
+        if type(lFilter) is not list:
+            raise TypeError("lFilter is not of type List, do lFilter=['filter'] for single filter strings")
+        if ".fcs" not in lFilter:
+                lFilter.extend(".fsc")
     lOutput=[]
     for root, dirs, lFiles in os.walk(sSrc):
         for file in lFiles:
@@ -60,26 +71,16 @@ def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
             
     lFlaggedIndicies=[]
     for index, filePath in enumerate(lOutput):
-        fileName=os.path.basename(filePath)
+        fileName=os.path.basename(filePath)  
         if lIgnoreTypes is not None:
-            if type(lIgnoreTypes) is not list:
-                raise TypeError("lIgnoreTypes is not of type List, do lIgnoreTypes=['.FileEnding'] for single file ending strings")
             if any(ignoreType in os.path.splitext(fileName)[1] for ignoreType in lIgnoreTypes):
                 lFlaggedIndicies.append(index)
                 continue
-            
-        if lMask is not None:
-            if type(lMask) is not list:
-                raise TypeError("lMask is not of type List, do lMask=['mask'] for single mask strings")
+        if lMask is not None:            
             if any(mask in fileName for mask in lMask): 
                 lFlaggedIndicies.append(index)
-                continue 
-            
-        if lFilter is not None:
-            if type(lFilter) is not list:
-                raise TypeError("lFilter is not of type List, do lFilter=['filter'] for single filter strings")
-            if ".fcs" not in lFilter:
-                lFilter.extend(".fsc")
+                continue
+        if lFilter is not None:             
             if any(sFilter not in fileName for sFilter in lFilter): 
                 lFlaggedIndicies.append(index)
                 continue    

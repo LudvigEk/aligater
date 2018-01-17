@@ -16,8 +16,56 @@ import pandas as pd
 import numpy as np
 import math
 import sys
-
+import matplotlib.pyplot as plt
+from sklearn.mixture import GaussianMixture
 sentinel = object()
+
+def gaussianMM2D(fcsDF, gate1, gate2, nOfComponents, sigma, vI=sentinel):
+    randomly_sampled = np.random.choice(vI, size=len(vI), replace=False)
+    vX = getGatedVector(fcsDF,gate1,vI=randomly_sampled,return_type="nparray")
+    vY = getGatedVector(fcsDF,gate2,vI=randomly_sampled,return_type="nparray")
+    sampledSubset=np.array([vX,vY]).T
+    gmm = GaussianMixture(n_components=nOfComponents)
+    gmm.covariances_ = sigma
+    gmm.fit(sampledSubset)
+    X = getGatedVectors(fcsDF,gate1,gate2,vI=vI,return_type="ndarray").T
+    plot_gmm(gmm, X)
+
+
+
+from matplotlib.patches import Ellipse
+
+def draw_ellipse(position, covariance, ax=None, **kwargs):
+    """Draw an ellipse with a given position and covariance"""
+    ax = ax or plt.gca()
+    
+    # Convert covariance to principal axes
+    if covariance.shape == (2, 2):
+        U, s, Vt = np.linalg.svd(covariance)
+        angle = np.degrees(np.arctan2(U[1, 0], U[0, 0]))
+        width, height = 2 * np.sqrt(s)
+    else:
+        angle = 0
+        width, height = 2 * np.sqrt(covariance)
+    
+    # Draw the Ellipse
+    for nsig in range(1, 4):
+        ax.add_patch(Ellipse(position, nsig * width, nsig * height,
+                             angle, **kwargs))
+
+def plot_gmm(gmm, X, label=True, ax=None):
+    ax = ax or plt.gca()
+    labels = gmm.predict(X)
+    if label:
+        ax.scatter(X[:, 0], X[:, 1], c=labels, alpha=0.2, s=1, cmap='viridis', zorder=2)
+    else:
+        ax.scatter(X[:, 0], X[:, 1], s=40, zorder=2)
+    ax.axis('equal')
+    
+    w_factor = 0.2 / gmm.weights_.max()
+    for pos, covar, w in zip(gmm.means_, gmm.covariances_, gmm.weights_):
+        draw_ellipse(pos, covar, alpha=w * w_factor)
+
 def getGatedVector(fcsDF, gate, vI=sentinel, return_type="pdseries"):
     if return_type.lower() not in ["pdseries","nparray"]:
         raise TypeError("Specify return type as 'pdseries' or 'nparray'")
@@ -29,12 +77,19 @@ def getGatedVector(fcsDF, gate, vI=sentinel, return_type="pdseries"):
         gated_vector=fcsDF[gate].loc[vI].values
     return gated_vector
 
-def getGatedVectors(fcsDF, gate1, gate2, vI=sentinel):
+def getGatedVectors(fcsDF, gate1, gate2, vI=sentinel, return_type="pdseries"):
+    if return_type.lower() not in ["pdseries","ndarray"]:
+        raise TypeError("Specify return type as 'pdseries' or 'ndarray'")
     if vI is sentinel:
         vI=fcsDF.index
-    gated_vector1=fcsDF[gate1].loc[vI]
-    gated_vector2=fcsDF[gate2].loc[vI]
-    return gated_vector1, gated_vector2
+    if return_type.lower()=="pdseries":    
+        gated_vector1=fcsDF[gate1].loc[vI]
+        gated_vector2=fcsDF[gate2].loc[vI]
+        return gated_vector1, gated_vector2
+    else:
+        vX=fcsDF[gate1].loc[vI].values
+        vY=fcsDF[gate2].loc[vI].values
+        return np.array([vX,vY])
     
 def gateThreshold(fcsDF, gate, thresh, vI=sentinel, population="upper"):
     if vI is sentinel:
@@ -42,13 +97,15 @@ def gateThreshold(fcsDF, gate, thresh, vI=sentinel, population="upper"):
     if gate not in fcsDF.columns:
         raise TypeError("specified gate not in dataframe, check spelling or control your dataframe.columns labels")
     if population.lower() not in ["upper","lower"]:
-        raise TypeError("Specify desired population, 'upper' or 'lower' in regard to set threshold")
+        raise TypeError("Specify desired population, 'upper' or 'lower' in regard to set threshold")    
     if population.lower() == "upper":    
-        vI=fcsDF[fcsDF[gate]>thresh].index
-        return vI
+        vOutput=fcsDF[fcsDF[gate]>thresh].index
+        reportGateResults(vI, vOutput)
+        return vOutput
     else:
-        vI=fcsDF[fcsDF[gate]<thresh].index
-        return vI
+        vOutput=fcsDF[fcsDF[gate]<thresh].index
+        reportGateResults(vI, vOutput)
+        return vOutput
     
 def gateEllipsoid(fcsDF, xCol, yCol, xCenter, yCenter, majorRadii, minorRadii, theta, vI=sentinel, population="inner"):  
     if population.lower() not in ["outer","inner"]:
@@ -65,13 +122,15 @@ def gateEllipsoid(fcsDF, xCol, yCol, xCenter, yCenter, majorRadii, minorRadii, t
     if vI is sentinel:
         vI=fcsDF.index  
         
-    tmpDF = fcsDF.iloc[vI]
     vOutput=[]
     #theta = math.radians(theta)
     
-    for index, row in tmpDF.iterrows():
-        x = row[xCol]
-        y = row[yCol]
+    vX = ag.getGatedVector(fcsDF, xCol, vI, return_type='nparray')
+    vY = ag.getGatedVector(fcsDF, yCol, vI, return_type='nparray')
+    assert len(vX)==len(vY)
+        
+    #Faster alternatives than zipping like below? pd.iterrows() definetly slower
+    for x, y, index in zip(vX, vY, vI):
         leftTerm = (x - xCenter)*math.cos(theta) + (y - yCenter)*math.sin(theta)
         rightTerm = (x - xCenter)*math.sin(theta) - (y - yCenter)*math.cos(theta)
         majorSquared = majorRadii*majorRadii
@@ -86,10 +145,10 @@ def gateEllipsoid(fcsDF, xCol, yCol, xCenter, yCenter, majorRadii, minorRadii, t
         sys.stderr.write("No events inside ellipsoid")
     if (len(vOutput) == 0 and population.lower() == "outer"):
         sys.stderr.write("No events outside ellipsoid")
-        
+    reportGateResults(vI, vOutput)
     return vOutput
 
-def getPCs(fcsDF, xCol, yCol, vI=sentinel):
+def getPCs(fcsDF, xCol, yCol, centerCoord=None, vI=sentinel):
     if not xCol in fcsDF.columns:
         raise NameError("xCol not in passed dataframe's columns")
     if not yCol in fcsDF.columns:
@@ -98,17 +157,28 @@ def getPCs(fcsDF, xCol, yCol, vI=sentinel):
         raise NameError("xCol and yCol cannot be the same")
     if vI is sentinel:
         vI=fcsDF.index
-    
-    #Collect data as np arrays, should always give the same size unless dataset corrupted
+    if centerCoord is not None:
+        if type(centerCoord) is not list:
+            raise TypeError("centerCoord is not of type List, pass list with two coordinates")
+        if len(centerCoord) != 2:
+            raise ValueError("centerCoord have the wrong dimensions (list of two expected)")
+        bManualCenter=True
+    else:
+        bManualCenter=False
+
     vX=getGatedVector(fcsDF, xCol, vI, "nparray")
     vY=getGatedVector(fcsDF, yCol, vI, "nparray")
     assert len(vX)==len(vY)
     
-    #Collect means and translate dataset to zero origin
-    meanX=vX.mean()
-    meanY=vY.mean()
-    vX = np.subtract(vX, meanX)
-    vY = np.subtract(vY, meanY)
+    if bManualCenter:
+        meanX=centerCoord[0]
+        meanY=centerCoord[0]
+    else:
+        meanX=np.mean(vX)
+        meanY=np.mean(vY)
+        
+    vX=np.subtract(vX, meanX)
+    vY=np.subtract(vY, meanY)
     
     #Define necessary variables
     sumX=vX.sum()
@@ -153,8 +223,13 @@ def getPCs(fcsDF, xCol, yCol, vI=sentinel):
     eigenvalue2 = lambdaminus
     
     #Return retranslated barycenters
-    trueBarX = Xbar + meanX
-    trueBarY = Ybar + meanY
+    if not bManualCenter:
+        trueBarX = Xbar + meanX
+        trueBarY = Ybar + meanY
+    else:
+        trueBarX = meanX
+        trueBarY = meanY
+        
     trueBarycenter=[trueBarX, trueBarY]
     eigen1=[eigenvalue1, aParallel, bParallel]
     eigen2=[eigenvalue2, aNormal, bNormal]
@@ -176,3 +251,42 @@ def getPCSemiAxis(barycenter, eigen1, eigen2, eigen1Scale=1, eigen2Scale=1):
     PC1=[eigen1X, eigen1Y]
     PC2=[eigen2X, eigen2Y]
     return PC1, PC2
+
+def getVectorLength(lStartCoordinate, lEndCoordinate):
+    if not all(isinstance(i, list) for i in [lStartCoordinate, lEndCoordinate]):
+        raise TypeError("Input arguments for getVectorLength (lStartCoordinate, lEndCoordinate) must be list.")
+    if not len(lStartCoordinate)==len(lEndCoordinate)==2:
+        raise ValueError("Input arguments for getVectorLength (lStartCoordinate, lEndCoordinate) must be lists containing two elements each.")
+    length=np.sqrt(np.sum(np.square(np.subtract(lEndCoordinate,lStartCoordinate))))
+    return length
+
+def calculateAngle(lStartCoordinate, lEndCoordinate):
+    if not all(isinstance(i, list) for i in [lStartCoordinate, lEndCoordinate]):
+        raise TypeError("Input arguments for getVectorLength (lStartCoordinate, lEndCoordinate) must be list.")
+    if not len(lStartCoordinate)==len(lEndCoordinate)==2:
+        raise ValueError("Input arguments for getVectorLength (lStartCoordinate, lEndCoordinate) must be lists containing two elements each.")
+    angle=math.atan(np.subtract(lEndCoordinate,lStartCoordinate)[1]/np.subtract(lEndCoordinate,lStartCoordinate)[0])
+    return angle
+
+def getHighestDensityPoint(fcsDF, xCol, yCol, vI=sentinel, bins=300):
+    if vI is sentinel:
+        vI=fcsDF.index
+    if (xCol not in fcsDF.columns or yCol not in fcsDF.columns):
+        raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
+    vX=ag.getGatedVector(fcsDF, xCol, vI)
+    vY=ag.getGatedVector(fcsDF, yCol, vI)
+    heatmap, xedges, yedges = np.histogram2d(vX, vY, bins)
+    xmax=np.amax(vX)
+    xmin=np.amin(vX)
+    ymax=np.amax(vY)
+    ymin=np.amin(vY)
+    highestPoint=np.unravel_index(heatmap.argmax(), heatmap.shape)
+    #Re-estimate original index, note +- 1/bins error
+    xCoord=highestPoint[0]*(xmax-xmin)/bins + xmin
+    yCoord=highestPoint[0]*(ymax-ymin)/bins + ymin
+    return [xCoord, yCoord]
+    
+def reportGateResults(vI, vOutput):
+    reportString="After gating, "+str(len(vOutput))+" out of "+str(len(vI))+" events remain."
+    sys.stderr.write(reportString)
+
