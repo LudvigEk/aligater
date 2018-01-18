@@ -16,6 +16,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors
+from matplotlib.patches import Ellipse
 import aligater as ag
 import sys
 
@@ -29,7 +30,7 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300):
     
     vX=ag.getGatedVector(fcsDF, x, vI)
     vY=ag.getGatedVector(fcsDF, y, vI)
-    
+    plt.clf()
     matplotlib.rcParams['image.cmap'] = 'jet'
     heatmap, xedges, yedges = np.histogram2d(vX, vY, bins)
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
@@ -42,7 +43,6 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300):
     plt.ylabel(y)
     cmap=plt.get_cmap()
     cmap.set_bad(color='white') #Zeroes should be white, not blue
-    plt.show()
     return fig, ax
 
 def addLine(fig, ax, lStartCoordinate, lEndCoordinate, size=2):
@@ -52,6 +52,31 @@ def addLine(fig, ax, lStartCoordinate, lEndCoordinate, size=2):
 def addArrow(fig, ax, lStartCoordinate, lEndCoordinate, size=5000):
     ax.arrow(lStartCoordinate[0], lStartCoordinate[1], lEndCoordinate[0]-lStartCoordinate[0], lEndCoordinate[1]-lStartCoordinate[1], head_width=size, head_length=size, fc='r', ec='r')
     return fig
+
+def draw_ellipse(position, covariance, sigma=2, ax=None, **kwargs):
+    """Draw an ellipse with a given position and covariance"""
+    ax = ax or plt.gca();
+    
+    # Convert covariance to principal axes
+    if covariance.shape == (2, 2):
+        U, s, Vt = np.linalg.svd(covariance)
+        angle = np.degrees(np.arctan2(U[1, 0], U[0, 0]))
+        width,height = 2 * np.sqrt(s)
+    else:
+        angle = 0
+        width, height = 2 * np.sqrt(covariance)
+    
+    # Draw the Ellipse
+    ax.add_patch(Ellipse(position, sigma * width, sigma * height,
+                             angle, **kwargs));
+    return width, height, angle
+
+def plot_gmm(fcsDF, xCol, yCol, vI, gmm, sigma, ax):  
+    ax = ax or plt.gca()
+    for pos, covar, w in zip(gmm.means_, gmm.covariances_, gmm.weights_):
+       width, height, angle = draw_ellipse(pos, covar, sigma ,fill=False,edgecolor='#FF0000', linestyle='dashed');
+    plt.show();
+    return pos, width, height, angle
 
 def main():
 	return None

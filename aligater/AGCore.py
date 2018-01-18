@@ -20,51 +20,26 @@ import matplotlib.pyplot as plt
 from sklearn.mixture import GaussianMixture
 sentinel = object()
 
-def gaussianMM2D(fcsDF, gate1, gate2, nOfComponents, sigma, vI=sentinel):
-    randomly_sampled = np.random.choice(vI, size=len(vI), replace=False)
-    vX = getGatedVector(fcsDF,gate1,vI=randomly_sampled,return_type="nparray")
-    vY = getGatedVector(fcsDF,gate2,vI=randomly_sampled,return_type="nparray")
-    sampledSubset=np.array([vX,vY]).T
+def gmm2D(fcsDF, gate1, gate2, nOfComponents, vI=sentinel):
+    if vI is sentinel:
+        vI=fcsDF.index
+    #randomly_sampled = np.random.choice(vI, size=len(vI), replace=False)
+    vX = getGatedVector(fcsDF,gate1,vI=vI,return_type="nparray")
+    vY = getGatedVector(fcsDF,gate2,vI=vI,return_type="nparray")
+    fcsArray=np.array([vX,vY]).T
     gmm = GaussianMixture(n_components=nOfComponents)
-    gmm.covariances_ = sigma
-    gmm.fit(sampledSubset)
-    X = getGatedVectors(fcsDF,gate1,gate2,vI=vI,return_type="ndarray").T
-    plot_gmm(gmm, X)
+    gmm.fit(fcsArray)
+    return gmm
 
-
-
-from matplotlib.patches import Ellipse
-
-def draw_ellipse(position, covariance, ax=None, **kwargs):
-    """Draw an ellipse with a given position and covariance"""
-    ax = ax or plt.gca()
-    
-    # Convert covariance to principal axes
-    if covariance.shape == (2, 2):
-        U, s, Vt = np.linalg.svd(covariance)
-        angle = np.degrees(np.arctan2(U[1, 0], U[0, 0]))
-        width, height = 2 * np.sqrt(s)
-    else:
-        angle = 0
-        width, height = 2 * np.sqrt(covariance)
-    
-    # Draw the Ellipse
-    for nsig in range(1, 4):
-        ax.add_patch(Ellipse(position, nsig * width, nsig * height,
-                             angle, **kwargs))
-
-def plot_gmm(gmm, X, label=True, ax=None):
-    ax = ax or plt.gca()
-    labels = gmm.predict(X)
-    if label:
-        ax.scatter(X[:, 0], X[:, 1], c=labels, alpha=0.2, s=1, cmap='viridis', zorder=2)
-    else:
-        ax.scatter(X[:, 0], X[:, 1], s=40, zorder=2)
-    ax.axis('equal')
-    
-    w_factor = 0.2 / gmm.weights_.max()
-    for pos, covar, w in zip(gmm.means_, gmm.covariances_, gmm.weights_):
-        draw_ellipse(pos, covar, alpha=w * w_factor)
+def gateGMM(fcsDF,xCol, yCol, gmm, vI=sentinel, sigma=1, plot=True):
+    if vI is sentinel:
+        vI=fcsDF.index
+    if not isinstance(gmm, GaussianMixture):
+        raise TypeError("gmm argument must be a sklearn.mixture GaussianMixture object")
+    #X = getGatedVectors(fcsDF,xCol,yCol,vI=vI,return_type="ndarray").T
+    fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI)
+    pos, width, height, angle = ag.plot_gmm(fcsDF,xCol, yCol, vI, gmm, sigma, ax)
+    print([pos,width,height,angle])
 
 def getGatedVector(fcsDF, gate, vI=sentinel, return_type="pdseries"):
     if return_type.lower() not in ["pdseries","nparray"]:
@@ -91,21 +66,40 @@ def getGatedVectors(fcsDF, gate1, gate2, vI=sentinel, return_type="pdseries"):
         vY=fcsDF[gate2].loc[vI].values
         return np.array([vX,vY])
     
-def gateThreshold(fcsDF, gate, thresh, vI=sentinel, population="upper"):
+def gateThreshold(fcsDF, xCol, yCol, thresh, orientation="horisontal", vI=sentinel, population="upper", plot=True):
     if vI is sentinel:
         vI=fcsDF.index
-    if gate not in fcsDF.columns:
-        raise TypeError("specified gate not in dataframe, check spelling or control your dataframe.columns labels")
+    if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
+        raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
     if population.lower() not in ["upper","lower"]:
-        raise TypeError("Specify desired population, 'upper' or 'lower' in regard to set threshold")    
+        raise TypeError("Specify desired population, 'upper' or 'lower' in regard to set threshold")
+    if orientation.lower() not in ["horisontal","vertical"]:
+        raise TypeError("Specify desired population, 'upper' or 'lower' in regard to set threshold") 
+        
     if population.lower() == "upper":    
-        vOutput=fcsDF[fcsDF[gate]>thresh].index
-        reportGateResults(vI, vOutput)
-        return vOutput
+        if orientation.lower() == "horisontal":
+            vOutput=fcsDF[fcsDF[xCol]>thresh].index
+        else:
+            vOutput=fcsDF[fcsDF[yCol]>thresh].index
     else:
-        vOutput=fcsDF[fcsDF[gate]<thresh].index
-        reportGateResults(vI, vOutput)
-        return vOutput
+        if orientation.lower() == "horisontal":
+            vOutput=fcsDF[fcsDF[xCol]<thresh].index
+        else:
+            vOutput=fcsDF[fcsDF[yCol]<thresh].index
+    print(len(vOutput))
+    if plot:
+        fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI)
+        ylim=ax.get_ylim()
+        xlim=ax.get_ylim()
+        if orientation.lower() == "horisontal":
+            ag.addLine(fig,ax,[thresh,ylim[0]],[thresh,ylim[1]])
+        else:   #Vertical
+            ag.addLine(fig,ax,[xlim[0],thresh],[xlim[1],thresh])
+        ag.plt.show()
+        ag.plotHeatmap(fcsDF, xCol, yCol, vOutput)
+        ag.plt.show()
+    reportGateResults(vI, vOutput)
+    return vOutput
     
 def gateEllipsoid(fcsDF, xCol, yCol, xCenter, yCenter, majorRadii, minorRadii, theta, vI=sentinel, population="inner"):  
     if population.lower() not in ["outer","inner"]:
@@ -172,7 +166,7 @@ def getPCs(fcsDF, xCol, yCol, centerCoord=None, vI=sentinel):
     
     if bManualCenter:
         meanX=centerCoord[0]
-        meanY=centerCoord[0]
+        meanY=centerCoord[1]
     else:
         meanX=np.mean(vX)
         meanY=np.mean(vY)
@@ -233,24 +227,23 @@ def getPCs(fcsDF, xCol, yCol, centerCoord=None, vI=sentinel):
     trueBarycenter=[trueBarX, trueBarY]
     eigen1=[eigenvalue1, aParallel, bParallel]
     eigen2=[eigenvalue2, aNormal, bNormal]
-    
     return trueBarycenter, eigen1, eigen2
 
-def getPCSemiAxis(barycenter, eigen1, eigen2, eigen1Scale=1, eigen2Scale=1):
-    if not all(isinstance(i, list) for i in [barycenter, eigen1, eigen2]):
+def getPCSemiAxis(center, eigen1, eigen2, eigen1Scale=1, eigen2Scale=1):
+    if not all(isinstance(i, list) for i in [center, eigen1, eigen2]):
         raise TypeError("Input arguments for getPrincipalComponentsemiAxis (barycenter, eigen1, eigen2) must be list.")
 
     majorAxis = np.sqrt(eigen1[0])*eigen1Scale
     minorAxis = np.sqrt(eigen2[0])*eigen2Scale
     
-    eigen1X=majorAxis*eigen1[1]+barycenter[0]
-    eigen1Y=majorAxis*eigen1[2]+barycenter[1]
+    eigen1X=majorAxis*eigen1[1]+center[0]
+    eigen1Y=majorAxis*eigen1[2]+center[1]
     
-    eigen2X=minorAxis*eigen2[1]+barycenter[0]
-    eigen2Y=minorAxis*eigen2[2]+barycenter[1]
+    eigen2X=minorAxis*eigen2[1]+center[0]
+    eigen2Y=minorAxis*eigen2[2]+center[1]
     PC1=[eigen1X, eigen1Y]
     PC2=[eigen2X, eigen2Y]
-    return PC1, PC2
+    return center, PC1, PC2
 
 def getVectorLength(lStartCoordinate, lEndCoordinate):
     if not all(isinstance(i, list) for i in [lStartCoordinate, lEndCoordinate]):
@@ -290,3 +283,41 @@ def reportGateResults(vI, vOutput):
     reportString="After gating, "+str(len(vOutput))+" out of "+str(len(vI))+" events remain."
     sys.stderr.write(reportString)
 
+def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='centroid', customCenter=None, plot=True):
+    if vI is sentinel:
+        vI=fcsDF.index
+    if (xCol not in fcsDF.columns or yCol not in fcsDF.columns):
+        raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
+    if center.lower() not in ['centroid','density','custom']:
+        raise ValueError("Specify center/anchor point for PC analysis; centroid, density or custom")
+    elif center.lower() == 'custom' and type(customCenter) is not list:
+        print(type(customCenter))
+        raise TypeError("If custom center is specified the 'customCenter' argument must be passed as a list of two, i.e. [x,y]")
+    elif center.lower() == 'custom' and type(customCenter) is not list:
+        if len(customCenter) != 2:
+            raise TypeError("If custom center is specified the 'customCenter' argument must be passed as a list of two, i.e. [x,y]")
+    if type(plot) is not type(True):
+        raise TypeError("Plot argument should be specified as bool (True/False)")
+        
+    if center.lower() == 'density':
+        center=ag.getHighestDensityPoint(fcsDF, xCol, yCol, vI)
+    elif center.lower() == 'centroid':
+        center=None
+    else:
+        center=customCenter
+        
+    center, eigen1, eigen2 = ag.getPCs(fcsDF, xCol, yCol, center, vI)
+    center, PC1, PC2 = ag.getPCSemiAxis(center, eigen1, eigen2, widthScale, heightScale)
+    width=ag.getVectorLength(center, PC1)
+    height=ag.getVectorLength(center, PC2)
+    angle=ag.calculateAngle(center, PC1)
+    result=ag.gateEllipsoid(fcsDF, xCol, yCol,xCenter=center[0],yCenter=center[1],majorRadii=width, minorRadii=height,theta=angle,vI=vI)
+    if plot:
+        fig, ax = ag.plotHeatmap(fcsDF, xCol, yCol,vI)
+        ag.addLine(fig, ax, center, PC1)
+        ag.addLine(fig, ax, center, PC2)
+        ax.add_patch(ag.Ellipse(center, 2*width, 2*height, np.degrees(angle),fill=False,edgecolor='#FF0000', linestyle='dashed'))
+        ag.plt.show()
+        ag.plotHeatmap(fcsDF, xCol, yCol,result)
+        ag.plt.show()
+    return result
