@@ -84,8 +84,9 @@ def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
             if any(sFilter not in fileName for sFilter in lFilter): 
                 lFlaggedIndicies.append(index)
                 continue    
-            
     lOutput = [i for j, i in enumerate(lOutput) if j not in lFlaggedIndicies]
+    sOutputString="Collected "+str(len(lOutput))+" files, "+str(len(lFlaggedIndicies))+" files did not pass filter(s) and mask(s)."
+    sys.stderr.write(sOutputString)
     return pd.Series(lOutput)
 
 def getFileName(sSrc):

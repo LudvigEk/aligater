@@ -36,11 +36,15 @@ def gateGMM(fcsDF,xCol, yCol, gmm, vI=sentinel, sigma=1, plot=True):
         vI=fcsDF.index
     if not isinstance(gmm, GaussianMixture):
         raise TypeError("gmm argument must be a sklearn.mixture GaussianMixture object")
-    #X = getGatedVectors(fcsDF,xCol,yCol,vI=vI,return_type="ndarray").T
+    vOutput=[]
     fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI)
     pos, width, height, angle = ag.plot_gmm(fcsDF,xCol, yCol, vI, gmm, sigma, ax)
-    print([pos,width,height,angle])
-
+    #plot_ggm will return the full width and height of the drawn ellipse, whereas
+    #gateEllipsoid wants the length of the semiaxis
+    vOutput = ag.gateEllipsoid(fcsDF, xCol, yCol, pos[0], pos[1], width/2, height/2, np.radians(angle), vI)
+    fig, ax = ag.plotHeatmap(fcsDF, xCol, yCol, vOutput)
+    return vOutput
+    
 def getGatedVector(fcsDF, gate, vI=sentinel, return_type="pdseries"):
     if return_type.lower() not in ["pdseries","nparray"]:
         raise TypeError("Specify return type as 'pdseries' or 'nparray'")
@@ -53,8 +57,8 @@ def getGatedVector(fcsDF, gate, vI=sentinel, return_type="pdseries"):
     return gated_vector
 
 def getGatedVectors(fcsDF, gate1, gate2, vI=sentinel, return_type="pdseries"):
-    if return_type.lower() not in ["pdseries","ndarray"]:
-        raise TypeError("Specify return type as 'pdseries' or 'ndarray'")
+    if return_type.lower() not in ["pdseries","nparray"]:
+        raise TypeError("Specify return type as 'pdseries' or 'nparray'")
     if vI is sentinel:
         vI=fcsDF.index
     if return_type.lower()=="pdseries":    
@@ -274,9 +278,9 @@ def getHighestDensityPoint(fcsDF, xCol, yCol, vI=sentinel, bins=300):
     ymax=np.amax(vY)
     ymin=np.amin(vY)
     highestPoint=np.unravel_index(heatmap.argmax(), heatmap.shape)
-    #Re-estimate original index, note +- 1/bins error
+    #Re-estimate original index, note +- range/bins error
     xCoord=highestPoint[0]*(xmax-xmin)/bins + xmin
-    yCoord=highestPoint[0]*(ymax-ymin)/bins + ymin
+    yCoord=highestPoint[1]*(ymax-ymin)/bins + ymin
     return [xCoord, yCoord]
     
 def reportGateResults(vI, vOutput):
@@ -321,3 +325,97 @@ def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='
         ag.plotHeatmap(fcsDF, xCol, yCol,result)
         ag.plt.show()
     return result
+
+def getVectorCoordiantes(length, angle):
+    theta=math.degrees(angle)
+    y = length*math.asin(theta)
+    x = length*math.acos(theta)
+    return[x,y]
+
+def getDensityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300):
+    data=ag.getGatedVector(fcsDF, xCol, vI, return_type="nparray")
+    histo=np.histogram(data, bins)
+    smoothedHisto=ag.gaussian_filter1d(histo[0],sigma)
+    #vHisto=np.linspace(min(histo[1]),max(histo[1]),bins)
+    return smoothedHisto, histo[1]
+
+def valleySeek(fcsDF, xCol, vI=sentinel, interval=['start','end'], sigma=3, bins=300):
+    if vI is sentinel:
+        vI=fcsDF.index
+    elif len(vI)==0:
+        raise ValueError("Passed index contains no events")    
+    if xCol not in fcsDF.columns:
+        raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
+    if type(interval) is not list:
+        raise ValueError("Interval must be specified as list of two: [x,y].\nInterval can be half open to either side, i.e. ['start',y] or [x,'end'].")
+    if len(interval)!=2:
+        raise ValueError("Interval must be specified as list of two: [x,y].\nInterval can be half open to either side, i.e. ['start',y] or [x,'end'].")
+
+    smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins)
+  
+    if type(interval[0]) is str:
+        if interval[0].lower() in ['start', 'begin','first']:
+            interval[0]=min(binData) 
+        else:
+            raise ValueError("Interval must be specified as list of two: [x,y].\nInterval can be half open to either side by giving ['start', y] or [x ,'end'].")
+    if type(interval[1]) is str:
+        if interval[1].lower() in ['end', 'stop', 'last']:
+            interval[1]=max(binData) 
+        else:
+            raise ValueError("Interval must be specified as list of two: [x,y].\nInterval can be half open to either side by giving ['start', y] or [x ,'end'].")
+    if interval[1] > max(binData):
+        interval[1] = max(binData)
+    vIndicies=[]
+    for index, x in np.ndenumerate(binData):
+        #Note the non-inclusive upper bound, critical to stay in-bound of array index
+        if x >= interval[0] and x < interval[1]:
+            vIndicies.append(index[0])
+            
+    if len(vIndicies)<=3:
+        raise ValueError("Specified interval is too narrow (Not enough data points to find a valley)")
+
+    minVal=np.inf
+    minValIndex=0
+    for index in vIndicies:
+        if smoothedHisto[index] < minVal:
+            minVal=x
+            minValIndex=index
+    return (binData[minValIndex+1]+binData[minValIndex])/2
+            
+def quadGate(fcsDF, xCol, yCol, xThresh, yThresh, vI=sentinel):
+    if vI is sentinel:
+        vI=fcsDF.index
+    elif len(vI)==0:
+        raise ValueError("Passed index contains no events") 
+    if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
+        raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
+    if not all(isinstance(i,(float, int)) for i in [xThresh, yThresh]):
+        raise TypeError("xThresh, yThresh must be specified as integer or floating-point values")
+    vX, vY = ag.getGatedVectors(fcsDF, xCol, yCol, vI, return_type="nparray")
+    assert(len(vX)==len(vY))
+    vTopLeft=[]
+    vTopRight=[]
+    vBottomRight=[]
+    vBottomLeft=[]
+    for x,y, index in zip(vX, vY, vI):
+        if x < xThresh and y > yThresh:
+            vTopLeft.append(index)
+        elif x > xThresh and y > yThresh:
+            vTopRight.append(index)
+        elif x > xThresh and y < yThresh:
+            vBottomRight.append(index)
+        elif x < xThresh and y < yThresh:
+            vBottomLeft.append(index)
+        else:
+            raise RuntimeError("Unexpected error in quadGate")
+    counter=0
+    for event in [len(vTopLeft),len(vTopRight),len(vBottomRight),len(vBottomLeft)]:
+        if event == 0:
+            counter=counter+1
+    if counter != 0:
+        errStr=str(counter)+" quadrant(s) contain no events"
+        sys.stderr.write(errStr)
+    if counter==4:
+        sys.stderr.write("No quadrant contains events")
+        return None
+    return vTopLeft, vTopRight, vBottomRight, vBottomLeft

@@ -18,6 +18,8 @@ import matplotlib.pyplot as plt
 import matplotlib.colors
 from matplotlib.patches import Ellipse
 import aligater as ag
+#from scipy.stats import gaussian_kde
+from scipy.ndimage.filters import gaussian_filter1d#, gaussian_filter
 import sys
 
 sentinel = object()
@@ -27,7 +29,8 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300):
     elif len(vI)==0:
         sys.stderr.write("Passed index contains no events")
         return None
-    
+    if len(vI)<bins:
+        bins=len(vI)
     vX=ag.getGatedVector(fcsDF, x, vI)
     vY=ag.getGatedVector(fcsDF, y, vI)
     plt.clf()
@@ -54,20 +57,19 @@ def addArrow(fig, ax, lStartCoordinate, lEndCoordinate, size=5000):
     return fig
 
 def draw_ellipse(position, covariance, sigma=2, ax=None, **kwargs):
-    """Draw an ellipse with a given position and covariance"""
     ax = ax or plt.gca();
     
     # Convert covariance to principal axes
     if covariance.shape == (2, 2):
         U, s, Vt = np.linalg.svd(covariance)
         angle = np.degrees(np.arctan2(U[1, 0], U[0, 0]))
-        width,height = 2 * np.sqrt(s)
+        width,height = np.sqrt(s)*sigma
     else:
         angle = 0
-        width, height = 2 * np.sqrt(covariance)
-    
+        width, height = np.sqrt(covariance)*sigma
+    #Note width, height here is the full width and height and not the semiaxis length
     # Draw the Ellipse
-    ax.add_patch(Ellipse(position, sigma * width, sigma * height,
+    ax.add_patch(Ellipse(position, width, height,
                              angle, **kwargs));
     return width, height, angle
 
@@ -77,6 +79,20 @@ def plot_gmm(fcsDF, xCol, yCol, vI, gmm, sigma, ax):
        width, height, angle = draw_ellipse(pos, covar, sigma ,fill=False,edgecolor='#FF0000', linestyle='dashed');
     plt.show();
     return pos, width, height, angle
+
+def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300):
+    if xCol not in fcsDF.columns:
+        raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
+
+    data=ag.getGatedVector(fcsDF, xCol, vI, return_type="nparray")
+    histo=np.histogram(data, bins)
+    vHisto=np.linspace(min(histo[1]),max(histo[1]),bins)
+    smoothedHisto=gaussian_filter1d(histo[0],sigma)
+    plt.clf()
+    plt.plot(vHisto,smoothedHisto, label="pdf for "+str(xCol)+", sigma: "+str(sigma))
+    plt.legend()
+    plt.show()
+    return None
 
 def main():
 	return None
