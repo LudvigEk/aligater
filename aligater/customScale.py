@@ -15,22 +15,28 @@
 import numpy as np
 from matplotlib import scale as mscale
 from matplotlib import transforms as mtransforms
+import matplotlib.ticker as ticker
 
-class LogishScale(mscale.ScaleBase):
+class CustomScale(mscale.ScaleBase):
     name = 'logish'
 
     def __init__(self, axis, linCutOff=1000, **kwargs):
-        self.linCutOff = linCutOff #treshold for transition linear > log
+        self.linCutOff = linCutOff #default treshold
         mscale.ScaleBase.__init__(self)
         self.thresh=None
-
+        
     def get_transform(self):
-        return self.LogishTransform(self.thresh, self.linCutOff)
+        return self.CustomTransform(self.thresh, self.linCutOff)
 
+    
     def set_default_locators_and_formatters(self, axis):
+        axis.set_major_locator(HlogMajorLocator())
+        axis.set_major_formatter(LogFormatterMathtext(10))
+        axis.set_minor_locator(HlogMinorLocator())
+        axis.set_minor_formatter(NullFormatter()) 
         pass
 
-    class LogishTransform(mtransforms.Transform):
+    class CustomTransform(mtransforms.Transform):
         input_dims = 1
         output_dims = 1
         has_inverse = True
@@ -46,16 +52,16 @@ class LogishScale(mscale.ScaleBase):
             a_idx=0
             while a_idx < len(a):
                 if a[a_idx] >= self.linCutOff:
-                   tA[a_idx] = np.log(10 * a[a_idx] / self.linCutOff)/np.log(10)
+                   tA[a_idx] = np.log(10 * a[a_idx] / self.linCutOff - 10)
                 else:
                     tA[a_idx] = (a[a_idx]/self.linCutOff + np.log(10.0) - 1)/np.log(10)
                 a_idx+=1
             return tA
 
         def inverted(self):
-            return LogishScale.InvertedLogishTransform(self.thresh,self.linCutOff)
+            return CustomScale.InvertedCustomTransform(self.thresh,self.linCutOff)
 
-    class InvertedLogishTransform(mtransforms.Transform):
+    class InvertedCustomTransform(mtransforms.Transform):
         input_dims = 1
         output_dims = 1
         is_separable = True
@@ -70,7 +76,7 @@ class LogishScale(mscale.ScaleBase):
             invA=np.empty_like(a)
             a_idx=0
             while a_idx < len(a):
-                if a[a_idx] >= 1.0:
+                if a[a_idx] >= np.log(10):
                     invA[a_idx]= (np.exp(a[a_idx])+10)*self.linCutOff/10
                 else:
                     invA[a_idx] = self.linCutOff*(np.log(10.0)*a[a_idx] - np.log(10.0) + 1)
@@ -78,7 +84,7 @@ class LogishScale(mscale.ScaleBase):
             return invA
 
         def inverted(self):
-            return LogishScale.LogishTransform(self.thresh,self.linCutOff)
+            return CustomScale.CustomTransform(self.thresh,self.linCutOff)
 
 # Register new scale
-mscale.register_scale(LogishScale)
+mscale.register_scale(CustomScale)
