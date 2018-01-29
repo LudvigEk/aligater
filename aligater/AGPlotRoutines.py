@@ -19,12 +19,13 @@ import matplotlib.colors
 from matplotlib.patches import Ellipse
 import aligater as ag
 import matplotlib.ticker as ticker
+from aligater.AGClasses import LogishLocator, LogishFormatter
 #from scipy.stats import gaussian_kde
 from scipy.ndimage.filters import gaussian_filter1d#, gaussian_filter
 import sys
 
 sentinel = object()
-def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='linear', yscale='linear', thresh=1000):
+def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='linear', yscale='linear', thresh=1000, aspect='auto'):
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
@@ -39,42 +40,43 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale)
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
     heatmap=np.ma.masked_where(heatmap == 0, heatmap)
-    
     plt.clf()
     fig, ax = plt.subplots()
-    plt.imshow(heatmap.T, extent=extent, origin='lower',aspect='auto')
+    plt.imshow(heatmap.T, extent=extent, origin='lower',aspect=aspect)
     plt.xlabel(x)
     plt.ylabel(y)
     cmap=plt.get_cmap()
     cmap.set_bad(color='white') #Zeroes should be white, not blue
     if scale.lower()=='logish':
-        ticks = ticker.FuncFormatter(lambda x, pos: '{0}'.format(ticFormatter(x, thresh)))
-        ax.set_xscale('logish', linCutOff=thresh)
-        ax.xaxis.set_major_formatter(ticks)
+        xscale='logish'
+        yscale='logish'
+    if xscale.lower()=='logish':
+        ax=plt.gca()
+        ax.xaxis.set_major_locator(LogishLocator(subs='all'))
+        ax.xaxis.set_major_formatter(LogishFormatter())
+    if yscale.lower()=='logish':
+        ax=plt.gca()
+        ax.yaxis.set_major_locator(LogishLocator(subs='all'))
+        ax.yaxis.set_major_formatter(LogishFormatter())
     return fig,ax
 
 def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000):
     if not any(isinstance(i,str) for i in [scale,xscale,yscale]):
-        raise TypeError("scale, xscale, yscale must be specified as string, such as: 'linear', 'log'")
+        raise TypeError("scale, xscale, yscale must be specified as string, such as: 'linear', 'logish'")
     if not all(i in ['linear', 'logish'] for i in [scale,xscale,yscale]):
-        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'log'")
+        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
     if scale=='linear' and xscale=='linear' and yscale == 'linear':
         return np.histogram2d(vX, vY, bins)
-    elif scale=='logish':
+    elif scale=='logish' or (xscale == 'logish' and yscale == 'logish'):
         xBinEdges=logishBin(vX,bins,T)
         yBinEdges=logishBin(vY,bins,T)
-        #SILVERTEJPLÖSNING
-        for index,elem in enumerate(np.diff(yBinEdges)):
-            if elem <=0:
-                 print(index)
-                 raise
-        for index,elem in enumerate(np.diff(xBinEdges)):
-            if elem <=0:
-                 print(index)
-                 raise
-        #print(np.diff(yBinEdges))
-        #return np.histogram2d(vX, vY, bins)
         return np.histogram2d(vX, vY, [xBinEdges,yBinEdges])
+    if xscale=='logish':
+        xBinEdges=logishBin(vX,bins,T)
+        return np.histogram2d(vX, vY, [xBinEdges,bins])
+    if yscale=='logish':
+        yBinEdges=logishBin(vY,bins,T)
+        return np.histogram2d(vX, vY, [bins,yBinEdges])
 
 def logishBin(vX, bins, T):
     defaultRange=[min(vX),max(vX)]
@@ -97,18 +99,19 @@ def inverseLogishTransform(a, linCutOff):
     invA=np.empty_like(a)
     a_idx=0
     while a_idx < len(a):
-        if a[a_idx] <= 1.0: #transformed linCutOff, always 1.0; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
-             invA[a_idx] = linCutOff*(np.log(10.0)*a[a_idx] - np.log(10.0) + 1)
+        if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
+            invA[a_idx] = linCutOff*np.exp(np.log(10)*a[a_idx])/10
+            #invA[a_idx]= (np.exp(a[a_idx])+10)*linCutOff/10
         else:
-            invA[a_idx]= (np.exp(a[a_idx])+10)*linCutOff/10
+            invA[a_idx] = linCutOff*(np.log(10.0)*a[a_idx] - np.log(10.0) + 1)
         a_idx+=1
     return invA
 
-def ticFormatter(x, T):
+def ticFormatter(x, T, vmin, vmax):
     if x<=T:
         return x 
     else:
-        exp = x // 1000
+        exp = np.log10(x)
         return "$10^{%d}$" % int(exp)
 
 def addLine(fig, ax, lStartCoordinate, lEndCoordinate, size=2):

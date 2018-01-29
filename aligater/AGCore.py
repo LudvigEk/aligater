@@ -37,7 +37,7 @@ def gateGMM(fcsDF,xCol, yCol, gmm, vI=sentinel, sigma=1, plot=True):
     if not isinstance(gmm, GaussianMixture):
         raise TypeError("gmm argument must be a sklearn.mixture GaussianMixture object")
     vOutput=[]
-    fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI)
+    fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI, aspect='equal')
     pos, width, height, angle = ag.plot_gmm(fcsDF,xCol, yCol, vI, gmm, sigma, ax)
     #plot_ggm will return the full width and height of the drawn ellipse, whereas
     #gateEllipsoid wants the length of the semiaxis
@@ -127,7 +127,7 @@ def gateEllipsoid(fcsDF, xCol, yCol, xCenter, yCenter, majorRadii, minorRadii, t
     vY = ag.getGatedVector(fcsDF, yCol, vI, return_type='nparray')
     assert len(vX)==len(vY)
         
-    #Faster alternatives than zipping like below? pd.iterrows() definetly slower
+    #Faster alternatives than zipping like below? pd.iterrows() is definetly slower
     for x, y, index in zip(vX, vY, vI):
         leftTerm = (x - xCenter)*math.cos(theta) + (y - yCenter)*math.sin(theta)
         rightTerm = (x - xCenter)*math.sin(theta) - (y - yCenter)*math.cos(theta)
@@ -189,7 +189,6 @@ def getPCs(fcsDF, xCol, yCol, centerCoord=None, vI=sentinel):
     #Barycenter/centroid
     Xbar = sumX/npix
     Ybar = sumY/npix
-    
     #Variance and covariance
     varX = sumXX/npix - Xbar*Xbar
     varY = sumYY/npix - Ybar*Ybar
@@ -244,9 +243,11 @@ def getPCSemiAxis(center, eigen1, eigen2, eigen1Scale=1, eigen2Scale=1):
     eigen1Y=majorAxis*eigen1[2]+center[1]
     
     eigen2X=minorAxis*eigen2[1]+center[0]
-    eigen2Y=minorAxis*eigen2[2]+center[1]
+    eigen2Y=minorAxis*eigen2[2]+center[1]  
+    
     PC1=[eigen1X, eigen1Y]
     PC2=[eigen2X, eigen2Y]
+
     return center, PC1, PC2
 
 def getVectorLength(lStartCoordinate, lEndCoordinate):
@@ -263,6 +264,7 @@ def calculateAngle(lStartCoordinate, lEndCoordinate):
     if not len(lStartCoordinate)==len(lEndCoordinate)==2:
         raise ValueError("Input arguments for getVectorLength (lStartCoordinate, lEndCoordinate) must be lists containing two elements each.")
     angle=math.atan(np.subtract(lEndCoordinate,lStartCoordinate)[1]/np.subtract(lEndCoordinate,lStartCoordinate)[0])
+    
     return angle
 
 def getHighestDensityPoint(fcsDF, xCol, yCol, vI=sentinel, bins=300):
@@ -317,7 +319,7 @@ def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='
     angle=ag.calculateAngle(center, PC1)
     result=ag.gateEllipsoid(fcsDF, xCol, yCol,xCenter=center[0],yCenter=center[1],majorRadii=width, minorRadii=height,theta=angle,vI=vI)
     if plot:
-        fig, ax = ag.plotHeatmap(fcsDF, xCol, yCol,vI)
+        fig, ax = ag.plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
         ag.addLine(fig, ax, center, PC1)
         ag.addLine(fig, ax, center, PC2)
         ax.add_patch(ag.Ellipse(center, 2*width, 2*height, np.degrees(angle),fill=False,edgecolor='#FF0000', linestyle='dashed'))
