@@ -13,14 +13,10 @@
 #	http://nilssonlab.org
 
 import numpy as np
-from matplotlib import scale as mscale
-from matplotlib import transforms as mtransforms
 from matplotlib.ticker import Locator, Formatter
-import math
 import aligater as ag
-from matplotlib import rcParams, cbook
+from matplotlib import rcParams
 import six
-import sys
 
 def is_decade(x, base=10):
     if not np.isfinite(x):
@@ -43,47 +39,26 @@ def nearest_int(x):
     else:
         return int(x - 0.5)
 
-def decade_down(x, base=10):
-    'floor x to the nearest lower decade'
-    if x == 0.0:
-        return -base
-    lx = np.floor(np.log(x) / np.log(base))
-    return base ** lx
-
-def decade_up(x, base=10):
-    'ceil x to the nearest higher decade'
-    if x == 0.0:
-        return base
-    lx = np.ceil(np.log(x) / np.log(base))
-    return base ** lx
-
-def nearest1k(x):
-    if x < 0:
-        return np.floor(x/1000)*1000
-    if x >= 0:
-        return 0
-    
-def nearestLog(x):
-    if x<10000:
-        return 10000
-    elif x<100000:
-        return 100000
-    elif x<1000000:
-        return 1000000
-    else:
-        raise("error in LogishLocator: nearestLog")
         
-def convertToLogishCoordinates(Ticlocs, vmin, vmax, T):
+def convertToLogishPlotCoordinates(Ticlocs, vmin, vmax, T):
     actualRange=vmax-vmin
-    transvmax = ag.logishTransform([vmax], T)
-    transvmin = ag.logishTransform([vmin], T)
-    transformedRange = transvmax[0] - transvmin[0] 
-    tTiclocs=[]
-    for tic in ag.logishTransform(Ticlocs, T):
-        ttic=tic/transformedRange*actualRange
-        tTiclocs.append(ttic)
+    tMinMax = ag.logishTransform([vmin, vmax], T)
+    transformedRange = tMinMax[1]-tMinMax[0]
+    tTiclocs=ag.logishTransform(Ticlocs, T)
+    plotTics=[]
+    for tTic in tTiclocs:
+        plotTic=(tTic-tMinMax[0])/transformedRange*actualRange+vmin
+        plotTics.append(plotTic)
     assert len(tTiclocs)==len(Ticlocs)
-    return tTiclocs
+    return plotTics
+
+def invertLogishPlotcoordinates(plotTic, vmin, vmax, T):
+    actualRange=vmax-vmin
+    tMinMax = ag.logishTransform([vmin, vmax], T)
+    transformedRange = tMinMax[1]-tMinMax[0]
+    invPlotTic=(plotTic-vmin)/actualRange*transformedRange+tMinMax[0]
+    result=ag.inverseLogishTransform([invPlotTic], T)[0]
+    return result
 
 class LogishLocator(Locator):
     """
@@ -149,7 +124,7 @@ class LogishLocator(Locator):
 
     def __call__(self):
         'Return the locations of the ticks'
-        vmin, vmax = self.axis.get_view_interval()
+        vmin, vmax = self.view_limits()
         return self.tick_values(vmin, vmax)
 
     def tick_values(self, vmin, vmax):
@@ -161,61 +136,35 @@ class LogishLocator(Locator):
         else:
             numticks = self.numticks
         
-        
-        if vmin < self.T:
-            tmpTicLoc=[-50000, -40000, -30000, -20000, -10000, -5000, 0, 1000, 5000]
-            Ticlocs = list(set(np.clip(tmpTicLoc, nearest1k(vmin), self.T)))
-        else:
-            Ticlocs=np.arange(0,self.T+1, 1000)
-        
-        if vmax > self.T:
-            tmpTicLoc=list(np.arange(self.T,10001,1000))
-            tmpTicLoc.extend(np.arange(10000.0,100001,10000))
-            tmpTicLoc.extend(np.arange(100000.0,500000,100000)) #[10000.0,100000.0, 200000, 300000, 1000000.0]
-            Ticlocs.extend(tmpTicLoc)
-            Ticlocs=list(set(Ticlocs))
-        Ticlocs=convertToLogishCoordinates(Ticlocs, vmin, vmax, self.T)
+    #if vmin < self.T:
+        tmpTicLoc=[-50000, -40000, -30000, -20000, -10000, -5000,-4000,-3000, -2000, -1000, 0]
+        Ticlocs = list(set(np.clip(tmpTicLoc, vmin, self.T)))
+        Ticlocs = list(np.sort(Ticlocs))
+    
+    #if vmax > self.T:
+        tmpTicLoc=[0,1000]
+        tmpTicLoc.extend(np.arange(1000.0,10001,1000))
+        tmpTicLoc.extend(np.arange(10000.0,100001,10000))
+        tmpTicLoc.extend(np.arange(100000.0,1000000,100000)) #[10000.0,100000.0, 200000, 300000, 1000000.0]
+        Ticlocs.extend(tmpTicLoc)
+        clip_Ticlocs=list(set(np.clip(Ticlocs,vmin, vmax)))
+        Ticlocs=np.sort(clip_Ticlocs)
+        #ADD HOC POSSIBLY
+        Ticlocs=Ticlocs[1:-1]
+        Ticlocs=convertToLogishPlotCoordinates(Ticlocs, vmin, vmax, self.T)
         if vmax < vmin:
-            vmin, vmax = vmax, vmin        
+            vmin, vmax = vmax, vmin
         return self.raise_if_exceeds(np.asarray(Ticlocs))
 
-    def view_limits(self, vmin, vmax):
+    def view_limits(self, vmin=None, vmax=None):
         'Try to choose the view limits intelligently'
-        vmin, vmax = self.nonsingular(vmin, vmax)
-
-        if rcParams['axes.autolimit_mode'] == 'round_numbers':
-            if not vmin in np.arange(-10000,1000,1000):
-                vmin = nearest1k(vmin)
-            if not is_decade(vmax, self._base):
-                vmax = decade_up(vmax, self._base)
-        return vmin, vmax
-
-    def nonsingular(self, vmin, vmax):
-        if not np.isfinite(vmin) or not np.isfinite(vmax):
-            return 1, 10  # initial range, no data plotted yet
-
-        if vmin > vmax:
-            vmin, vmax = vmax, vmin
-        if vmax <= 0:
-            sys.stderr.write(
-                "Data has no positive values, and therefore cannot be "
-                "log-scaled.")
-            return 1, 10
-
-        minpos = self.axis.get_minpos()
-        if not np.isfinite(minpos):
-            minpos = 1e-300  # This should never take effect.
-        if vmin <= 0:
-            vmin = minpos
-        if vmin == vmax:
-            vmin = decade_down(vmin, self._base)
-            vmax = decade_up(vmax, self._base)
+        vmin, vmax = self.axis.get_view_interval()
         return vmin, vmax
 
 
 class LogishFormatter(Formatter):
     """
-    Base class for formatting ticks on a logish.
+    Base class for formatting ticks on a logish scale.
     Hacked version of LogFormatter that covers normal usecases of the logish scale
     Only defined with formatting ticlabels for data in range -50000 < x < 1 000 000
 
@@ -279,7 +228,8 @@ class LogishFormatter(Formatter):
 
 
     def _num_to_string(self, x, vmin, vmax):
-        if not round(x,0) in [0,1000,10000,100000,1000000]:
+        x = round(x,0)
+        if not x in [-5000, -4000, -3000, -2000, -1000, 0 ,1000,10000,100000,1000000]:
             s = ''
         else:
             s = self.pprint_val(x, vmax - vmin)
@@ -291,12 +241,13 @@ class LogishFormatter(Formatter):
         """
         if x == 0.0:  # Symlog
             return '0'
-        
         vmin, vmax = self.axis.get_view_interval()
-        tVals = ag.logishTransform([vmin, vmax, x], self._linthresh)
+        #tVals = ag.logishTransform([vmin, vmax, x], self._linthresh)
         # only label the decades
-        fx = x/(vmax-vmin)*(tVals[1] - tVals[0])
-        fx = ag.inverseLogishTransform([fx],self._linthresh)[0]
+        #fx = (x-vmin)/(vmax-vmin)*(tVals[1] - tVals[0])-tVals[0]
+        #fx = ag.inverseLogishTransform([fx],self._linthresh)[0]
+        fx=invertLogishPlotcoordinates(x,vmin,vmax,self._linthresh)
+        #print(fx)
         s = self._num_to_string(fx, vmin, vmax)
         return self.fix_minus(s)
         
@@ -305,7 +256,7 @@ class LogishFormatter(Formatter):
         #If the number is at or below the set lin-cutoff (_lintrehsh)
         #Print it as an int
         #TODO: WHY DO I NEED THE +1 HERE?
-        if abs(x) <= self._linthresh+1:
+        if x <= self._linthresh+1:
             return '%d' % x
 
         fmt = '%1.3e'

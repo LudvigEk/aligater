@@ -16,7 +16,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors
-from matplotlib.patches import Ellipse
+from matplotlib.patches import Ellipse, Arrow
 import aligater as ag
 import matplotlib.ticker as ticker
 from aligater.AGClasses import LogishLocator, LogishFormatter
@@ -37,7 +37,7 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     vY=ag.getGatedVector(fcsDF, y, vI)
     plt.clf()
     matplotlib.rcParams['image.cmap'] = 'jet'
-    heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale)
+    heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, thresh)
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
     heatmap=np.ma.masked_where(heatmap == 0, heatmap)
     plt.clf()
@@ -85,7 +85,7 @@ def logishBin(vX, bins, T):
     return inverseLogishTransform(transformedBinEdges, T)
 
 def logishTransform(a, linCutOff):
-    tA = np.empty_like(a)
+    tA = np.empty_like(a).astype(float)
     a_idx=0
     while a_idx < len(a):
         if a[a_idx] >= linCutOff:
@@ -96,7 +96,7 @@ def logishTransform(a, linCutOff):
     return tA
 
 def inverseLogishTransform(a, linCutOff):
-    invA=np.empty_like(a)
+    invA=np.empty_like(a).astype(float)
     a_idx=0
     while a_idx < len(a):
         if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
@@ -114,12 +114,31 @@ def ticFormatter(x, T, vmin, vmax):
         exp = np.log10(x)
         return "$10^{%d}$" % int(exp)
 
+def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', T=1000):
+    if orientation.lower()=='horisontal':
+        if scale=='logish':
+            lims=ax.get_xlim()
+            vmin = lims[0]
+            vmax = lims[1]
+            pos = ag.AGClasses.convertToLogishPlotCoordinates([pos],vmin,vmax,T)
+        ax.axvline(pos, c='r')
+    else:
+        if scale=='logish':
+            lims=ax.get_ylim()
+            vmin = lims[0]
+            vmax = lims[1]
+            pos = ag.AGClasses.convertToLogishPlotCoordinates([pos],vmin,vmax,T)
+        ax.axhline(pos,  c='r')
+    return fig
+
 def addLine(fig, ax, lStartCoordinate, lEndCoordinate, size=2):
     ax.plot([lStartCoordinate[0], lEndCoordinate[0]], [lStartCoordinate[1], lEndCoordinate[1]], color='r', linestyle='-', linewidth=size)
     return fig
 
 def addArrow(fig, ax, lStartCoordinate, lEndCoordinate, size=5000):
-    ax.arrow(lStartCoordinate[0], lStartCoordinate[1], lEndCoordinate[0]-lStartCoordinate[0], lEndCoordinate[1]-lStartCoordinate[1], head_width=size, head_length=size, fc='r', ec='r')
+    arrow=Arrow(lStartCoordinate[0],lStartCoordinate[1],lEndCoordinate[0]-lStartCoordinate[0],lEndCoordinate[1]-lStartCoordinate[1],width=size, transform=ax.transAxes,head_width=size, head_length=size, fc='r', ec='r')
+    #ax.arrow(lStartCoordinate[0], lStartCoordinate[1], lEndCoordinate[0]-lStartCoordinate[0], lEndCoordinate[1]-lStartCoordinate[1], head_width=size, head_length=size, fc='r', ec='r')
+    ax.add_patch(arrow)
     return fig
 
 def draw_ellipse(position, covariance, sigma=2, ax=None, **kwargs):

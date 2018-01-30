@@ -34,6 +34,9 @@ def compensateDF(fcsDF, metaDict):
     return fcsDF
 
 def loadFCS(path, compensate=True, metadata=False):
+    pardir=ag.getFileName(ag.getParent(path))
+    parpardir=ag.getFileName(ag.getParent(ag.getParent(path)))
+    sys.stderr.write("Opening file "+ag.getFileName(path)+" from folder /"+parpardir+"/"+pardir+"\n")
     metaDict,fcsDF = ag.parse(path,output_format='DataFrame')
     rows=fcsDF.shape[0]
     cols=fcsDF.columns[4:-1]

@@ -70,7 +70,7 @@ def getGatedVectors(fcsDF, gate1, gate2, vI=sentinel, return_type="pdseries"):
         vY=fcsDF[gate2].loc[vI].values
         return np.array([vX,vY])
     
-def gateThreshold(fcsDF, xCol, yCol, thresh, orientation="horisontal", vI=sentinel, population="upper", plot=True):
+def gateThreshold(fcsDF, xCol, yCol, thresh, orientation="horisontal", vI=sentinel, population="upper", plot=True, scale='linear', linCutOff=1000):
     if vI is sentinel:
         vI=fcsDF.index
     if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
@@ -90,18 +90,16 @@ def gateThreshold(fcsDF, xCol, yCol, thresh, orientation="horisontal", vI=sentin
             vOutput=fcsDF[fcsDF[xCol]<thresh].index
         else:
             vOutput=fcsDF[fcsDF[yCol]<thresh].index
-    print(len(vOutput))
+            
+    vOutput=list(set(vOutput).intersection(vI))
+    
     if plot:
-        fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI)
-        ylim=ax.get_ylim()
-        xlim=ax.get_ylim()
-        if orientation.lower() == "horisontal":
-            ag.addLine(fig,ax,[thresh,ylim[0]],[thresh,ylim[1]])
-        else:   #Vertical
-            ag.addLine(fig,ax,[xlim[0],thresh],[xlim[1],thresh])
-        ag.plt.show()
-        ag.plotHeatmap(fcsDF, xCol, yCol, vOutput)
-        ag.plt.show()
+        fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=linCutOff)
+        ag.addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+        plt.show()
+        plt.clf()
+        ag.plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
+        plt.show()
     reportGateResults(vI, vOutput)
     return vOutput
     
@@ -297,7 +295,6 @@ def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='
     if center.lower() not in ['centroid','density','custom']:
         raise ValueError("Specify center/anchor point for PC analysis; centroid, density or custom")
     elif center.lower() == 'custom' and type(customCenter) is not list:
-        print(type(customCenter))
         raise TypeError("If custom center is specified the 'customCenter' argument must be passed as a list of two, i.e. [x,y]")
     elif center.lower() == 'custom' and type(customCenter) is not list:
         if len(customCenter) != 2:
@@ -380,7 +377,7 @@ def valleySeek(fcsDF, xCol, vI=sentinel, interval=['start','end'], sigma=3, bins
     minValIndex=0
     for index in vIndicies:
         if smoothedHisto[index] < minVal:
-            minVal=x
+            minVal=smoothedHisto[index]
             minValIndex=index
     return (binData[minValIndex+1]+binData[minValIndex])/2
             
@@ -421,3 +418,21 @@ def quadGate(fcsDF, xCol, yCol, xThresh, yThresh, vI=sentinel):
         sys.stderr.write("No quadrant contains events")
         return None
     return vTopLeft, vTopRight, vBottomRight, vBottomLeft
+
+def axisStats(fcsDF, xCol, vI=sentinel,bins=300):
+    if vI is sentinel:
+        vI=fcsDF.index
+    elif len(vI)==0:
+        raise ValueError("Passed index contains no events") 
+    if xCol not in fcsDF.columns:
+        raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
+    x=ag.getGatedVector(fcsDF,xCol, vI, return_type="nparray")
+    mean=np.mean(x)
+    sigma=np.std(x)
+    histo=np.histogram(x, bins)
+    maxIndex=np.argmax(histo[0])
+    if isinstance(maxIndex, np.ndarray):
+        maxVal=(histo[1][maxIndex[0]]+histo[1][maxIndex[0]+1])/2
+    else:
+        maxVal=(histo[1][maxIndex]+histo[1][maxIndex+1])/2
+    return mean, sigma, maxVal
