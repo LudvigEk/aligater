@@ -331,14 +331,18 @@ def getVectorCoordiantes(length, angle):
     x = length*math.acos(theta)
     return[x,y]
 
-def getDensityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300):
+def getDensityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear', T=1000):
     data=ag.getGatedVector(fcsDF, xCol, vI, return_type="nparray")
-    histo=np.histogram(data, bins)
+    if scale=='logish':
+        BinEdges=ag.logishBin(data,bins,T)
+        histo = np.histogram(data, BinEdges)
+    else:    
+        histo=np.histogram(data, bins)
     smoothedHisto=ag.gaussian_filter1d(histo[0],sigma)
     #vHisto=np.linspace(min(histo[1]),max(histo[1]),bins)
     return smoothedHisto, histo[1]
 
-def valleySeek(fcsDF, xCol, vI=sentinel, interval=['start','end'], sigma=3, bins=300):
+def valleySeek(fcsDF, xCol, vI=sentinel, interval=['start','end'], sigma=3, bins=300, scale='linear', T= 1000):
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
@@ -350,7 +354,10 @@ def valleySeek(fcsDF, xCol, vI=sentinel, interval=['start','end'], sigma=3, bins
     if len(interval)!=2:
         raise ValueError("Interval must be specified as list of two: [x,y].\nInterval can be half open to either side, i.e. ['start',y] or [x,'end'].")
 
-    smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins)
+    if scale=='logish':
+        smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins, scale='logish',T=T)
+    else:
+        smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins)
   
     if type(interval[0]) is str:
         if interval[0].lower() in ['start', 'begin','first']:
@@ -381,7 +388,7 @@ def valleySeek(fcsDF, xCol, vI=sentinel, interval=['start','end'], sigma=3, bins
             minValIndex=index
     return (binData[minValIndex+1]+binData[minValIndex])/2
             
-def quadGate(fcsDF, xCol, yCol, xThresh, yThresh, vI=sentinel):
+def quadGate(fcsDF, xCol, yCol, xThresh, yThresh, vI=sentinel, plot=True, scale='linear',T=1000):
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
@@ -417,6 +424,14 @@ def quadGate(fcsDF, xCol, yCol, xThresh, yThresh, vI=sentinel):
     if counter==4:
         sys.stderr.write("No quadrant contains events")
         return None
+    if plot:
+        if scale=='logish':
+            fig,ax=ag.plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)    
+        else:
+            fig, ax = ag.plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
+        ag.addAxLine(fig,ax,xThresh,'vertical',scale=scale, T=T)
+        ag.addAxLine(fig,ax,yThresh,'horisontal',scale=scale, T=T)
+        ag.plt.show()       
     return vTopLeft, vTopRight, vBottomRight, vBottomLeft
 
 def axisStats(fcsDF, xCol, vI=sentinel,bins=300):

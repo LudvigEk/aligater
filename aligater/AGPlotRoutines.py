@@ -165,17 +165,33 @@ def plot_gmm(fcsDF, xCol, yCol, vI, gmm, sigma, ax):
     plt.show();
     return pos, width, height, angle
 
-def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300):
+def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',  T=1000):
     if xCol not in fcsDF.columns:
         raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
-
+    if vI is sentinel:
+        vI=fcsDF.index
+    elif len(vI)==0:
+        sys.stderr.write("Passed index contains no events")
+        return None
+    if len(vI)<bins:
+        sys.stderr.write("Fewer events than bins, readjusting number of bins")
+        bins=len(vI)    
     data=ag.getGatedVector(fcsDF, xCol, vI, return_type="nparray")
-    histo=np.histogram(data, bins)
+    if scale == 'logish':
+        BinEdges=logishBin(data,bins,T)
+        histo = np.histogram(data, BinEdges)
+    else:
+        histo=np.histogram(data, bins)
     vHisto=np.linspace(min(histo[1]),max(histo[1]),bins)
     smoothedHisto=gaussian_filter1d(histo[0],sigma)
     plt.clf()
     plt.plot(vHisto,smoothedHisto, label="pdf for "+str(xCol)+", sigma: "+str(sigma))
     plt.legend()
+    if scale.lower()=='logish':
+        sys.stderr.write("WARN: x-axis tics/ticvalues incorrect (not implemented yet) for logish pdf plot")
+#        ax=plt.gca()
+#        ax.xaxis.set_major_locator(LogishLocator())
+#        ax.xaxis.set_major_formatter(LogishFormatter())
     plt.show()
     return None
 
