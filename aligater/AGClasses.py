@@ -52,7 +52,26 @@ def convertToLogishPlotCoordinates(Ticlocs, vmin, vmax, T):
     assert len(tTiclocs)==len(Ticlocs)
     return plotTics
 
-def invertLogishPlotcoordinates(plotTic, vmin, vmax, T):
+def convertToLogishPlotCoordinate(Ticloc, vmin, vmax, T):
+    actualRange=vmax-vmin
+    tMinMax = ag.logishTransform([vmin, vmax], T)
+    transformedRange = tMinMax[1]-tMinMax[0]
+    tTicloc=ag.logishTransform([Ticloc], T)[0]
+    plotTic=(tTicloc-tMinMax[0])/transformedRange*actualRange+vmin
+    return plotTic
+
+def invertLogishPlotcoordinates(plotTics, vmin, vmax, T):
+    actualRange=vmax-vmin
+    tMinMax = ag.logishTransform([vmin, vmax], T)
+    transformedRange = tMinMax[1]-tMinMax[0]
+    invPlotTics=[]
+    for tTic in plotTics:
+        invPlotTic=(tTic-vmin)/actualRange*transformedRange+tMinMax[0]
+        invPlotTics.append(invPlotTic)
+    result=ag.inverseLogishTransform(invPlotTics, T)
+    return result
+
+def invertLogishPlotcoordinate(plotTic, vmin, vmax, T):
     actualRange=vmax-vmin
     tMinMax = ag.logishTransform([vmin, vmax], T)
     transformedRange = tMinMax[1]-tMinMax[0]
@@ -246,7 +265,7 @@ class LogishFormatter(Formatter):
         # only label the decades
         #fx = (x-vmin)/(vmax-vmin)*(tVals[1] - tVals[0])-tVals[0]
         #fx = ag.inverseLogishTransform([fx],self._linthresh)[0]
-        fx=invertLogishPlotcoordinates(x,vmin,vmax,self._linthresh)
+        fx=invertLogishPlotcoordinate(x,vmin,vmax,self._linthresh)
         #print(fx)
         s = self._num_to_string(fx, vmin, vmax)
         return self.fix_minus(s)

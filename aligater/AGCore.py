@@ -451,3 +451,40 @@ def axisStats(fcsDF, xCol, vI=sentinel,bins=300):
     else:
         maxVal=(histo[1][maxIndex]+histo[1][maxIndex+1])/2
     return mean, sigma, maxVal
+
+def gateCorner(fcsDF, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrientation='upper', vI=sentinel, bins=300, scale='linear', T=1000, plot=True):
+    if vI is sentinel:
+        vI=fcsDF.index
+    if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
+        raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
+    if xOrientation not in ["upper","lower"] or yOrientation not in ["upper","lower"]:
+        raise TypeError("Specify desired population for xOrientation and yOrientation, 'upper' or 'lower' in regard to set thresholds")
+
+    if xOrientation.lower() == "upper":
+        if yOrientation.lower() == "upper":
+            vOutput=fcsDF[(fcsDF[xCol]>=xThresh)&(fcsDF[yCol]>=yThresh)].index
+        else:
+            vOutput=fcsDF[(fcsDF[xCol]>=xThresh)&(fcsDF[yCol]<yThresh)].index
+    else:
+        if yOrientation.lower() == "upper":
+            vOutput=fcsDF[(fcsDF[xCol]<xThresh)&(fcsDF[yCol]>=yThresh)].index
+        else:
+            vOutput=fcsDF[(fcsDF[xCol]<xThresh)&(fcsDF[yCol]<yThresh)].index
+    
+    vOutput=list(set(vOutput).intersection(vI))
+    
+    if plot:
+        fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
+        vX,vY=ag.getGatedVectors(fcsDF,xCol, yCol, vOutput, return_type="nparray")
+        xmin=min(vX)
+        xmax=max(vX)
+        ymin=min(vY)
+        ymax=max(vY)
+        ag.addLine(fig,ax, [xmin,ymin], [xmin, ymax],scale=scale, T=T)
+        ag.addLine(fig,ax, [xmin,ymin], [xmax, ymin],scale=scale, T=T)
+        plt.show()
+        plt.clf()
+        ag.plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
+        plt.show()
+    reportGateResults(vI, vOutput)
+    return vOutput

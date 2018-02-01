@@ -17,6 +17,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors
 from matplotlib.patches import Ellipse, Arrow
+import matplotlib.lines as lines
 import aligater as ag
 import matplotlib.ticker as ticker
 from aligater.AGClasses import LogishLocator, LogishFormatter
@@ -115,6 +116,8 @@ def ticFormatter(x, T, vmin, vmax):
         return "$10^{%d}$" % int(exp)
 
 def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', T=1000):
+    if not all(i in ['linear', 'logish'] for i in [scale]):
+        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
     if orientation.lower()=='horisontal':
         if scale=='logish':
             lims=ax.get_xlim()
@@ -131,9 +134,18 @@ def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', T=1000):
         ax.axhline(pos,  c='r')
     return fig
 
-def addLine(fig, ax, lStartCoordinate, lEndCoordinate, size=2):
-    ax.plot([lStartCoordinate[0], lEndCoordinate[0]], [lStartCoordinate[1], lEndCoordinate[1]], color='r', linestyle='-', linewidth=size)
-    return fig
+def addLine(fig, ax, lStartCoordinate, lEndCoordinate, size=2, scale='linear', T=1000):
+    if not all(i in ['linear', 'logish'] for i in [scale]):
+        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
+    if scale.lower()=='logish':
+        view=ax.xaxis.get_view_interval()
+        xCoordinates=ag.AGClasses.convertToLogishPlotCoordinates([lStartCoordinate[0],lEndCoordinate[0]], vmin=view[0], vmax=view[1], T=T)
+        view=ax.yaxis.get_view_interval()
+        yCoordinates=ag.AGClasses.convertToLogishPlotCoordinates([lStartCoordinate[1],lEndCoordinate[1]], vmin=view[0], vmax=view[1], T=T)
+        lStartCoordinate=[xCoordinates[0],yCoordinates[0]]
+        lEndCoordinate=[xCoordinates[1],yCoordinates[1]]
+    plt.plot([lStartCoordinate[0], lEndCoordinate[0]], [lStartCoordinate[1], lEndCoordinate[1]], color='r', linestyle='-', linewidth=size,figure=fig)
+    return fig, ax
 
 def addArrow(fig, ax, lStartCoordinate, lEndCoordinate, size=5000):
     arrow=Arrow(lStartCoordinate[0],lStartCoordinate[1],lEndCoordinate[0]-lStartCoordinate[0],lEndCoordinate[1]-lStartCoordinate[1],width=size, transform=ax.transAxes,head_width=size, head_length=size, fc='r', ec='r')
@@ -175,7 +187,10 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
         return None
     if len(vI)<bins:
         sys.stderr.write("Fewer events than bins, readjusting number of bins")
-        bins=len(vI)    
+        bins=len(vI)
+    if not all(i in ['linear', 'logish'] for i in [scale]):
+        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
+
     data=ag.getGatedVector(fcsDF, xCol, vI, return_type="nparray")
     if scale == 'logish':
         BinEdges=logishBin(data,bins,T)
@@ -188,10 +203,10 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     plt.plot(vHisto,smoothedHisto, label="pdf for "+str(xCol)+", sigma: "+str(sigma))
     plt.legend()
     if scale.lower()=='logish':
-        sys.stderr.write("WARN: x-axis tics/ticvalues incorrect (not implemented yet) for logish pdf plot")
-#        ax=plt.gca()
-#        ax.xaxis.set_major_locator(LogishLocator())
-#        ax.xaxis.set_major_formatter(LogishFormatter())
+        ax=plt.gca()
+        ax.set_xlim(left=min(data),right=max(data))
+        ax.xaxis.set_major_locator(LogishLocator())
+        ax.xaxis.set_major_formatter(LogishFormatter())
     plt.show()
     return None
 
