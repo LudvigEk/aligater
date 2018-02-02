@@ -480,8 +480,20 @@ def gateCorner(fcsDF, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrien
         xmax=max(vX)
         ymin=min(vY)
         ymax=max(vY)
-        ag.addLine(fig,ax, [xmin,ymin], [xmin, ymax],scale=scale, T=T)
-        ag.addLine(fig,ax, [xmin,ymin], [xmax, ymin],scale=scale, T=T)
+        if xOrientation.lower() == "upper":
+            if yOrientation.lower() == "upper":
+                ag.addLine(fig,ax, [xmin,ymin], [xmin, ymax],scale=scale, T=T)
+                ag.addLine(fig,ax, [xmin,ymin], [xmax, ymin],scale=scale, T=T)
+            else:
+                ag.addLine(fig,ax, [xmin,ymax], [xmax, ymax],scale=scale, T=T)
+                ag.addLine(fig,ax, [xmin,ymax], [xmin, ymin],scale=scale, T=T)
+        else:
+            if yOrientation.lower() == "upper":
+                ag.addLine(fig,ax, [xmax,ymin], [xmax, ymax],scale=scale, T=T)
+                ag.addLine(fig,ax, [xmax,ymin], [xmin, ymin],scale=scale, T=T)
+            else:
+                ag.addLine(fig,ax, [xmax,ymax], [xmax, ymin],scale=scale, T=T)
+                ag.addLine(fig,ax, [xmax,ymax], [xmin, ymax],scale=scale, T=T)
         plt.show()
         plt.clf()
         ag.plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)

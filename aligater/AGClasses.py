@@ -16,8 +16,121 @@ import numpy as np
 from matplotlib.ticker import Locator, Formatter
 import aligater as ag
 from matplotlib import rcParams
+import pandas as pd
+import sys, os
 import six
 
+sentinel=object()
+
+class AGgate(object):
+    current=[]
+    parent=[]
+    
+    def __init__(self, vI, vIParent):
+        self.current=vI
+        self.parent=vIParent
+    
+    def __call__(self):
+        if not self.current:
+            raise ValueError("This AGGate object does not contain any data")
+        return self.current
+    
+    def changeParent(self, vIParent):
+        self.parent=vIParent
+        #THIS A GOOD IDEA?
+        return self
+    
+    def reportStats(self):
+        if not self.current:
+            raise ValueError("This AGGate object does not contain any data")
+        elif self.parent==None:
+            sys.stderr.write("This AGGate object does not have any parent, only reporting current")
+            return str(len(self.current))
+        else:
+            nOfcurrent = float(len(self.current))
+            nOfparent = float(len(self.parent))
+            if any(nOfcurrent==0,nOfparent==0):
+                sys.stderr.write("this AGGate object have reached 0 population (no gated events)")
+                return str(nOfcurrent)+"\t"+str(nOfparent)+"\t0"
+            outputStr=str(nOfcurrent)+"\t"+str(nOfparent)+"\t"+str(nOfcurrent/nOfparent)
+            return outputStr
+    
+
+class AGsample(object):
+    #vGate intended as list of tuple(name, gate)
+    vGates=None
+    sample=None
+    filePath=None
+    fcsDF=None
+    gate=None
+    
+    def __init__(self, fcsDF, filePath, sampleName = sentinel):
+        if not isinstance(fcsDF, pd.DataFrame):
+            raise
+        if not isinstance(filePath, str):
+            raise
+        if sampleName is not sentinel:
+            if not isinstance(sampleName, str):
+                raise
+        else:
+            #If no name specified, set it to the filename without extension
+            sampleName=ag.getFileName(filePath)
+            
+        self.fcsDF=fcsDF
+        self.sample=sampleName
+        self.vGates=[]
+        self.filePath=filePath
+    
+    def __call__(self, name=sentinel):
+        if name is sentinel:
+            if not self.vGates:
+                    sys.stderr.write("sample does not contain any gates")
+                    return None
+            #Call the last gate-object in the vGates list and return its output
+            vOut=self.vGates[-1][1]
+            return vOut.reportStats()
+        else:
+            if not isinstance(name, str):
+                raise
+            else:
+                if not self.vGates:
+                    sys.stderr.write("sample does not contain any gates")
+                    return None
+                for index, elem in enumerate(self.vGates):
+                    if elem[0]==name:
+                        return elem[1]()
+                sys.stderr.write(name+" not in sample")
+                return None
+        
+    def update(self, gate, name):
+        if not isinstance(gate,AGgate):
+            print(type(AGgate))
+            raise
+        if not isinstance(name, str):
+            raise
+        self.vGates.append((name, gate))
+    
+    def full_index(self):
+        return self.fcsDF.index
+    
+    def report(self):
+        reportStr="Gating report for "+self.sample+" ("+str(len(self.vGates))+") gates:\n"
+        for gate in self.vGate:
+            reportStr.append(str(gate[0])+"\n")
+        print(reportStr)
+    
+    def printData(self, output):
+        return None
+    
+    def printStats(self, output=None, overwrite=False):
+        if isinstance(output,str):
+            if os.path.isfile(output):
+                if overwrite:
+                    self.printData(output)
+                else:
+                    raise
+    
+    
 def is_decade(x, base=10):
     if not np.isfinite(x):
         return False
