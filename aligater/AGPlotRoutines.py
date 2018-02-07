@@ -118,7 +118,7 @@ def ticFormatter(x, T, vmin, vmax):
 def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', T=1000):
     if not all(i in ['linear', 'logish'] for i in [scale]):
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
-    if orientation.lower()=='horisontal':
+    if orientation.lower()=='vertical':
         if scale=='logish':
             lims=ax.get_xlim()
             vmin = lims[0]
@@ -198,7 +198,7 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     else:
         histo=np.histogram(data, bins)
     vHisto=np.linspace(min(histo[1]),max(histo[1]),bins)
-    smoothedHisto=gaussian_filter1d(histo[0],sigma)
+    smoothedHisto=gaussian_filter1d(histo[0].astype(float),sigma)
     plt.clf()
     plt.plot(vHisto,smoothedHisto, label="pdf for "+str(xCol)+", sigma: "+str(sigma))
     plt.legend()

@@ -19,6 +19,7 @@ import sys
 import matplotlib.pyplot as plt
 from sklearn.mixture import GaussianMixture
 sentinel = object()
+from scipy.ndimage.filters import gaussian_filter
 
 def gmm2D(fcsDF, gate1, gate2, nOfComponents, vI=sentinel):
     if vI is sentinel:
@@ -81,12 +82,12 @@ def gateThreshold(fcsDF, xCol, yCol, thresh, orientation="horisontal", vI=sentin
         raise TypeError("Specify desired population, 'upper' or 'lower' in regard to set threshold") 
         
     if population.lower() == "upper":    
-        if orientation.lower() == "horisontal":
+        if orientation.lower() == "vertical":
             vOutput=fcsDF[fcsDF[xCol]>thresh].index
         else:
             vOutput=fcsDF[fcsDF[yCol]>thresh].index
     else:
-        if orientation.lower() == "horisontal":
+        if orientation.lower() == "vertical":
             vOutput=fcsDF[fcsDF[xCol]<thresh].index
         else:
             vOutput=fcsDF[fcsDF[yCol]<thresh].index
@@ -338,7 +339,7 @@ def getDensityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear', T
         histo = np.histogram(data, BinEdges)
     else:    
         histo=np.histogram(data, bins)
-    smoothedHisto=ag.gaussian_filter1d(histo[0],sigma)
+    smoothedHisto=ag.gaussian_filter1d(histo[0].astype(float),sigma)
     #vHisto=np.linspace(min(histo[1]),max(histo[1]),bins)
     return smoothedHisto, histo[1]
 
@@ -500,3 +501,72 @@ def gateCorner(fcsDF, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrien
         plt.show()
     reportGateResults(vI, vOutput)
     return vOutput
+
+
+def customQuadGate(fcsDF, xCol, yCol, fixThresh, varThreshUpper, varThreshLower, fix, vI=sentinel, plot=True, scale='linear',T=1000):
+    if vI is sentinel:
+        vI=fcsDF.index
+    elif len(vI)==0:
+        raise ValueError("Passed index contains no events") 
+    if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
+        raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
+    if not all(isinstance(i,(float, int)) for i in [fixThresh, varThreshUpper, varThreshLower]):
+        raise TypeError("xThresh, yThresh must be specified as integer or floating-point values")
+    if not isinstance(fix, str):
+        raise ValueError("fix argument must be str and either of 'x' or 'y'")
+    if not fix.lower() in ['x','y']:
+        raise ValueError("fix argument must be str and either of 'x' or 'y'")
+    vX, vY = ag.getGatedVectors(fcsDF, xCol, yCol, vI, return_type="nparray")
+    assert(len(vX)==len(vY))
+    vTopLeft=[]
+    vTopRight=[]
+    vBottomRight=[]
+    vBottomLeft=[]
+    if fix.lower()=='x':
+        xTopThresh = xBottomThresh = fixThresh
+        yRightThresh = varThreshUpper
+        yLeftThresh = varThreshLower
+    else:
+        yLeftThresh = yRightThresh = fixThresh
+        xTopThresh = varThreshUpper
+        xBottomThresh = varThreshLower
+        
+    for x,y, index in zip(vX, vY, vI):
+        if y >= yLeftThresh and x < xTopThresh:
+            vTopLeft.append(index)
+        elif y >= yRightThresh and x >= xTopThresh:
+            vTopRight.append(index)
+        elif y < yLeftThresh and x < xBottomThresh:
+            vBottomLeft.append(index)
+        elif y < yRightThresh and x >= xBottomThresh:
+            vBottomRight.append(index)
+        else:
+            raise RuntimeError("Unhandled index case in customQuadGate")
+    assert len(vI) == (len(vBottomRight)+len(vBottomLeft)+len(vTopLeft)+len(vTopRight))
+    counter=0
+    for event in [len(vTopLeft),len(vTopRight),len(vBottomRight),len(vBottomLeft)]:
+        if event == 0:
+            counter=counter+1
+    if counter != 0:
+        errStr=str(counter)+" quadrant(s) contain no events"
+        sys.stderr.write(errStr)
+    if counter==4:
+        sys.stderr.write("No quadrant contains events")
+        return None
+    if plot:
+        if scale=='logish':
+            fig,ax=ag.plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)    
+        else:
+            fig, ax = ag.plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        if fix.lower()=='x':
+            ag.addLine(fig,ax,[xTopThresh,ylim[1]],[xTopThresh,ylim[0]],scale=scale, T=T)
+            ag.addLine(fig,ax,[xlim[0],yLeftThresh],[xTopThresh,yLeftThresh],scale=scale, T=T)
+            ag.addLine(fig,ax,[xTopThresh,yRightThresh],[xlim[1],yRightThresh],scale=scale, T=T)
+        else:  
+            ag.addLine(fig,ax,[xlim[0],yRightThresh],[xlim[1],yRightThresh],scale=scale, T=T)
+            ag.addLine(fig,ax,[xTopThresh,ylim[1]],[xTopThresh,yLeftThresh],scale=scale, T=T)
+            ag.addLine(fig,ax,[xBottomThresh,ylim[0]],[xBottomThresh,yLeftThresh],scale=scale, T=T)
+        ag.plt.show()       
+    return vTopLeft, vTopRight, vBottomRight, vBottomLeft

@@ -31,7 +31,7 @@ class AGgate(object):
         self.parent=vIParent
     
     def __call__(self):
-        if not self.current:
+        if not list(self.current):
             raise ValueError("This AGGate object does not contain any data")
         return self.current
     
@@ -41,18 +41,18 @@ class AGgate(object):
         return self
     
     def reportStats(self):
-        if not self.current:
+        if not list(self.current):
             raise ValueError("This AGGate object does not contain any data")
-        elif self.parent==None:
+        elif not list(self.parent):
             sys.stderr.write("This AGGate object does not have any parent, only reporting current")
             return str(len(self.current))
         else:
             nOfcurrent = float(len(self.current))
             nOfparent = float(len(self.parent))
-            if any(nOfcurrent==0,nOfparent==0):
+            if any([nOfcurrent==0, nOfparent==0]):
                 sys.stderr.write("this AGGate object have reached 0 population (no gated events)")
-                return str(nOfcurrent)+"\t"+str(nOfparent)+"\t0"
-            outputStr=str(nOfcurrent)+"\t"+str(nOfparent)+"\t"+str(nOfcurrent/nOfparent)
+                return str(nOfparent)+"\t"+str(nOfcurrent)+"\t0"
+            outputStr=str(nOfparent)+"\t"+str(nOfcurrent)+"\t"+str(nOfcurrent/nOfparent)
             return outputStr
     
 
@@ -88,7 +88,7 @@ class AGsample(object):
                     return None
             #Call the last gate-object in the vGates list and return its output
             vOut=self.vGates[-1][1]
-            return vOut.reportStats()
+            return vOut()
         else:
             if not isinstance(name, str):
                 raise
@@ -99,7 +99,7 @@ class AGsample(object):
                 for index, elem in enumerate(self.vGates):
                     if elem[0]==name:
                         return elem[1]()
-                sys.stderr.write(name+" not in sample")
+                sys.stderr.write(name+" not in sample name list")
                 return None
         
     def update(self, gate, name):
@@ -111,12 +111,12 @@ class AGsample(object):
         self.vGates.append((name, gate))
     
     def full_index(self):
-        return self.fcsDF.index
+        return list(self.fcsDF.index.values)
     
     def report(self):
-        reportStr="Gating report for "+self.sample+" ("+str(len(self.vGates))+") gates:\n"
-        for gate in self.vGate:
-            reportStr.append(str(gate[0])+"\n")
+        reportStr="Gating report for "+self.sample+" ("+str(len(self.fcsDF.index))+" total events)\n"+str(len(self.vGates))+" gate(s):\n"
+        for gate in self.vGates:
+            reportStr=reportStr+str(gate[0])
         print(reportStr)
     
     def printData(self, output):
