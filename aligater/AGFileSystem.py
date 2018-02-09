@@ -33,7 +33,11 @@ def compensateDF(fcsDF, metaDict):
     
     return fcsDF
 
-def loadFCS(path, compensate=True, metadata=False):
+def loadFCS(path, compensate=True, metadata=False, return_type="index"):
+    if not isinstance(return_type, str):
+        raise TypeError("return_type must be specified as string and either of 'AGsample' or 'index'")
+    if not return_type.lower() in ['agsample', 'index']:
+        raise ValueError("return_type must be specified as string and either of 'AGsample' or 'index'")
     pardir=ag.getFileName(ag.getParent(path))
     parpardir=ag.getFileName(ag.getParent(ag.getParent(path)))
     sys.stderr.write("Opening file "+ag.getFileName(path)+" from folder /"+parpardir+"/"+pardir+"\n")
@@ -43,12 +47,19 @@ def loadFCS(path, compensate=True, metadata=False):
     sys.stderr.write("Loaded dataset with "+str(rows)+" events.\nMarker labels: ")
     for elem in cols:
         sys.stderr.write(elem+ " ")
+    sys.stderr.write("\n")
     if compensate:
         fcsDF=compensateDF(fcsDF, metaDict)
     if metadata:
-        return metaDict, fcsDF
+        if return_type.lower()=='agsample':
+            return metaDict, ag.AGsample(fcsDF,path)
+        else:
+            return metaDict, fcsDF
     else:
-        return fcsDF
+        if return_type.lower()=='agsample':
+            return ag.AGsample(fcsDF,path)
+        else:
+            return fcsDF
 
 def getParent(sSrc):
     parentDir=os.path.abspath(os.path.join(sSrc, os.pardir))
@@ -88,7 +99,7 @@ def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
                 lFlaggedIndicies.append(index)
                 continue    
     lOutput = [i for j, i in enumerate(lOutput) if j not in lFlaggedIndicies]
-    sOutputString="Collected "+str(len(lOutput))+" files, "+str(len(lFlaggedIndicies))+" files did not pass filter(s) and mask(s)."
+    sOutputString="Collected "+str(len(lOutput))+" files, "+str(len(lFlaggedIndicies))+" files did not pass filter(s) and mask(s).\n"
     sys.stderr.write(sOutputString)
     return pd.Series(lOutput)
 

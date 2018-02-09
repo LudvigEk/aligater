@@ -139,9 +139,9 @@ def gateEllipsoid(fcsDF, xCol, yCol, xCenter, yCenter, majorRadii, minorRadii, t
             vOutput.append(index)
             
     if (len(vOutput) == 0 and population.lower() == "inner"):
-        sys.stderr.write("No events inside ellipsoid")
+        sys.stderr.write("No events inside ellipsoid\n")
     if (len(vOutput) == 0 and population.lower() == "outer"):
-        sys.stderr.write("No events outside ellipsoid")
+        sys.stderr.write("No events outside ellipsoid\n")
     reportGateResults(vI, vOutput)
     return vOutput
 
@@ -285,7 +285,7 @@ def getHighestDensityPoint(fcsDF, xCol, yCol, vI=sentinel, bins=300):
     return [xCoord, yCoord]
     
 def reportGateResults(vI, vOutput):
-    reportString="After gating, "+str(len(vOutput))+" out of "+str(len(vI))+" events remain."
+    reportString="After gating, "+str(len(vOutput))+" out of "+str(len(vI))+" events remain.\n"
     sys.stderr.write(reportString)
 
 def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='centroid', customCenter=None, plot=True):
@@ -420,10 +420,10 @@ def quadGate(fcsDF, xCol, yCol, xThresh, yThresh, vI=sentinel, plot=True, scale=
         if event == 0:
             counter=counter+1
     if counter != 0:
-        errStr=str(counter)+" quadrant(s) contain no events"
+        errStr=str(counter)+" quadrant(s) contain no events\n"
         sys.stderr.write(errStr)
     if counter==4:
-        sys.stderr.write("No quadrant contains events")
+        sys.stderr.write("No quadrant contains events\n")
         return None
     if plot:
         if scale=='logish':
@@ -503,33 +503,40 @@ def gateCorner(fcsDF, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrien
     return vOutput
 
 
-def customQuadGate(fcsDF, xCol, yCol, fixThresh, varThreshUpper, varThreshLower, fix, vI=sentinel, plot=True, scale='linear',T=1000):
+def customQuadGate(fcsDF, xCol, yCol,threshList, vI=sentinel, plot=True, scale='linear',T=1000):
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
         raise ValueError("Passed index contains no events") 
     if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
         raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
-    if not all(isinstance(i,(float, int)) for i in [fixThresh, varThreshUpper, varThreshLower]):
-        raise TypeError("xThresh, yThresh must be specified as integer or floating-point values")
-    if not isinstance(fix, str):
-        raise ValueError("fix argument must be str and either of 'x' or 'y'")
-    if not fix.lower() in ['x','y']:
-        raise ValueError("fix argument must be str and either of 'x' or 'y'")
+    if not isinstance(threshList, list):
+        raise TypeError("threshList argument must be a list instance with [xbottom, xtop, yleft, yright] thresholds")
+    if not len(threshList)==4:
+        raise ValueError("threshList must contain 4 thresholds; [xbottom, xtop, yleft, yright]")
+    if not all(isinstance(i,(float,int)) for i in threshList):
+        raise TypeError("ThreshList elements must be float or int")
+    if not (threshList[0]==threshList[1] or threshList[2]==threshList[3]):
+        raise ValueError("Invalid values in threshList, one axis must be fix.\nEither xbottom must be equal to xtop or yleft must be equal to yright")
+
     vX, vY = ag.getGatedVectors(fcsDF, xCol, yCol, vI, return_type="nparray")
     assert(len(vX)==len(vY))
     vTopLeft=[]
     vTopRight=[]
     vBottomRight=[]
     vBottomLeft=[]
-    if fix.lower()=='x':
-        xTopThresh = xBottomThresh = fixThresh
-        yRightThresh = varThreshUpper
-        yLeftThresh = varThreshLower
+    if threshList[0]==threshList[1]:
+        fix='x'
     else:
-        yLeftThresh = yRightThresh = fixThresh
-        xTopThresh = varThreshUpper
-        xBottomThresh = varThreshLower
+        fix='y'
+    if fix.lower()=='x':
+        xTopThresh = xBottomThresh = threshList[0]
+        yRightThresh = threshList[3]
+        yLeftThresh = threshList[2]
+    else:
+        yLeftThresh = yRightThresh = threshList[2]
+        xTopThresh = threshList[1]
+        xBottomThresh = threshList[0]
         
     for x,y, index in zip(vX, vY, vI):
         if y >= yLeftThresh and x < xTopThresh:
@@ -548,10 +555,10 @@ def customQuadGate(fcsDF, xCol, yCol, fixThresh, varThreshUpper, varThreshLower,
         if event == 0:
             counter=counter+1
     if counter != 0:
-        errStr=str(counter)+" quadrant(s) contain no events"
+        errStr=str(counter)+" quadrant(s) contain no events\n"
         sys.stderr.write(errStr)
     if counter==4:
-        sys.stderr.write("No quadrant contains events")
+        sys.stderr.write("No quadrant contains events\n")
         return None
     if plot:
         if scale=='logish':

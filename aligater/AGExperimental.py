@@ -21,48 +21,55 @@ import sys
 sentinel = object()
 from scipy.ndimage.filters import gaussian_filter
 
-def variableQuadGate(fcsDF, xCol, yCol, xThresh, yThresh, testRange, position, testSteps=20, vI=sentinel, plot=True, scale='linear', bins=300, sigma=2, T=1000):
+def variableQuadGate(fcsDF, xCol, yCol, threshList, testRange, position, testSteps=20, vI=sentinel, plot=True, scale='linear', bins=300, sigma=2, T=1000, only_solution=False):
+    if not isinstance(threshList, list):
+        raise TypeError("threshList argument must be a list instance with [xbottom, xtop, yleft, yright] thresholds")
+    if not (len(threshList)==5 or len(threshList)==4):
+        raise ValueError("threshList must contain 4 thresholds; [xbottom, xtop, yleft, yright],\nor be a solution from previous quadgate; [xbottom, xtop, yleft, yright, score]")
+    if not all(isinstance(i,(float,int)) for i in threshList):
+        raise TypeError("ThreshList elements must be float or int")
+    if not (threshList[0]==threshList[1] or threshList[2]==threshList[3]):
+        raise ValueError("Invalid values in threshList, one axis must be fix.\nEither xbottom must be equal to xtop or yleft must be equal to yright")
     vX=ag.getGatedVector(fcsDF, xCol, vI)
     vY=ag.getGatedVector(fcsDF, yCol, vI)
     xscale = yscale = scale
     heatmap, xedges, yedges = ag.getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
-    smoothedHeatmap=gaussian_filter(heatmap,sigma)
+    smoothedHeatmap=gaussian_filter(heatmap.astype(float),sigma=3)
     solutions=[]
-    result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, xThresh, xThresh, yThresh, yThresh, scale, T)
-    reportStr="Input quadgate solution score: "+str(result)
+    result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, threshList[0], threshList[1], threshList[2], threshList[3], scale, T)
+    reportStr="Input quadgate solution score: "+str(result)+"\n"
     sys.stderr.write(reportStr)
-    ag.customQuadGate(fcsDF, "IgD", "CD27", vI=vI,  fixThresh=xThresh, varThreshUpper=yThresh, varThreshLower=yThresh, fix='x', scale='logish', plot=plot)
-    solutions.append([result,xThresh, xThresh, yThresh, yThresh])
+#    if plot:
+#        ag.customQuadGate(fcsDF, "IgD", "CD27", vI=vI,  threshList=threshList[0:4], scale=scale, plot=plot)
+    solutions.append([threshList[0], threshList[1], threshList[2], threshList[3],result])
     
     testThreshRange=np.linspace(testRange[0],testRange[1],testSteps)
     for testThresh in testThreshRange:
         if position.lower()=='left':
-            result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, xThresh, xThresh, testThresh, yThresh, scale, T)
-            solutions.append([result,xThresh,xThresh,testThresh,yThresh])
+            result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, threshList[0], threshList[1], testThresh, threshList[3], scale, T)
+            solutions.append([threshList[0], threshList[1],testThresh,threshList[3], result])
         elif position.lower()=='right':
-            result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, xThresh,xThresh,yThresh,testThresh, scale, T)
-            solutions.append([result,xThresh,xThresh,yThresh,testThresh])
+            result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, threshList[0], threshList[1],threshList[2],testThresh, scale, T)
+            solutions.append([threshList[0], threshList[1], threshList[2],testThresh, result])
         elif position.lower()=='top':
-            result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, xThresh,testThresh,yThresh,yThresh, scale, T)
-            solutions.append([result,xThresh,testThresh,yThresh,yThresh])    
+            result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, threshList[0],testThresh,threshList[2], threshList[3], scale, T)
+            solutions.append([threshList[0],testThresh,threshList[2], threshList[3], result])    
         elif position.lower()=='bottom':
-            result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, testThresh,xThresh,yThresh,yThresh, scale, T)
-            solutions.append([result,testThresh,xThresh,yThresh,yThresh])  
+            result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, testThresh,threshList[1], threshList[2], threshList[3], scale, T)
+            solutions.append([testThresh,threshList[1], threshList[2], threshList[3], result])  
             
-    scores = [solution[0] for solution in solutions]
+    scores = [solution[4] for solution in solutions]
     solutionIndex = scores.index(min(scores))
-    reportStr="Tested "+str(len(solutions)-1)+" solution(s) excluding the input solution\nBest solution had score: "+str(scores[solutionIndex])
+    reportStr="Tested "+str(len(solutions)-1)+" solution(s) excluding the input solution\nBest solution had score: "+str(scores[solutionIndex])+"\n"
     sys.stderr.write(reportStr)
     
-    if position.lower()=='left':
-        topLeft, topRight, bottomRight, bottomLeft = ag.customQuadGate(fcsDF, "IgD", "CD27", vI=vI,  fixThresh=xThresh, varThreshUpper=yThresh, varThreshLower=solutions[solutionIndex][3], fix='x', scale='logish', plot=plot)
-    elif position.lower()=='right':
-        topLeft, topRight, bottomRight, bottomLeft = ag.customQuadGate(fcsDF, "IgD", "CD27", vI=vI,  fixThresh=xThresh, varThreshUpper=solutions[solutionIndex][4], varThreshLower=yThresh, fix='x', scale='logish', plot=plot)
-    elif position.lower()=='top':
-        topLeft, topRight, bottomRight, bottomLeft = ag.customQuadGate(fcsDF, "IgD", "CD27", vI=vI,  fixThresh=yThresh, varThreshUpper=solutions[solutionIndex][2], varThreshLower=xThresh, fix='y', scale='logish', plot=plot)
-    elif position.lower()=='bottom':
-        topLeft, topRight, bottomRight, bottomLeft = ag.customQuadGate(fcsDF, "IgD", "CD27", vI=vI,  fixThresh=yThresh, varThreshUpper=xThresh, varThreshLower=solutions[solutionIndex][1], fix='y', scale='logish', plot=plot)
-    return topLeft, topRight, bottomRight, bottomLeft, solutions[solutionIndex][1:]
+    if only_solution:
+        if plot:
+            ag.customQuadGate(fcsDF, "IgD", "CD27", vI=vI,  threshList=solutions[solutionIndex][:-1], scale=scale, plot=plot)
+        return solutions[solutionIndex]
+    
+    topLeft, topRight, bottomRight, bottomLeft = ag.customQuadGate(fcsDF, "IgD", "CD27", vI=vI,  threshList=solutions[solutionIndex][:-1], scale=scale, plot=plot)
+    return topLeft, topRight, bottomRight, bottomLeft, solutions[solutionIndex]
 
 def findBin(heatmap, value, edges, scale='linear', T=1000):
     assert heatmap.shape[0] == heatmap.shape[1]
@@ -72,10 +79,14 @@ def findBin(heatmap, value, edges, scale='linear', T=1000):
     if scale.lower()=='logish':
         value = ag.convertToLogishPlotCoordinate(value, vmin, vmax, T)
     binIndex = (value-vmin)/(vmax-vmin) * nBins
-    binIndex = int(round(vBin,0))
+    binIndex = int(round(binIndex,0))
+    if binIndex<0:
+        binIndex=0
+    if binIndex>=nBins:
+        binIndex=nBins-1
     return binIndex
 
-def evaluatePartitioning(heatmap, xedges, yedges, xT, xB, yL, yR, scale, T):
+def evaluatePartitioning(heatmap, xedges, yedges, xB, xT, yL, yR, scale, T):
     result=0
     for orientation in ['ul','ur','br','bl']:
         if orientation=='ul':

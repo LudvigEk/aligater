@@ -30,7 +30,7 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
-        sys.stderr.write("Passed index contains no events")
+        sys.stderr.write("Passed index contains no events\n")
         return None
     if len(vI)<bins:
         bins=len(vI)
@@ -183,10 +183,10 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
-        sys.stderr.write("Passed index contains no events")
+        sys.stderr.write("Passed index contains no events\n")
         return None
     if len(vI)<bins:
-        sys.stderr.write("Fewer events than bins, readjusting number of bins")
+        sys.stderr.write("Fewer events than bins, readjusting number of bins\n")
         bins=len(vI)
     if not all(i in ['linear', 'logish'] for i in [scale]):
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")

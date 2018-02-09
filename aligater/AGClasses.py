@@ -40,17 +40,22 @@ class AGgate(object):
         #THIS A GOOD IDEA?
         return self
     
+    def getParent(self):
+        #if not self.parent:
+            #raise ValueError("This AGGate object does not contain any parent")
+        return self.parent
+    
     def reportStats(self):
         if not list(self.current):
             raise ValueError("This AGGate object does not contain any data")
         elif not list(self.parent):
-            sys.stderr.write("This AGGate object does not have any parent, only reporting current")
+            sys.stderr.write("This AGGate object does not have any parent, only reporting current\n")
             return str(len(self.current))
         else:
             nOfcurrent = float(len(self.current))
             nOfparent = float(len(self.parent))
             if any([nOfcurrent==0, nOfparent==0]):
-                sys.stderr.write("this AGGate object have reached 0 population (no gated events)")
+                sys.stderr.write("this AGGate object have reached 0 population (no gated events)\n")
                 return str(nOfparent)+"\t"+str(nOfcurrent)+"\t0"
             outputStr=str(nOfparent)+"\t"+str(nOfcurrent)+"\t"+str(nOfcurrent/nOfparent)
             return outputStr
@@ -83,31 +88,28 @@ class AGsample(object):
     
     def __call__(self, name=sentinel):
         if name is sentinel:
-            if not self.vGates:
-                    sys.stderr.write("sample does not contain any gates")
-                    return None
-            #Call the last gate-object in the vGates list and return its output
-            vOut=self.vGates[-1][1]
-            return vOut()
+            if not isinstance(self.fcsDF, pd.DataFrame):
+                sys.stderr.write("sample does not contain any data\n")
+                return None
+            return self.fcsDF
         else:
             if not isinstance(name, str):
                 raise
             else:
                 if not self.vGates:
-                    sys.stderr.write("sample does not contain any gates")
+                    sys.stderr.write("sample does not contain any gates\n")
                     return None
                 for index, elem in enumerate(self.vGates):
                     if elem[0]==name:
                         return elem[1]()
-                sys.stderr.write(name+" not in sample name list")
+                sys.stderr.write(name+" not in sample name list\n")
                 return None
         
     def update(self, gate, name):
         if not isinstance(gate,AGgate):
-            print(type(AGgate))
-            raise
+            raise TypeError("gate is not a valid AGgate object")
         if not isinstance(name, str):
-            raise
+            raise TypeError("name must be specified as a string")
         self.vGates.append((name, gate))
     
     def full_index(self):
@@ -116,19 +118,33 @@ class AGsample(object):
     def report(self):
         reportStr="Gating report for "+self.sample+" ("+str(len(self.fcsDF.index))+" total events)\n"+str(len(self.vGates))+" gate(s):\n"
         for gate in self.vGates:
-            reportStr=reportStr+str(gate[0])
+            reportStr=reportStr+str(gate[0])+" ("+str(len(gate[1]()))+" events)\n"
         print(reportStr)
     
-    def printData(self, output):
+    def printData(self, output, precision=4, header=True):
+        if header:
+            #header
+            header="Sample\tTotal"
+            for gate in self.vGates:
+                header=header+"\t"+str(gate[0])+"\tPercentOfParent"
+            print(header)
+        #Data
+        reportStr=self.sample+"\t"+str(len(self.full_index()))
+        precision="."+str(precision)+"f"
+        for gate in self.vGates:
+            reportStr=reportStr+"\t"+str(len(gate[1]()))+"\t"+str(format(len(gate[1]())/len(gate[1].getParent()),precision))
+        print(reportStr)
         return None
     
-    def printStats(self, output=None, overwrite=False):
+    def printStats(self, output=None, overwrite=False, precision=4, header=True):
         if isinstance(output,str):
             if os.path.isfile(output):
                 if overwrite:
-                    self.printData(output)
+                    self.printData(output, precision, header)
                 else:
                     raise
+            else:
+                self.printData(output, precision, header)
     
     
 def is_decade(x, base=10):
