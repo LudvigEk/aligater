@@ -37,6 +37,9 @@ def gateGMM(fcsDF,xCol, yCol, gmm, vI=sentinel, sigma=1, plot=True):
         vI=fcsDF.index
     if not isinstance(gmm, GaussianMixture):
         raise TypeError("gmm argument must be a sklearn.mixture GaussianMixture object")
+    if len(vI)==0:
+        sys.stderr.write("Passed index contains no events") 
+        return []
     vOutput=[]
     fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI, aspect='equal')
     pos, width, height, angle = ag.plot_gmm(fcsDF,xCol, yCol, vI, gmm, sigma, ax)
@@ -71,35 +74,63 @@ def getGatedVectors(fcsDF, gate1, gate2, vI=sentinel, return_type="pdseries"):
         vY=fcsDF[gate2].loc[vI].values
         return np.array([vX,vY])
     
-def gateThreshold(fcsDF, xCol, yCol, thresh, orientation="horisontal", vI=sentinel, population="upper", plot=True, scale='linear', linCutOff=1000):
+def gateThreshold(fcsDF, xCol, yCol=None, thresh=None, orientation="vertical", vI=sentinel, population="upper", plot=True, scale='linear', linCutOff=1000):
     if vI is sentinel:
         vI=fcsDF.index
-    if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
+    if not isinstance(thresh, (float,int)):
+        raise TypeError("thresh must be specified as float or integer value")
+    if yCol is not None:
+        if yCol not in fcsDF.columns:
+            raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
+    if xCol not in fcsDF.columns:
         raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
     if population.lower() not in ["upper","lower"]:
         raise TypeError("Specify desired population, 'upper' or 'lower' in regard to set threshold")
     if orientation.lower() not in ["horisontal","vertical"]:
         raise TypeError("Specify desired population, 'upper' or 'lower' in regard to set threshold") 
-        
-    if population.lower() == "upper":    
-        if orientation.lower() == "vertical":
-            vOutput=fcsDF[fcsDF[xCol]>thresh].index
-        else:
-            vOutput=fcsDF[fcsDF[yCol]>thresh].index
+    if len(vI)==0:
+        sys.stderr.write("Passed index contains no events\n") 
+        return []
+    if thresh is None:
+        sys.stderr.write("Thresh passed as NoneType, assuming too few elements")
+        return []
+    if yCol is None:
+        densityPlot=True
     else:
-        if orientation.lower() == "vertical":
-            vOutput=fcsDF[fcsDF[xCol]<thresh].index
+        densityPlot=False
+    vOutput=[]
+    if orientation.lower() == "vertical":
+        data=ag.getGatedVector(fcsDF, xCol, vI, return_type="nparray")
+        if population.lower()=="upper":
+            for index, value in zip(vI, data):
+                if value >= thresh:
+                    vOutput.append(index)
         else:
-            vOutput=fcsDF[fcsDF[yCol]<thresh].index
-            
-    vOutput=list(set(vOutput).intersection(vI))
-    
-    if plot:
+            for index, value in zip(vI, data):
+                if value < thresh:
+                    vOutput.append(index)
+    if yCol is not None:
+        if orientation.lower() == "horisontal":
+            data=ag.getGatedVector(fcsDF, yCol, vI, return_type="nparray")
+            if population.lower()=="upper":
+                for index, value in zip(vI, data):
+                    if value >= thresh:
+                        vOutput.append(index)
+            else:
+                for index, value in zip(vI, data):
+                    if value < thresh:
+                        vOutput.append(index)
+
+    if plot and not densityPlot:
         fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=linCutOff)
         ag.addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
         plt.show()
         plt.clf()
         ag.plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
+        plt.show()
+    if plot and densityPlot:
+        fig,ax =ag.plot_densityFunc(fcsDF,xCol, vI, scale=scale)
+        ag.addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
         plt.show()
     reportGateResults(vI, vOutput)
     return vOutput
@@ -115,10 +146,11 @@ def gateEllipsoid(fcsDF, xCol, yCol, xCenter, yCenter, majorRadii, minorRadii, t
         raise NameError("yCol not in passed dataframe's columns")
     if xCol==yCol:
         raise NameError("xCol and yCol cannot be the same")
-        
     if vI is sentinel:
         vI=fcsDF.index  
-        
+    if len(vI)==0:
+        sys.stderr.write("Passed index contains no events") 
+        return []
     vOutput=[]
     #theta = math.radians(theta)
     
@@ -302,7 +334,10 @@ def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='
             raise TypeError("If custom center is specified the 'customCenter' argument must be passed as a list of two, i.e. [x,y]")
     if type(plot) is not type(True):
         raise TypeError("Plot argument should be specified as bool (True/False)")
-        
+    if len(vI)==0:
+        sys.stderr.write("Passed index contains no events") 
+        return []
+    
     if center.lower() == 'density':
         center=ag.getHighestDensityPoint(fcsDF, xCol, yCol, vI)
     elif center.lower() == 'centroid':
@@ -347,7 +382,8 @@ def valleySeek(fcsDF, xCol, vI=sentinel, interval=['start','end'], sigma=3, bins
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
-        raise ValueError("Passed index contains no events")    
+        sys.stderr.write("Passed index contains no events")  
+        return (interval[0]+interval[1])/2
     if xCol not in fcsDF.columns:
         raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
     if type(interval) is not list:
@@ -379,8 +415,9 @@ def valleySeek(fcsDF, xCol, vI=sentinel, interval=['start','end'], sigma=3, bins
             vIndicies.append(index[0])
             
     if len(vIndicies)<=3:
-        raise ValueError("Specified interval is too narrow (Not enough data points to find a valley)")
-
+        sys.stderr.write("Specified interval is too narrow (Not enough data points to find a valley)")
+        #RAISE!?
+        return (interval[0]+interval[1])/2
     minVal=np.inf
     minValIndex=0
     for index in vIndicies:
@@ -393,7 +430,8 @@ def quadGate(fcsDF, xCol, yCol, xThresh, yThresh, vI=sentinel, plot=True, scale=
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
-        raise ValueError("Passed index contains no events") 
+        sys.stderr.write("Passed index contains no events") 
+        return []
     if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
         raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
     if not all(isinstance(i,(float, int)) for i in [xThresh, yThresh]):
@@ -435,22 +473,36 @@ def quadGate(fcsDF, xCol, yCol, xThresh, yThresh, vI=sentinel, plot=True, scale=
         ag.plt.show()       
     return vTopLeft, vTopRight, vBottomRight, vBottomLeft
 
-def axisStats(fcsDF, xCol, vI=sentinel,bins=300):
+def axisStats(fcsDF, xCol, vI=sentinel,bins=300, scale='linear',T=1000):
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
-        raise ValueError("Passed index contains no events") 
+        sys.stderr.write("Passed index contains no events") 
+        return 0,0,0
     if xCol not in fcsDF.columns:
         raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
-    x=ag.getGatedVector(fcsDF,xCol, vI, return_type="nparray")
+    if scale.lower()=='linear':
+        x=ag.getGatedVector(fcsDF,xCol, vI, return_type="nparray")
+    elif scale.lower()=='logish':
+        x=ag.getGatedVector(fcsDF,xCol, vI, return_type="nparray")
+        x=ag.logishTransform(x,T)
+    
+    histo=np.histogram(x, bins)
+        
     mean=np.mean(x)
     sigma=np.std(x)
-    histo=np.histogram(x, bins)
     maxIndex=np.argmax(histo[0])
+    
     if isinstance(maxIndex, np.ndarray):
         maxVal=(histo[1][maxIndex[0]]+histo[1][maxIndex[0]+1])/2
     else:
         maxVal=(histo[1][maxIndex]+histo[1][maxIndex+1])/2
+    
+    if scale.lower()=='logish':
+        result=ag.inverseLogishTransform([mean, sigma, maxVal],T)
+        mean=result[0]
+        sigma=abs(result[1])
+        maxVal=result[2]
     return mean, sigma, maxVal
 
 def gateCorner(fcsDF, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrientation='upper', vI=sentinel, bins=300, scale='linear', T=1000, plot=True):
@@ -460,7 +512,10 @@ def gateCorner(fcsDF, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrien
         raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
     if xOrientation not in ["upper","lower"] or yOrientation not in ["upper","lower"]:
         raise TypeError("Specify desired population for xOrientation and yOrientation, 'upper' or 'lower' in regard to set thresholds")
-
+    if len(vI)<ag.minCells:
+        sys.stderr.write("Passed index contains no events") 
+        return []  
+    
     if xOrientation.lower() == "upper":
         if yOrientation.lower() == "upper":
             vOutput=fcsDF[(fcsDF[xCol]>=xThresh)&(fcsDF[yCol]>=yThresh)].index
@@ -507,7 +562,8 @@ def customQuadGate(fcsDF, xCol, yCol,threshList, vI=sentinel, plot=True, scale='
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
-        raise ValueError("Passed index contains no events") 
+        sys.stderr.write("Passed index contains no events") 
+        return []
     if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
         raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
     if not isinstance(threshList, list):

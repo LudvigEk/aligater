@@ -1,3 +1,4 @@
+from aligater.AGConfig import *
 from aligater.AGFileSystem import *
 from aligater.AGPlotRoutines import *
 from aligater.AGCore import *

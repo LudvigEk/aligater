@@ -29,7 +29,7 @@ sentinel = object()
 def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='linear', yscale='linear', thresh=1000, aspect='auto'):
     if vI is sentinel:
         vI=fcsDF.index
-    elif len(vI)==0:
+    elif len(vI)<2:
         sys.stderr.write("Passed index contains no events\n")
         return None
     if len(vI)<bins:
@@ -123,14 +123,14 @@ def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', T=1000):
             lims=ax.get_xlim()
             vmin = lims[0]
             vmax = lims[1]
-            pos = ag.AGClasses.convertToLogishPlotCoordinates([pos],vmin,vmax,T)
+            pos = ag.convertToLogishPlotCoordinates([pos],vmin,vmax,T)
         ax.axvline(pos, c='r')
     else:
         if scale=='logish':
             lims=ax.get_ylim()
             vmin = lims[0]
             vmax = lims[1]
-            pos = ag.AGClasses.convertToLogishPlotCoordinates([pos],vmin,vmax,T)
+            pos = ag.convertToLogishPlotCoordinates([pos],vmin,vmax,T)
         ax.axhline(pos,  c='r')
     return fig
 
@@ -139,9 +139,9 @@ def addLine(fig, ax, lStartCoordinate, lEndCoordinate, size=2, scale='linear', T
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
     if scale.lower()=='logish':
         view=ax.xaxis.get_view_interval()
-        xCoordinates=ag.AGClasses.convertToLogishPlotCoordinates([lStartCoordinate[0],lEndCoordinate[0]], vmin=view[0], vmax=view[1], T=T)
+        xCoordinates=ag.convertToLogishPlotCoordinates([lStartCoordinate[0],lEndCoordinate[0]], vmin=view[0], vmax=view[1], T=T)
         view=ax.yaxis.get_view_interval()
-        yCoordinates=ag.AGClasses.convertToLogishPlotCoordinates([lStartCoordinate[1],lEndCoordinate[1]], vmin=view[0], vmax=view[1], T=T)
+        yCoordinates=ag.convertToLogishPlotCoordinates([lStartCoordinate[1],lEndCoordinate[1]], vmin=view[0], vmax=view[1], T=T)
         lStartCoordinate=[xCoordinates[0],yCoordinates[0]]
         lEndCoordinate=[xCoordinates[1],yCoordinates[1]]
     plt.plot([lStartCoordinate[0], lEndCoordinate[0]], [lStartCoordinate[1], lEndCoordinate[1]], color='r', linestyle='-', linewidth=size,figure=fig)
@@ -200,15 +200,16 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     vHisto=np.linspace(min(histo[1]),max(histo[1]),bins)
     smoothedHisto=gaussian_filter1d(histo[0].astype(float),sigma)
     plt.clf()
-    plt.plot(vHisto,smoothedHisto, label="pdf for "+str(xCol)+", sigma: "+str(sigma))
+    fig,ax = plt.subplots()
+    ax.plot(vHisto,smoothedHisto, label="pdf for "+str(xCol)+", sigma: "+str(sigma))
     plt.legend()
     if scale.lower()=='logish':
         ax=plt.gca()
         ax.set_xlim(left=min(data),right=max(data))
         ax.xaxis.set_major_locator(LogishLocator())
         ax.xaxis.set_major_formatter(LogishFormatter())
-    plt.show()
-    return None
+    #plt.show()
+    return fig,ax
 
 def main():
 	return None

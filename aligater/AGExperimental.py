@@ -20,8 +20,17 @@ import sys
 
 sentinel = object()
 from scipy.ndimage.filters import gaussian_filter
+from scipy.stats import halfnorm
 
-def variableQuadGate(fcsDF, xCol, yCol, threshList, testRange, position, testSteps=20, vI=sentinel, plot=True, scale='linear', bins=300, sigma=2, T=1000, only_solution=False):
+def variableQuadGate(fcsDF, xCol, yCol, threshList, testRange, position, testSteps=20, vI=sentinel, plot=True, scale='linear', bins=300, sigma=2, T=1000, only_solution=False, scoreThresh=1):
+    if vI is sentinel:
+        vI=fcsDF.index
+    if len(vI)<2:
+        sys.stderr.write("Passed index contains no events") 
+        if only_solution:
+            return []
+        else:
+            return [],[],[],[],[]    
     if not isinstance(threshList, list):
         raise TypeError("threshList argument must be a list instance with [xbottom, xtop, yleft, yright] thresholds")
     if not (len(threshList)==5 or len(threshList)==4):
@@ -59,16 +68,20 @@ def variableQuadGate(fcsDF, xCol, yCol, threshList, testRange, position, testSte
             solutions.append([testThresh,threshList[1], threshList[2], threshList[3], result])  
             
     scores = [solution[4] for solution in solutions]
-    solutionIndex = scores.index(min(scores))
+    solutionIndex=0
+    for index, score in enumerate(scores):
+        if score < scoreThresh*scores[0]:
+            solutionIndex=index
+    #solutionIndex = scores.index(min(scores))
     reportStr="Tested "+str(len(solutions)-1)+" solution(s) excluding the input solution\nBest solution had score: "+str(scores[solutionIndex])+"\n"
     sys.stderr.write(reportStr)
     
     if only_solution:
         if plot:
-            ag.customQuadGate(fcsDF, "IgD", "CD27", vI=vI,  threshList=solutions[solutionIndex][:-1], scale=scale, plot=plot)
+            ag.customQuadGate(fcsDF, xCol, yCol, vI=vI,  threshList=solutions[solutionIndex][:-1], scale=scale, plot=plot)
         return solutions[solutionIndex]
     
-    topLeft, topRight, bottomRight, bottomLeft = ag.customQuadGate(fcsDF, "IgD", "CD27", vI=vI,  threshList=solutions[solutionIndex][:-1], scale=scale, plot=plot)
+    topLeft, topRight, bottomRight, bottomLeft = ag.customQuadGate(fcsDF, xCol, yCol, vI=vI,  threshList=solutions[solutionIndex][:-1], scale=scale, plot=plot)
     return topLeft, topRight, bottomRight, bottomLeft, solutions[solutionIndex]
 
 def findBin(heatmap, value, edges, scale='linear', T=1000):
@@ -226,3 +239,36 @@ def penaltyValleySeek(fcsDF, xCol, x0, vI=sentinel, direction='up', phi=1, sigma
             minVal=penalizedX
             minValIndex=index
     return (binData[minValIndex+1]+binData[minValIndex])/2
+
+def halfNormalDistribution(fcsDF, xCol, mean, direction, vI=sentinel,bins=300, scale='linear',T=1000):
+    if vI is sentinel:
+        vI=fcsDF.index
+    elif len(vI)==0:
+        sys.stderr.write("Passed index contains no events") 
+        return 0,0
+    if xCol not in fcsDF.columns:
+        raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
+    data=ag.getGatedVector(fcsDF,xCol, vI, return_type="nparray")
+    distribution = []
+    if direction.lower()=='up':
+        for x in data:
+            if x >= mean:
+                distribution.append(x)
+    else:
+        for x in data:
+            if x <= mean:
+                distribution.append(x)
+
+
+    if scale.lower()=='logish':
+        distribution=list(ag.logishTransform(distribution,T))
+        mean=ag.logishTransform([mean],T)[0] 
+        
+    sumVar=0
+    n=len(distribution)
+    for x in range(0,n):
+        sumVar += (distribution[x] - mean)**2
+        
+    sigma=np.sqrt(sumVar/n)
+    
+    return mean, sigma

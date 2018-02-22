@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import os
 import sys
-
+sentinel=object
 #TODO: Perhaps try to avoid conversion from DF -> nparray and back, performance hit?
 def compensateDF(fcsDF, metaDict):
     spill_matrix=metaDict['SPILL'].split(',')
@@ -33,11 +33,17 @@ def compensateDF(fcsDF, metaDict):
     
     return fcsDF
 
-def loadFCS(path, compensate=True, metadata=False, return_type="index"):
+def loadFCS(path, compensate=True, metadata=False, return_type="index", markers=sentinel):
     if not isinstance(return_type, str):
         raise TypeError("return_type must be specified as string and either of 'AGsample' or 'index'")
     if not return_type.lower() in ['agsample', 'index']:
         raise ValueError("return_type must be specified as string and either of 'AGsample' or 'index'")
+    if markers is sentinel:
+        checkMarkers=False
+    else:
+        checkMarkers=True
+        if not isinstance(markers,(str, list)):
+            raise ValueError("if markers is specified it must be list of str or single str")
     pardir=ag.getFileName(ag.getParent(path))
     parpardir=ag.getFileName(ag.getParent(ag.getParent(path)))
     sys.stderr.write("Opening file "+ag.getFileName(path)+" from folder /"+parpardir+"/"+pardir+"\n")
@@ -45,9 +51,25 @@ def loadFCS(path, compensate=True, metadata=False, return_type="index"):
     rows=fcsDF.shape[0]
     cols=fcsDF.columns[4:-1]
     sys.stderr.write("Loaded dataset with "+str(rows)+" events.\nMarker labels: ")
+    if rows < ag.cellFilter:
+        sys.stderr.write("Sample has fewer events than cellFilter threshold, skipping")
+        return None
     for elem in cols:
         sys.stderr.write(elem+ " ")
+        if checkMarkers:
+            if elem not in markers:
+                reportStr=elem+" not in fcs columns, skipping sample\n"
+                sys.stderr.write(reportStr)
+                return None
     sys.stderr.write("\n")
+    
+    if checkMarkers:
+        for elem in cols:
+            if elem not in markers:
+                reportStr=elem+" not in fcs columns, not loaded\n"
+                sys.stderr.write(reportStr)
+                return None
+            
     if compensate:
         fcsDF=compensateDF(fcsDF, metaDict)
     if metadata:

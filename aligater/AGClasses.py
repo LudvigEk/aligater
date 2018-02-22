@@ -17,7 +17,7 @@ from matplotlib.ticker import Locator, Formatter
 import aligater as ag
 from matplotlib import rcParams
 import pandas as pd
-import sys, os
+import sys, os, errno
 import six
 
 sentinel=object()
@@ -32,7 +32,8 @@ class AGgate(object):
     
     def __call__(self):
         if not list(self.current):
-            raise ValueError("This AGGate object does not contain any data")
+            sys.stderr.write("This AGGate object does not contain any data\n")
+            return []
         return self.current
     
     def changeParent(self, vIParent):
@@ -105,12 +106,14 @@ class AGsample(object):
                 sys.stderr.write(name+" not in sample name list\n")
                 return None
         
-    def update(self, gate, name):
+    def update(self, gate, name, parentName):
         if not isinstance(gate,AGgate):
             raise TypeError("gate is not a valid AGgate object")
         if not isinstance(name, str):
             raise TypeError("name must be specified as a string")
-        self.vGates.append((name, gate))
+        if not isinstance(parentName, str):
+            raise TypeError("parent name must be specified as a string")
+        self.vGates.append((name, gate, parentName))
     
     def full_index(self):
         return list(self.fcsDF.index.values)
@@ -121,30 +124,48 @@ class AGsample(object):
             reportStr=reportStr+str(gate[0])+" ("+str(len(gate[1]()))+" events)\n"
         print(reportStr)
     
-    def printData(self, output, precision=4, header=True):
+    def printData(self, file, precision=4, header=True):
         if header:
             #header
-            header="Sample\tTotal"
+            header="date\tplate\tSample\tTotal"
             for gate in self.vGates:
-                header=header+"\t"+str(gate[0])+"\tPercentOfParent"
-            print(header)
+                header=header+"\t"+str(gate[0])+"\t"+str(gate[0])+"/"+str(gate[2])
+            header=header+"\n"
+            file.write(header)
         #Data
-        reportStr=self.sample+"\t"+str(len(self.full_index()))
+        reportStr=ag.getFileName(ag.getParent(ag.getParent(self.filePath)))+"\t"+ag.getFileName(ag.getParent(self.filePath))+"\t"+self.sample+"\t"+str(len(self.full_index()))
         precision="."+str(precision)+"f"
         for gate in self.vGates:
-            reportStr=reportStr+"\t"+str(len(gate[1]()))+"\t"+str(format(len(gate[1]())/len(gate[1].getParent()),precision))
-        print(reportStr)
+            if len(gate[1].getParent()) == 0 or len(gate[1]()) == 0:
+                fraction=str(0)
+            else:
+                fraction=str(format(len(gate[1]())/len(gate[1].getParent()),precision))
+            reportStr=reportStr+"\t"+str(len(gate[1]()))+"\t"+fraction
+        reportStr=reportStr+"\n"
+        file.write(reportStr)
         return None
     
     def printStats(self, output=None, overwrite=False, precision=4, header=True):
         if isinstance(output,str):
+            output=output
             if os.path.isfile(output):
                 if overwrite:
+                    file = open(output, 'w')
                     self.printData(output, precision, header)
                 else:
-                    raise
+                    file = open(output, 'a')
+                    self.printData(file, precision, header)
             else:
-                self.printData(output, precision, header)
+                try:
+                    os.makedirs(os.path.dirname(output))
+                except OSError as exc: # Guard against race condition
+                    if exc.errno != errno.EEXIST:
+                        raise
+                if header:
+                    file = open(output, 'w')
+                else: 
+                    file = open(output, 'a')
+                self.printData(file, precision, header)
     
     
 def is_decade(x, base=10):
