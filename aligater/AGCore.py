@@ -21,14 +21,14 @@ from sklearn.mixture import GaussianMixture
 sentinel = object()
 from scipy.ndimage.filters import gaussian_filter
 
-def gmm2D(fcsDF, gate1, gate2, nOfComponents, vI=sentinel):
+def gmm2D(fcsDF, gate1, gate2, nOfComponents, vI=sentinel, *args, **kwargs):
     if vI is sentinel:
         vI=fcsDF.index
     #randomly_sampled = np.random.choice(vI, size=len(vI), replace=False)
     vX = getGatedVector(fcsDF,gate1,vI=vI,return_type="nparray")
     vY = getGatedVector(fcsDF,gate2,vI=vI,return_type="nparray")
     fcsArray=np.array([vX,vY]).T
-    gmm = GaussianMixture(n_components=nOfComponents)
+    gmm = GaussianMixture(n_components=nOfComponents,*args,**kwargs)
     gmm.fit(fcsArray)
     return gmm
 
@@ -41,12 +41,28 @@ def gateGMM(fcsDF,xCol, yCol, gmm, vI=sentinel, sigma=1, plot=True):
         sys.stderr.write("Passed index contains no events") 
         return []
     vOutput=[]
-    fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI, aspect='equal')
-    pos, width, height, angle = ag.plot_gmm(fcsDF,xCol, yCol, vI, gmm, sigma, ax)
+    if plot:
+        fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI, aspect='equal')
+    else:
+        ax=None
+    vEllipses = ag.plot_gmm(fcsDF,xCol, yCol, vI, gmm, sigma, ax, plot=plot)
     #plot_ggm will return the full width and height of the drawn ellipse, whereas
     #gateEllipsoid wants the length of the semiaxis
-    vOutput = ag.gateEllipsoid(fcsDF, xCol, yCol, pos[0], pos[1], width/2, height/2, np.radians(angle), vI)
-    fig, ax = ag.plotHeatmap(fcsDF, xCol, yCol, vOutput)
+    #totalEvent=0
+    for ellipses in vEllipses:
+        xCenter=ellipses[0][0]
+        yCenter=ellipses[0][1]
+        width=ellipses[1]
+        height=ellipses[2]
+        angle=ellipses[3]
+        vTmp = ag.gateEllipsoid(fcsDF, xCol, yCol, xCenter, yCenter, width/2, height/2, np.radians(angle), vI, info=False)
+        vOutput.extend(vTmp)
+        #totalEvent+=len(vTmp)
+    vResult=list(set(vOutput))
+    #print("all ellipses: "+str(totalEvent)+" the set: "+str(len(vResult)))
+    ag.reportGateResults(vI, vResult)
+    if plot:
+        fig, ax = ag.plotHeatmap(fcsDF, xCol, yCol, vResult)
     return vOutput
     
 def getGatedVector(fcsDF, gate, vI=sentinel, return_type="pdseries"):
@@ -74,7 +90,7 @@ def getGatedVectors(fcsDF, gate1, gate2, vI=sentinel, return_type="pdseries"):
         vY=fcsDF[gate2].loc[vI].values
         return np.array([vX,vY])
     
-def gateThreshold(fcsDF, xCol, yCol=None, thresh=None, orientation="vertical", vI=sentinel, population="upper", plot=True, scale='linear', linCutOff=1000):
+def gateThreshold(fcsDF, xCol, yCol=None, thresh=None, orientation="vertical", vI=sentinel, population="upper", plot=True, scale='linear', linCutOff=1000, info=True):
     if vI is sentinel:
         vI=fcsDF.index
     if not isinstance(thresh, (float,int)):
@@ -132,10 +148,11 @@ def gateThreshold(fcsDF, xCol, yCol=None, thresh=None, orientation="vertical", v
         fig,ax =ag.plot_densityFunc(fcsDF,xCol, vI, scale=scale)
         ag.addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
         plt.show()
-    reportGateResults(vI, vOutput)
+    if info:
+        reportGateResults(vI, vOutput)
     return vOutput
     
-def gateEllipsoid(fcsDF, xCol, yCol, xCenter, yCenter, majorRadii, minorRadii, theta, vI=sentinel, population="inner"):  
+def gateEllipsoid(fcsDF, xCol, yCol, xCenter, yCenter, majorRadii, minorRadii, theta, vI=sentinel, population="inner", info=True):  
     if population.lower() not in ["outer","inner"]:
         raise TypeError("Specify desired population, 'outer' or 'inner' in regard to ellipsoid")    
     if not all(isinstance(i, (float, int)) for i in [xCenter, yCenter, majorRadii, minorRadii, theta]):
@@ -174,7 +191,8 @@ def gateEllipsoid(fcsDF, xCol, yCol, xCenter, yCenter, majorRadii, minorRadii, t
         sys.stderr.write("No events inside ellipsoid\n")
     if (len(vOutput) == 0 and population.lower() == "outer"):
         sys.stderr.write("No events outside ellipsoid\n")
-    reportGateResults(vI, vOutput)
+    if info:
+        reportGateResults(vI, vOutput)
     return vOutput
 
 def getPCs(fcsDF, xCol, yCol, centerCoord=None, vI=sentinel):
@@ -633,3 +651,42 @@ def customQuadGate(fcsDF, xCol, yCol,threshList, vI=sentinel, plot=True, scale='
             ag.addLine(fig,ax,[xBottomThresh,ylim[0]],[xBottomThresh,yLeftThresh],scale=scale, T=T)
         ag.plt.show()       
     return vTopLeft, vTopRight, vBottomRight, vBottomLeft
+
+#TODO
+def backGate(fcsDF, xCol, yCol, vI=sentinel, backPop=sentinel, markersize=2, plot=True, scale='linear',xscale='linear',yscale='linear',T=1000):
+    if vI is sentinel:
+        sys.stderr.write("No vI passed, please pass a population to backgate")
+    elif len(vI)==0:
+        sys.stderr.write("Passed index contains no events") 
+        return None
+    if backPop is sentinel:
+        sys.stderr.write("No backPop passed setting backPop to full index") 
+        backPop=fcsDF.index
+    elif len(vI)==0:
+        sys.stderr.write("Passed index contains no events") 
+        return None
+    if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
+        raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
+    
+    if scale=='logish':
+        fig,ax=ag.plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)    
+    else:
+        fig, ax = ag.plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
+    x,y=ag.getGatedVectors(fcsDF,xCol,yCol,backPop, return_type='nparray')
+    if scale=='logish':
+        xscale='logish'
+        yscale='logish'
+    if xscale=='logish':
+        xview=ax.get_xlim()
+        vmin=xview[0]
+        vmax=xview[1]
+        x=ag.convertToLogishPlotCoordinates(x,vmin,vmax,T)
+    if yscale=='logish':
+        yview=ax.get_ylim()
+        vmin=yview[0]
+        vmax=yview[1]
+        y=ag.convertToLogishPlotCoordinates(y,vmin,vmax,T)
+    #color is 'pinkish red'
+    ax.plot(x,y,'o',color='#f10c45',markersize=markersize)
+    
+    return None

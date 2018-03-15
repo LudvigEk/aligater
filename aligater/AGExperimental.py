@@ -268,7 +268,267 @@ def halfNormalDistribution(fcsDF, xCol, mean, direction, vI=sentinel,bins=300, s
     n=len(distribution)
     for x in range(0,n):
         sumVar += (distribution[x] - mean)**2
-        
-    sigma=np.sqrt(sumVar/n)
+    if n != 0:    
+        sigma=np.sqrt(sumVar/n)
+    else:
+        sigma=0
     
     return mean, sigma
+
+def dijkstraStep(heatmap, xBin, yBin, bins):
+    if yBin==bins-1:
+        if heatmap[xBin-1,yBin] < heatmap[xBin-1,yBin-1]:
+            return 0
+        else: 
+            return -1
+    elif yBin==0:
+        if heatmap[xBin-1,yBin] < heatmap[xBin-1,yBin+1]:
+            return 0
+        else: 
+            return 1
+    else:
+        steps=[heatmap[xBin-1,yBin-1],heatmap[xBin-1,yBin],heatmap[xBin-1,yBin+1]]
+        step=steps.index(min(steps))
+        return step-1
+
+def shortestPathMatrix(fcsDF, xCol, yCol, boundaries, vI=sentinel, scale='linear', xscale='linear',yscale='linear',bins=300, T=1000):
+    tmpvI=ag.gateThreshold(fcsDF,xCol, yCol,thresh=boundaries[0], orientation='horisontal', population='upper',scale=scale, vI=vI,plot=False)
+    vI=ag.gateThreshold(fcsDF,xCol,yCol, thresh=boundaries[1], orientation='horisontal',population='lower',scale=scale,vI=tmpvI, plot=True)
+    vX=ag.getGatedVector(fcsDF, xCol, vI)
+    vY=ag.getGatedVector(fcsDF, yCol, vI)
+    xscale = yscale = scale
+    heatmap, xedges, yedges = ag.getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
+    #tranpose and reverse to get origin in bottom left corner
+    heatmap=heatmap
+    cost=np.empty_like(heatmap)
+    leftBin=np.empty_like(heatmap)
+    cost.fill(np.inf)
+    leftBin.fill(0)
+    #Startpos cost 0
+    cost[0][0]=heatmap[0][0]
+    cost[-1][-1]=heatmap[-1][-1]
+    #fix first col
+#    print("Heatmap:")
+#    print(heatmap)
+#    #print(leftBin)
+#    print("initial cost matrix:")
+#    print(cost)
+#    print("\n")    
+    for y in np.arange(1,bins-1,1):
+        for x in np.arange(0,bins,1): 
+            #print(heatmap[x][y])
+            #previousRow=cost[y-1][:]
+#            print(previousRow)
+            stepCosts=[]
+
+            for previousX in np.arange(0,bins,1):
+                stepCost = cost[y-1][previousX]+heatmap[y][x]# too expensive: +sum([heatmap[y][skippedCells] for skippedCells in np.arange(previousX+1,x,1)])
+                stepCosts.append(stepCost)
+#            print(stepCosts)
+#            print("\n")
+            cost[y][x]=min(stepCosts)
+##
+    #print(cost)
+    #traverse cost matrix, /w monothony
+    print("ping!")
+    path=[]
+    previousLocation=0
+    xpos=0
+    for row in cost:
+        validNumbers=row[previousLocation:bins]
+        leftBin=np.where(validNumbers==min(validNumbers))[0]+previousLocation
+        path.append([xedges[xpos],yedges[leftBin[0]]])
+        previousLocation=leftBin[0]
+        xpos+=1
+
+    for step in path:
+        print(step)
+    #leftBin[row][col]=list(stepCosts).index(min(stepCosts))
+    heatmap=np.transpose(heatmap)[::-1]
+    cost=np.transpose(cost)[::-1]
+#    print("\nCost matrix:")
+#    print(np.transpose(cost)[::-1])
+#    print("\nHeatmap:")
+#    print(np.transpose(heatmap)[::-1])
+    
+    thefile = open('heatmap.txt', 'w')
+    for sublist in heatmap:
+        for elem in sublist:
+            thefile.write("%s\t" % elem)
+        thefile.write("\n")
+    thefile = open('cost.txt', 'w')
+    for sublist in cost:
+        for elem in sublist:
+            thefile.write("%s\t" % elem)
+        thefile.write("\n")
+    
+
+            
+    
+    #print(leftBin)
+            #cost=heatmap[row][col]+min([cost[left:row,col-1] for left in np.arange(leftBin[col-1][row],row,1)])
+            #leftBin[col-1][row]=cost.index(min(cost[:,col-1]))
+            #cost[row,col]=cost[col-1]        
+    
+    return None
+
+def shortestPath(fcsDF, xCol, yCol, boundaries, vI=sentinel,maxStep=30, sigma=3, points=5, scale='linear', xscale='linear',yscale='linear',bins=300, T=1000, plot=True):
+    originalvI=vI
+    #shortest path estimates a stepwise shortest path through a heatmap from start to end
+    #by one dimensional valleyseeking in a set of points(default 5) between those two coordinates
+    #i.e. 1d gradient descent
+    #should be faster than full blown dijkstra's or 2d gradient descent
+    tmpvI=ag.gateThreshold(fcsDF,xCol, yCol,thresh=boundaries[0], orientation='horisontal', population='upper',scale=scale, vI=vI,plot=False, info=False)
+    vI=ag.gateThreshold(fcsDF,xCol,yCol, thresh=boundaries[1], orientation='horisontal',population='lower',scale=scale,vI=tmpvI, plot=False, info=False)
+    avgBinDepth=len(vI)/(bins*bins)
+#    print("jump penalty: "+str(avgBinDepth))
+    vX=ag.getGatedVector(fcsDF, xCol, vI)
+    vY=ag.getGatedVector(fcsDF, yCol, vI)
+    xscale = yscale = scale
+    heatmap, xedges, yedges = ag.getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
+    smoothedHeatmap=gaussian_filter(heatmap.astype(float),sigma=sigma)
+
+
+    #Set all positions except desired end point bin to inf in the last bin-row
+    #smoothedHeatmap[-1,bins-1]=0
+    #print(smoothedHeatmap)
+    if maxStep>bins:
+        maxStep=int(np.round(bins/2))
+    
+    maxStep=maxStep
+    #Paths is a list of score ('time spent traveling') plus a list previous steps in that path
+    #I.e. paths= [pathScore,[firstStep,secondStep...,latestStep]]
+    #That means paths[0] gives us the currently fastest path
+    #and paths[0][1] it's list of steps taken; the fastests paths [step1, step2,...,lateststep]
+    paths=[]
+    #Set up first iteration, all paths have to take their first step from 0,0
+    #So we force this
+    for tmpBin in np.arange(0,maxStep,1):
+        penalty=sum([smoothedHeatmap[1][skippedRow] for skippedRow in np.arange(0,maxStep,1)])
+        #print(penalty)
+        startScore=smoothedHeatmap[1,tmpBin]+smoothedHeatmap[0,0]+penalty
+        paths.append([startScore, [0,tmpBin]])
+        #print(str(startScore)+"\n")
+        
+    paths=sorted(paths, key=lambda x: x[0])
+    #print("initial, sorted, paths")
+    #print(paths)
+    #print("\n")
+    #print(bins)
+    while len(paths[0][1]) < bins:
+        #Which xBin is the current path at? Or, how many steps have this path taken?
+        currentPathX=len(paths[0][1])
+        #What was the last yBin of this path?
+        currentPathLeftY=paths[0][1][-1]
+        #What are the avaible next steps for this path?
+        #We require it to only move in one direction, 'upwards' or horisontally
+        #We also defined a max amount of steps to jump
+        maxAllowedStep=currentPathLeftY+maxStep
+        if maxAllowedStep>bins:
+            maxAllowedStep=bins
+        currentPathAvailableSteps = [smoothedHeatmap[currentPathX,y] for y in np.arange(currentPathLeftY,maxAllowedStep,1)]
+        #Adjust with penalty for jumping
+        for x in np.arange(0,len(currentPathAvailableSteps),1):
+            if x<2:
+                penalty=0
+            else:
+                penalty=avgBinDepth#min(currentPathAvailableSteps[0:x])
+            currentPathAvailableSteps[x]+=penalty
+        #Fill the other elements (invalid steps) with infinite, this way we can figure out index
+        currentPathAllY=[np.inf for y in np.arange(0,currentPathLeftY,1)]
+        currentPathAllY.extend(currentPathAvailableSteps)
+        tmp=[np.inf for y in np.arange(maxAllowedStep,bins,1)]
+        currentPathAllY.extend(tmp)
+
+        #score for best step
+        score=paths[0][0]+min(currentPathAvailableSteps)
+        #bin of best step
+        step=currentPathAllY.index(min(currentPathAvailableSteps))
+        
+        #It's possible that in the last step the algorithm cannot reach the only 'allowed' jump
+        #This allows that jump for the very last bin
+#        if step==np.inf:
+#            step=bins-1
+            
+        #add this step to this path
+        paths[0][1].append(step)
+        paths[0][0]=score
+        
+        #Resort the list
+        paths=sorted(paths, key=lambda x: x[0])
+        
+#    print("\nbest path:")
+    #print(paths[0][1])
+    if plot:
+        heatmap=np.ma.masked_where(smoothedHeatmap == 0, smoothedHeatmap)
+        ag.plt.clf()
+        fig, ax = ag.plt.subplots()
+        extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+        ag.plt.imshow(heatmap.T, extent=extent, origin='lower',aspect='equal')
+        ag.plt.xlabel(xCol)
+        ag.plt.ylabel(yCol)
+        cmap=ag.plt.get_cmap()
+        cmap.set_bad(color='white')
+    #draw line of shortest path
+    count=0
+    vPL=[]
+    for index,step in enumerate(paths[0][1]):
+        if count==0:
+            previousCoord=[xedges[count],yedges[index]]
+            count+=1
+            continue
+        coord=[xedges[count],yedges[step]]
+        vPL.append(coord)
+        #ag.plt.plot(previousCoord, coord, 'k-', lw=2)
+        if plot:
+            fig,ax = ag.addLine(fig,ax,previousCoord,coord)
+        previousCoord=coord
+        count+=1
+    if plot:
+        ag.plt.show()
+    
+    #Gate on originalvI
+    vOut=ag.gatePointList(fcsDF,xCol,yCol,vPL, vI=originalvI)
+    ag.reportGateResults(originalvI,vOut)
+    if plot:
+        ag.plt.clf()
+        ag.plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
+        ag.plt.show()
+    return vOut
+
+def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel):
+    if vI is sentinel:
+        vI=fcsDF.index
+    elif len(vI)==0:
+        sys.stderr.write("Passed index contains no events") 
+        return []
+    if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
+        raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
+    if population.lower()=='lower':
+        lower=True
+    elif population.lower()=='upper':
+        lower=False
+    else:
+        raise("specify population as 'lower' or 'upper'")
+    vOut=[]
+    vX=ag.getGatedVector(fcsDF, xCol, vI)
+    vY=ag.getGatedVector(fcsDF, yCol, vI)
+#    iterations=0
+    for x, y, index in zip(vX, vY, vI):
+        for lim in np.arange(0,len(vPL)-1,1):
+            xlim1=vPL[lim][0]
+            xlim2=vPL[lim+1][0]
+            ylim=vPL[lim+1][1]
+#            iterations+=1
+            if x<xlim2 and x>=xlim1 and y<ylim:
+                if lower:
+                    vOut.append(index)
+                    break
+            if x<xlim2 and x>=xlim1 and y>ylim:
+                if not lower:
+                    vOut.append(index)
+                break
+#    print("Total events: "+str(len(vI)))
+#    print("Events under curve: "+str(len(vOut)))
+#    print("Iterations needed for gating: "+str(iterations))
+    return vOut

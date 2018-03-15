@@ -97,8 +97,7 @@ def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
     if lFilter is not None:
         if type(lFilter) is not list:
             raise TypeError("lFilter is not of type List, do lFilter=['filter'] for single filter strings")
-        if ".fcs" not in lFilter:
-                lFilter.extend(".fsc")
+            
     lOutput=[]
     for root, dirs, lFiles in os.walk(sSrc):
         for file in lFiles:
@@ -107,7 +106,10 @@ def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
             
     lFlaggedIndicies=[]
     for index, filePath in enumerate(lOutput):
-        fileName=os.path.basename(filePath)  
+        fileName=os.path.basename(filePath)
+        if '.fcs' not in fileName:
+            lFlaggedIndicies.append(index)
+            continue
         if lIgnoreTypes is not None:
             if any(ignoreType in os.path.splitext(fileName)[1] for ignoreType in lIgnoreTypes):
                 lFlaggedIndicies.append(index)
@@ -117,7 +119,7 @@ def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
                 lFlaggedIndicies.append(index)
                 continue
         if lFilter is not None:             
-            if any(sFilter not in fileName for sFilter in lFilter): 
+            if all(sFilter not in fileName for sFilter in lFilter): 
                 lFlaggedIndicies.append(index)
                 continue    
     lOutput = [i for j, i in enumerate(lOutput) if j not in lFlaggedIndicies]

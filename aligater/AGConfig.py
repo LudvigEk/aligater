@@ -2,4 +2,4 @@
 global minCells
 global cellFilter
 minCells=5
-cellFilter=100000
+cellFilter=50000

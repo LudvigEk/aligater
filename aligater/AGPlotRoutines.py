@@ -153,8 +153,9 @@ def addArrow(fig, ax, lStartCoordinate, lEndCoordinate, size=5000):
     ax.add_patch(arrow)
     return fig
 
-def draw_ellipse(position, covariance, sigma=2, ax=None, **kwargs):
-    ax = ax or plt.gca();
+def draw_ellipse(position, covariance, sigma=2, ax=None, plot=True, **kwargs):
+    if plot:
+        ax = ax or plt.gca();
     
     # Convert covariance to principal axes
     if covariance.shape == (2, 2):
@@ -166,16 +167,20 @@ def draw_ellipse(position, covariance, sigma=2, ax=None, **kwargs):
         width, height = np.sqrt(covariance)*sigma
     #Note width, height here is the full width and height and not the semiaxis length
     # Draw the Ellipse
-    ax.add_patch(Ellipse(position, width, height,
-                             angle, **kwargs));
+    if plot:
+        ax.add_patch(Ellipse(position, width, height,
+                                 angle, **kwargs));
     return width, height, angle
 
-def plot_gmm(fcsDF, xCol, yCol, vI, gmm, sigma, ax):  
+def plot_gmm(fcsDF, xCol, yCol, vI, gmm, sigma, ax, plot=True):  
     ax = ax or plt.gca()
-    for pos, covar, w in zip(gmm.means_, gmm.covariances_, gmm.weights_):
-       width, height, angle = draw_ellipse(pos, covar, sigma ,fill=False,edgecolor='#FF0000', linestyle='dashed');
-    plt.show();
-    return pos, width, height, angle
+    vEllipses=[]
+    for pos, covar, w in zip(gmm.means_, gmm.covariances_, gmm.weights_): 
+        width, height, angle = draw_ellipse(pos, covar, sigma, plot=plot,fill=False,edgecolor='#FF0000', linestyle='dashed');
+        vEllipses.append([pos,width,height,angle])
+    if plot:
+        plt.show();
+    return vEllipses
 
 def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',  T=1000):
     if xCol not in fcsDF.columns:
