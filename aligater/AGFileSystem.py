@@ -115,11 +115,12 @@ def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
                 lFlaggedIndicies.append(index)
                 continue
         if lMask is not None:            
-            if any(mask in fileName for mask in lMask): 
+            if any(mask in filePath for mask in lMask): 
                 lFlaggedIndicies.append(index)
                 continue
+        #OBS, Change on 09-04-2018
         if lFilter is not None:             
-            if all(sFilter not in fileName for sFilter in lFilter): 
+            if all(sFilter not in filePath for sFilter in lFilter): 
                 lFlaggedIndicies.append(index)
                 continue    
     lOutput = [i for j, i in enumerate(lOutput) if j not in lFlaggedIndicies]

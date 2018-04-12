@@ -153,7 +153,11 @@ def addArrow(fig, ax, lStartCoordinate, lEndCoordinate, size=5000):
     ax.add_patch(arrow)
     return fig
 
-def draw_ellipse(position, covariance, sigma=2, ax=None, plot=True, **kwargs):
+def draw_ellipse(position, covariance, sigma=2, ax=None, **kwargs):
+    if ag.execMode in ["jupyter","ipython"]:
+        plot=True
+    else:
+        plot=False
     if plot:
         ax = ax or plt.gca();
     
@@ -172,11 +176,15 @@ def draw_ellipse(position, covariance, sigma=2, ax=None, plot=True, **kwargs):
                                  angle, **kwargs));
     return width, height, angle
 
-def plot_gmm(fcsDF, xCol, yCol, vI, gmm, sigma, ax, plot=True):  
+def plot_gmm(fcsDF, xCol, yCol, vI, gmm, sigma, ax):  
+    if ag.execMode in ["jupyter","ipython"]:
+        plot=True
+    else:
+        plot=False    
     ax = ax or plt.gca()
     vEllipses=[]
     for pos, covar, w in zip(gmm.means_, gmm.covariances_, gmm.weights_): 
-        width, height, angle = draw_ellipse(pos, covar, sigma, plot=plot,fill=False,edgecolor='#FF0000', linestyle='dashed');
+        width, height, angle = draw_ellipse(pos, covar, sigma, fill=False,edgecolor='#FF0000', linestyle='dashed');
         vEllipses.append([pos,width,height,angle])
     if plot:
         plt.show();
