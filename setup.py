@@ -1,8 +1,10 @@
 #!/usr/bin/python3
 from setuptools import setup
-from distutils.core import setup as cythonsetup
+from setuptools.extension import Extension
 from Cython.Build import cythonize
-from distutils.extension import Extension
+
+sourcefiles = ['aligater/AGCython.pyx', 'aligater/AGc.c']
+extensions = [Extension("aligater.AGCython", sourcefiles, include_dirs=[np.get_include()])]
 
 setup(name='aligater',
       version='0.1',
@@ -13,17 +15,7 @@ setup(name='aligater',
       license='MIT',
       packages=['aligater'],
       install_requires=['numpy', 'scipy', 'sklearn','pandas', 'matplotlib','Cython','Jupyter'],
+      ext_modules = cythonize(extensions),
       zip_safe=False)
 
-from distutils.core import setup as cythonsetup
-from Cython.Build import cythonize
-from distutils.extension import Extension
-import numpy as np
-
-sourcefiles = ['aligater/AGCython.pyx', 'aligater/AGc.c']
-
-extensions = [Extension("aligater.AGCython", sourcefiles, include_dirs=[np.get_include()])]
-
-cythonsetup(
-    ext_modules = cythonize(extensions)
 )
