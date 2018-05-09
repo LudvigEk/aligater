@@ -519,7 +519,7 @@ def axisStats(fcsDF, xCol, vI=sentinel,bins=300, scale='linear',T=1000):
         maxVal=result[2]
     return mean, sigma, maxVal
 
-def gateCorner(fcsDF, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrientation='upper', vI=sentinel, bins=300, scale='linear', T=1000):
+def gateCorner(fcsDF, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrientation='upper', Outer=False, vI=sentinel, bins=300, scale='linear', T=1000):
     if ag.execMode in ["jupyter","ipython"]:
         plot=True
     else:
@@ -544,8 +544,10 @@ def gateCorner(fcsDF, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrien
             vOutput=fcsDF[(fcsDF[xCol]<xThresh)&(fcsDF[yCol]>=yThresh)].index
         else:
             vOutput=fcsDF[(fcsDF[xCol]<xThresh)&(fcsDF[yCol]<yThresh)].index
-    
-    vOutput=list(set(vOutput).intersection(vI))
+    if not Outer:
+        vOutput=list(set(vOutput).intersection(vI))
+    else:
+        vOutput=list(set(vI).difference(vOutput))
     
     if plot:
         fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)

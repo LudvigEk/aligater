@@ -376,10 +376,10 @@ def triGate(fcsDF, str xCol, str yCol, list centerCoord, vI=sentinel, int bins=3
     cdef itype_t yCenterbin = np.int32(ag.findBin(smoothedHeatmap, centerCoord[1], yedges, scale=scale, T=T))
 
     cdef dtype_t bottomDens
-    cdef np.ndarray[dtype_t,ndim=1] density=np.zeros(45)
+    cdef np.ndarray[dtype_t,ndim=1] density=np.zeros(90)
     cdef itype_t adjustIdx
     cdef np.ndarray[itype_t, ndim=2] topLine, bottomLine, leftLine
-    for adjustIdx in range(0,45,1):
+    for adjustIdx in range(0,90,1):
         bottomDens, leftLine, topLine, bottomLine = triGateIteration(smoothedHeatmap, xCenterbin+adjustIdx, yCenterbin, bins)
         density[adjustIdx]=bottomDens
         

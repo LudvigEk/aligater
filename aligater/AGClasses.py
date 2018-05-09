@@ -167,7 +167,95 @@ class AGsample(object):
                     file = open(output, 'a')
                 self.printData(file, precision, header)
     
+class AGExperiment(object):
+    fcsList=[]              #LIST
+    normaliseLevel=None     #STR
+    nOfPlates=0             #INT    
+    normalise=None          #BOOL
+    plateList=[]            #LIST
     
+    def __init__(self, experimentRoot, *args, **kwargs):
+        #optional arguments for ag.collectFiles call
+        lFilter=None
+        lMask=None
+        lIgnoreTypes=None
+        if 'filter' in kwargs:
+            if not isinstance(kwargs['filter'],str):
+                if not isinstance(kwargs['filter'],list):
+                    raise TypeError("if filter is passed, it must be a string or list of strings")
+                else:
+                    for item in kwargs['filter']:
+                        if not isinstance(item,str):
+                            raise TypeError("non-string element in filter")
+                    lFilter=kwargs['filter']
+            else:
+                lFilter=[kwargs['filter']]
+            reportStr=str(len(lFilter))+" filter(s) defined\n"
+            sys.stderr.write(reportStr)
+            
+        if 'mask' in kwargs:
+            if not isinstance(kwargs['mask'],str):
+                if not isinstance(kwargs['mask'],list):
+                    raise TypeError("if mask is passed, it must be a string or list of strings")
+                else:
+                    for item in kwargs['mask']:
+                        if not isinstance(item,str):
+                            raise TypeError("non-string element in mask")
+                    lMask=kwargs['mask']
+            else:
+                lMask=[kwargs['mask']]
+            reportStr=str(len(lMask))+" mask(s) defined\n"
+            sys.stderr.write(reportStr)
+            
+        if 'ignoretype' in kwargs:
+            if not isinstance(kwargs['ignoretype'],str):
+                if not isinstance(kwargs['ignoretype'],list):
+                    raise TypeError("if ignoretype is passed, it must be a string or list of strings")
+                else:
+                    for item in kwargs['ignoretype']:
+                        if not isinstance(item,str):
+                            raise TypeError("non-string element in mask")
+                    lIgnoreTypes=kwargs['ignoretype']
+            else:
+                lIgnoreTypes=[kwargs['ignoretype']]
+            reportStr=str(len(lIgnoreTypes))+" ignoretype defined\n"
+            sys.stderr.write(reportStr)
+            
+        if 'normaliseOn' in kwargs:
+            if not isinstance(kwargs['normaliseOn'],str):
+                raise (TypeError("normaliseOn must be string"))
+            self.normalise=True
+            self.normaliseLevel=kwargs['normaliseOn']
+            reportStr="Plate normalisation/outlier detection requested\n"
+            sys.stderr.write(reportStr)
+        
+
+        #If no normalisation, collect all files
+        self.fcsList=ag.collectFiles(experimentRoot,lFilter,lMask,lIgnoreTypes)
+        if self.normalise:
+            #Otherwise (plate normalisation) collect abs path to all end-of-tree folders
+            self.plateList=ag.listDir(experimentRoot)
+            self.checkPlateList(lFilter,lMask,lIgnoreTypes)
+            reportStr="Files are distributed in "+str(len(self.plateList))+" plates\n"
+            sys.stderr.write(reportStr)
+    
+    def checkPlateList(self,lFilter,lMask,lIgnoreTypes):
+        #Function that goes through the list of folders and removes those that do not contain fcs files
+        #The remaining folders are considered plates
+        lFlaggedFolders=[]
+        for index,folder in enumerate(self.plateList):
+            filesInFolder=next(os.walk(folder))[2]
+            if not filesInFolder:
+                lFlaggedFolders.append(index)
+        lFlaggedFolders=np.sort(lFlaggedFolders)[::-1]
+        for index in lFlaggedFolders:
+            del self.plateList[index]
+        
+    def organize(self,*args,**kwargs):
+        
+        return True
+
+         
 def is_decade(x, base=10):
     if not np.isfinite(x):
         return False

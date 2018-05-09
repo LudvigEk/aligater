@@ -90,20 +90,28 @@ def getParent(sSrc):
 def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
     if lIgnoreTypes is not None:
         if type(lIgnoreTypes) is not list:
-            raise TypeError("lIgnoreTypes is not of type List, do lIgnoreTypes=['.FileEnding'] for single file ending strings")
+            raise TypeError("lIgnoreTypes is not of type List, do lIgnoreTypes=['.FileEnding'] for single file ending strings")    
     if lMask is not None:
             if type(lMask) is not list:
                 raise TypeError("lMask is not of type List, do lMask=['mask'] for single mask strings")
     if lFilter is not None:
         if type(lFilter) is not list:
             raise TypeError("lFilter is not of type List, do lFilter=['filter'] for single filter strings")
-            
+                
     lOutput=[]
     for root, dirs, lFiles in os.walk(sSrc):
         for file in lFiles:
             filePath = os.path.join(root,file)
             lOutput.append(filePath)
             
+    lFlaggedIndicies=applyFilter(lOutput, lFilter,lMask, lIgnoreTypes)
+    
+    lOutput = [i for j, i in enumerate(lOutput) if j not in lFlaggedIndicies]
+    sOutputString="Collected "+str(len(lOutput))+" files, "+str(len(lFlaggedIndicies))+" files did not pass filter(s) and mask(s).\n"
+    sys.stderr.write(sOutputString)
+    return pd.Series(lOutput)
+
+def applyFilter(lOutput, lFilter, lMask, lIgnoreTypes):
     lFlaggedIndicies=[]
     for index, filePath in enumerate(lOutput):
         fileName=os.path.basename(filePath)
@@ -122,11 +130,23 @@ def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
         if lFilter is not None:             
             if all(sFilter not in filePath for sFilter in lFilter): 
                 lFlaggedIndicies.append(index)
-                continue    
-    lOutput = [i for j, i in enumerate(lOutput) if j not in lFlaggedIndicies]
-    sOutputString="Collected "+str(len(lOutput))+" files, "+str(len(lFlaggedIndicies))+" files did not pass filter(s) and mask(s).\n"
-    sys.stderr.write(sOutputString)
-    return pd.Series(lOutput)
+                continue 
+    return lFlaggedIndicies
+
+def listDir(dirList):
+    #Recursive function that lists subfolders
+    if isinstance(dirList,str):
+        nextLevel = [os.path.join(dirList,i) for i in next(os.walk(dirList))[1]]
+        dirList=nextLevel
+    else:
+        nextLevel=[]
+        for elem in dirList:
+            nextLevel.extend([os.path.join(elem,i) for i in next(os.walk(elem))[1]])
+    if len(nextLevel)==0:
+        return dirList
+    else:
+        dirList.extend(listDir(nextLevel))
+        return list(set(dirList))
 
 def getFileName(sSrc):
     baseName=os.path.basename(sSrc)
