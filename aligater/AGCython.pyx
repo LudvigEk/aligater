@@ -13,6 +13,8 @@
 #
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	http://nilssonlab.org
+
+ 
 import aligater as ag
 import sys
 import numpy as np
@@ -27,8 +29,11 @@ cimport numpy as np
 ctypedef np.float64_t dtype_t
 ctypedef np.int32_t itype_t
 # declare interface to C code functions
-cdef extern void c_multiply (double* array, double value, int m, int n)
+cdef extern from "AGc.h":
+    void c_Stat_GetMeanAndVariance_double(const double* aData, const int nSize, double &mean, double &var)
+    void c_multiply (double* array, double value, int m, int n)
 
+#
 #Dummy object for python handling
 sentinel=object()
 
@@ -485,6 +490,18 @@ cpdef triGateIteration(np.ndarray[dtype_t, ndim=2] smoothedHeatmap,  itype_t xCe
     bottomDens=bottomDens/rightSideLength
     return bottomDens, leftLine, topLine, bottomLine
 
+def Stat_GetMeanAndVariance_double(np.ndarray[double, ndim=1, mode="c"] input not None):
+    cdef int m; #nSize
+    m = input.shape[0];
+    cdef double mean;
+    cdef double var;
+    mean=0.0
+    var=0.0
+    c_Stat_GetMeanAndVariance_double(&input[0], m, mean, var);
+    return mean, var;
+
+#-----Some simple sample code to look at below------------
+
 def test_multiply():
     print("testing!")
 
@@ -496,6 +513,7 @@ def test_multiply():
 
     print(a)
     return None
+
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -516,3 +534,4 @@ def multiply(np.ndarray[double, ndim=2, mode="c"] input not None, double value):
     c_multiply(&input[0,0], value, m, n)
 
     return None
+

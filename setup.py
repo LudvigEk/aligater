@@ -16,9 +16,8 @@ class lazy_cythonize(list):
 def extensions():
     from Cython.Build import cythonize
     import numpy as np
-    sourcefiles = ['aligater/AGCython.pyx', 'aligater/AGc.c']
-    ext =Extension("aligater.AGCython", sourcefiles, include_dirs=[np.get_include()])
-    ext = Extension("aligater.AGCython", sourcefiles, include_dirs=[np.get_include()])
+    sourcefiles = ['aligater/AGCython.pyx', 'aligater/AGc.cpp']
+    ext =Extension("aligater.AGCython", sourcefiles,language='c++', include_dirs=[np.get_include(),"./aligater"])
     return cythonize([ext])
 
 

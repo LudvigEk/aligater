@@ -61,13 +61,29 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
         ax.yaxis.set_major_formatter(LogishFormatter())
     return fig,ax
 
-def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000):
+def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xlim=None, ylim=None):
     if not any(isinstance(i,str) for i in [scale,xscale,yscale]):
         raise TypeError("scale, xscale, yscale must be specified as string, such as: 'linear', 'logish'")
     if not all(i in ['linear', 'logish'] for i in [scale,xscale,yscale]):
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
+    assert len(vX) == len(vY)
+    index_mask=[]
+    for i in np.arange(len(vX)-1,-1,-1):
+        if i < 0:
+            print("KASS")
+        if xlim is not None:
+            if vX[i] < xlim[0] or vX[i] > xlim[1]:
+                index_mask.append(i)
+                continue
+            if vY[i] < ylim[0] or vY[i] > ylim[1]:
+                index_mask.append(i)
+    if len(index_mask) > 0:
+        vX = np.delete(vX, index_mask)
+        vY = np.delete(vY, index_mask)
+        assert len(vX) == len(vY)
+                
     if scale=='linear' and xscale=='linear' and yscale == 'linear':
-        return np.histogram2d(vX, vY, bins)
+        return np.histogram2d(vX, vY, bins, normed=normalize)
     elif scale=='logish' or (xscale == 'logish' and yscale == 'logish'):
         xBinEdges=logishBin(vX,bins,T)
         yBinEdges=logishBin(vY,bins,T)
@@ -223,6 +239,82 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
         ax.xaxis.set_major_formatter(LogishFormatter())
     #plt.show()
     return fig,ax
+
+from sklearn.decomposition import PCA
+
+def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
+    immatrix = np.array([im.flatten() for im in imlist],'f')
+    pca_obj = PCA(n_components=nOfComponents)
+    pca_obj.fit(immatrix)
+    projection_d = pca_obj.transform(immatrix)
+    projection_d_df = pd.DataFrame(projection_d)
+    projection_d_df.index = samplelist
+    columnNames=[]
+    for i in np.arange(1,nOfComponents+1,1):
+        columnStr="PC"+str(i)
+        columnNames.append(columnStr)
+    projection_d_df.columns = columnNames
+    reportStr="PCs explained variance: \n"+str(pca_obj.explained_variance_ratio_)+"\n"
+    sys.stderr.write(reportStr)
+    #center the coordinate system on the mean of each PC
+    projection_d_df = projection_d_df - projection_d_df.mean()
+    if nOfComponents==2:
+        axes = projection_d_df.plot(kind='scatter', x='PC2', y='PC1', figsize=(16,8))
+        axes.set_xlim([projection_d_df['PC2'].min()*1.1, projection_d_df['PC2'].max()*1.1])
+        axes.set_ylim([projection_d_df['PC1'].min()*1.1, projection_d_df['PC1'].max()*1.1])
+        plt.show()
+    projection_d_df['length']=np.sqrt(np.square(projection_d_df).sum(axis=1))
+    projection_d_df.sort_values(by='length', inplace=True)
+    return projection_d_df
+    
+def imagePCA(imlist):
+    m=16
+    n=16
+    # create matrix to store all flattened images
+    immatrix = np.array([im.flatten() for im in imlist],'f')
+    
+    # perform PCA
+    V, S, immean = image_pca(immatrix)
+    #show some images (mean and 7 first modes)
+    plt.figure(figsize=(20,30))
+    plt.subplot(2,4,1)
+    plt.imshow(immean.reshape(m,n))
+    for i in range(20):
+      plt.subplot(4,5,i+1)
+      plt.imshow(V[i].reshape(m,n).T[::-1], cmap="bwr")
+    plt.show()
+
+
+def image_pca(X):
+  """  Principal Component Analysis
+    input: X, matrix with training data stored as flattened arrays in rows
+    return: projection matrix (with important dimensions first), variance
+    and mean."""
+
+  # get dimensions
+  num_data,dim = X.shape
+
+  # center data
+  mean_X = X.mean(axis=0)
+  X = X - mean_X
+
+  if dim>num_data:
+    # PCA - compact trick used
+    M = np.dot(X,X.T) # covariance matrix
+    e,EV = np.linalg.eigh(M) # eigenvalues and eigenvectors
+    tmp = np.dot(X.T,EV).T # this is the compact trick
+    V = tmp[::-1] # reverse since last eigenvectors are the ones we want
+    S = np.sqrt(e)[::-1] # reverse since eigenvalues are in increasing order
+    for i in range(V.shape[1]):
+      V[:,i] /= S
+  else:
+    # PCA - SVD used
+    U,S,V = np.linalg.svd(X)
+    V = V[:num_data] # only makes sense to return the first num_data
+
+  # return the projection matrix, the variance and the mean
+  return V,S,mean_X
+
 
 def main():
 	return None

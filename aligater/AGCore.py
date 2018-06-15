@@ -321,12 +321,14 @@ def reportGateResults(vI, vOutput):
     sys.stderr.write(reportString)
 
 
-def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='centroid', customCenter=None):
+def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='centroid', customCenter=None, filePlot=None):
     if ag.execMode in ["jupyter","ipython"]:
         plot=True
     else:
         plot=False
-
+    if filePlot is not None:
+        if not isinstance(filePlot,str):
+            raise TypeError("If plotting to file is requested filePlot must be string filename")
     if vI is sentinel:
         vI=fcsDF.index
     if (xCol not in fcsDF.columns or yCol not in fcsDF.columns):
@@ -351,7 +353,7 @@ def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='
     else:
         center=customCenter
         
-    if plot:
+    if plot or filePlot is not None:
         fig, ax = ag.plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
 
     center, eigen1, eigen2 = ag.getPCs(fcsDF, xCol, yCol, center, vI)
@@ -362,13 +364,19 @@ def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='
 
     result=ag.gateEllipsoid(fcsDF, xCol, yCol,xCenter=center[0],yCenter=center[1], majorAxis=[eigen1[1],eigen1[2]], minorAxis=[eigen2[1],eigen2[2]],majorRadii=width, minorRadii=height,vI=vI)
 
-    if plot:
+    if plot or filePlot is not None:
         ag.addLine(fig, ax, center, PC1)
         ag.addLine(fig, ax, center, PC2)
         ax.add_patch(ag.Ellipse(center, 2*width, 2*height, np.degrees(angle),fill=False,edgecolor='#FF0000', linestyle='dashed'))
-        ag.plt.show()
-        ag.plotHeatmap(fcsDF, xCol, yCol,result)
-        ag.plt.show()
+        if filePlot is not None:
+            ag.plt.savefig(filePlot)
+            if not plot:
+                ag.plt.close(fig)
+        if plot:
+            ag.plt.show()
+            ag.plotHeatmap(fcsDF, xCol, yCol,result)
+            ag.plt.show()
+            ag.plt.clf()
     return result
 
 def getVectorCoordiantes(length, angle):
@@ -548,6 +556,9 @@ def gateCorner(fcsDF, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrien
         vOutput=list(set(vOutput).intersection(vI))
     else:
         vOutput=list(set(vI).difference(vOutput))
+    
+    if len(vOutput)==0:
+        return []
     
     if plot:
         fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
