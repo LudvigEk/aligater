@@ -1,15 +1,21 @@
-#	______|\__________\o/__________
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
 #			~~aliGater~~
 #	(semi)automated gating software
 #
-#	Utilizing Dislin for plots, non-commercial use only!
-#	Relevant EULA section:
-#	Grant of Free Usage
-#	You are allowed to use DISLIN for free as a private person or as a member of an institute that does not earn money with selling any products and services.
-#	http://dislin.de
+#               /^^\
+#   /^^\_______/0  \_
+#  (                 `~+++,,_________,,++~^^^^^^^
+#..V^V^V^V^V^V^\.................................
+#
+#
+#	Parsing flow data with fcsparser from Eugene Yurtsevs FlowCytometryTools (very slightly modified)
+#	Check out his excellent toolkit for flow cytometry analysis: 
+#	http://eyurtsev.github.io/FlowCytometryTools/
 #
 #	Björn Nilsson & Ludvig Ekdahl 2016~
-#	http://nilssonlab.org
+#	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
 
 import aligater as ag
 import pandas as pd
@@ -29,20 +35,71 @@ def type_of_script():
         if 'terminal' in ipy_str:
             return 'ipython'
     except:
+        #If not available, default to terminal
         return 'terminal'
 
-def gmm2D(fcsDF, gate1, gate2, nOfComponents, vI=sentinel, *args, **kwargs):
+def gmm2D(fcsDF, xCol, yCol, nOfComponents, vI=sentinel, *args, **kwargs):
+    """
+    Fits a scikit.learn GaussianMixture object to the data and returns it
+    
+    **Parameters**
+    
+    fcsDF : pandas.DataFrame
+        Flow data loaded in a pandas DataFrame. \n
+        If data is stored in an AGSample object this can be retrieved by
+        calling the sample, i.e. mysample().
+    xCol, yCol : str
+        Marker labels.
+    nOfComponents : int
+        Number of components to use in the mixture model.
+    vI : list-like or AGgate object
+        Parent population to apply the gating to.
+    args, kwargs : 
+        optional arguments to pass on to GaussianMixture.
+
+    **Returns**
+
+    GaussianMixture object fit to the data.
+
+    **Examples**
+
+    None currently.
+    """
     if vI is sentinel:
         vI=fcsDF.index
     #randomly_sampled = np.random.choice(vI, size=len(vI), replace=False)
-    vX = getGatedVector(fcsDF,gate1,vI=vI,return_type="nparray")
-    vY = getGatedVector(fcsDF,gate2,vI=vI,return_type="nparray")
+    vX = getGatedVector(fcsDF,xCol,vI=vI,return_type="nparray")
+    vY = getGatedVector(fcsDF,yCol,vI=vI,return_type="nparray")
     fcsArray=np.array([vX,vY]).T
     gmm = GaussianMixture(n_components=nOfComponents,*args,**kwargs)
     gmm.fit(fcsArray)
     return gmm
 
 def gateGMM(fcsDF,xCol, yCol, gmm, vI=sentinel, sigma=1):
+    """
+    Function that can interpret and gate data based on a GaussianMixture object from sklearn.mixture
+    
+    **Parameters**
+    
+    fcsDF : pandas.DataFrame
+        Flow data loaded in a pandas DataFrame. \n
+        If data is stored in an AGSample object this can be retrieved by
+        calling the sample, i.e. mysample().
+    xCol, yCol : str
+        Marker labels.
+    vI : list-like or AGgate object
+        Parent population to apply the gating to.
+    sigma : float, optional, default: 1
+        Number of standard deviations to scale the mixture model with.
+
+    **Returns**
+
+    AGClasses.AGgate object
+
+    **Examples**
+
+    None currently.
+    """
     if ag.execMode in ["jupyter","ipython"]:
         plot=True
     else:
@@ -60,9 +117,7 @@ def gateGMM(fcsDF,xCol, yCol, gmm, vI=sentinel, sigma=1):
     else:
         ax=None
     vEllipses = ag.plot_gmm(fcsDF,xCol, yCol, vI, gmm, sigma, ax)
-    #plot_ggm will return the full width and height of the drawn ellipse, whereas
-    #gateEllipsoid wants the length of the semiaxis
-    #totalEvent=0
+
     for ellipses in vEllipses:
         xCenter=ellipses[0][0]
         yCenter=ellipses[0][1]
@@ -71,15 +126,42 @@ def gateGMM(fcsDF,xCol, yCol, gmm, vI=sentinel, sigma=1):
         angle=ellipses[3]
         vTmp = ag.gateEllipsoid(fcsDF, xCol, yCol, xCenter, yCenter, width/2, height/2, np.radians(angle), vI, info=False)
         vOutput.extend(vTmp)
-        #totalEvent+=len(vTmp)
+
     vResult=list(set(vOutput))
-    #print("all ellipses: "+str(totalEvent)+" the set: "+str(len(vResult)))
+
     ag.reportGateResults(vI, vResult)
     if plot:
         fig, ax = ag.plotHeatmap(fcsDF, xCol, yCol, vResult)
     return vOutput
     
 def getGatedVector(fcsDF, gate, vI=sentinel, return_type="pdseries", dtype=np.float64):
+    """
+    Collects list-like of measured intensities for a population. 
+    Also see getGatedVectors
+    
+    **Parameters**
+    
+    fcsDF : pandas.DataFrame
+        Flow data loaded in a pandas DataFrame. \n
+        If data is stored in an AGSample object this can be retrieved by
+        calling the sample, i.e. mysample().
+    gate : str
+        Marker label.
+    vI : list-like or AGgate object
+        Population to collect.
+    return_type : str, optional, default: "pdseries"
+        Format of returned list-like, options are: "pdseries" "nparray"
+    dtype : Type, optional, default: numpy.float64
+        Data type of values in the returned listlike
+
+    **Returns**
+
+    List-like
+
+    **Examples**
+
+    None currently.
+    """
     if return_type.lower() not in ["pdseries","nparray"]:
         raise TypeError("Specify return type as 'pdseries' or 'nparray'")
     if return_type.lower()=="pdseries" and not (dtype is np.float64):
@@ -93,6 +175,39 @@ def getGatedVector(fcsDF, gate, vI=sentinel, return_type="pdseries", dtype=np.fl
     return gated_vector
 
 def getGatedVectors(fcsDF, gate1, gate2, vI=sentinel, return_type="pdseries"):
+    """
+    Collects list-like of measured intensities for a population. \n
+    Useful to collect both intensity coordinates for events in a view.
+    
+    **Parameters**
+    
+    fcsDF : pandas.DataFrame
+        Flow data loaded in a pandas DataFrame. 
+        If data is stored in an AGSample object this can be retrieved by
+        calling the sample, i.e. mysample().
+    gate1, gate2 : str
+        Marker labels.
+    vI : list-like or AGgate object
+        Population to collect.
+    return_type : str, optional, default: "pdseries"
+        Format of returned list-like, options are: "pdseries" "nparray", matrix
+    dtype : Type, optional, default: numpy.float64
+        Data type of values in the returned list-like
+
+    **Returns**
+    
+    numpy.array[numpy.array, numpy.array]
+        If return type is 'nparray'
+        numpy array of arrays in order: x-array, y-array
+    numpy.array[list]
+        If return_type is 'matrix' returns a numpy array with list-likes of two; x-coord, y-coord
+    list-like, list-like
+        if return_type is 'pdseries' returns two pandas.Series objects in order; X, Y
+
+    **Examples**
+
+    None currently.
+    """
     if return_type.lower() not in ["pdseries","nparray","matrix"]:
         raise TypeError("Specify return type as 'pdseries', 'nparray', 'matrix'")
     if vI is sentinel:
@@ -110,6 +225,7 @@ def getGatedVectors(fcsDF, gate1, gate2, vI=sentinel, return_type="pdseries"):
         vY=fcsDF[gate2].loc[vI].values
         return np.array([vX, vY])
     
+#TODO: Keep non-cython version?
 #def gateThreshold(fcsDF, xCol, yCol=None, thresh=None, orientation="vertical", vI=sentinel, population="upper", scale='linear', linCutOff=1000, info=True):
 #    if ag.execMode in ["jupyter","ipython"]:
 #        plot=True
@@ -298,9 +414,39 @@ def calculateAngle(lStartCoordinate, lEndCoordinate):
     
     return angle
 
-def getHighestDensityPoint(fcsDF, xCol, yCol, vI=sentinel, bins=300):
-    if vI is sentinel:
-        vI=fcsDF.index
+def getHighestDensityPoint(fcs, xCol, yCol, parentGate=sentinel, bins=300):
+    """
+    Returns coordinates for the point in the view with the highest number of events.
+    
+    **Parameters**
+    
+    fcs : AGClasses.AGSample object
+        Flow data loaded in an sample object.
+    xCol, yCol : str
+        Marker labels.
+    parentGate : AGgate object, optional
+        Parent population to apply the gating to. 
+        If no AGgate object is passed gating is applied to the ungated data frame.
+    bins : int, optional, default: 300
+        Resolution of the heatmap used to calculate the highest density point
+        
+    **Returns**
+
+    List-like
+        Returns approximate coordinates of the highest density point; [x-coord, y-coord].\n
+        Precision can be increased by increasing the resolution (the bins parameter)
+    
+    **Examples**
+
+    None currently.
+    """
+    if parentGate is sentinel:
+        vI=fcs.full_index()
+    elif not parentGate.__class__.__name__ == "AGgate":
+        raise TypeError("invalid AGgate object")
+    else:
+        vI=parentGate()
+    fcsDF=fcs()
     if (xCol not in fcsDF.columns or yCol not in fcsDF.columns):
         raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
     vX=ag.getGatedVector(fcsDF, xCol, vI)
@@ -317,11 +463,53 @@ def getHighestDensityPoint(fcsDF, xCol, yCol, vI=sentinel, bins=300):
     return [xCoord, yCoord]
     
 def reportGateResults(vI, vOutput):
-    reportString="After gating, "+str(len(vOutput))+" out of "+str(len(vI))+" events remain.\n"
-    sys.stderr.write(reportString)
+    if ag.ag_verbose:
+        reportString="After gating, "+str(len(vOutput))+" out of "+str(len(vI))+" events remain.\n"
+        sys.stderr.write(reportString)
+    return
 
 
-def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='centroid', customCenter=None, filePlot=None):
+def gatePC(fcs, xCol, yCol, name, parentGate=sentinel, widthScale=1, heightScale=1, center='centroid', customCenter=None, filePlot=None, update=True):
+    """
+    Function that performs a 2D principal component analysis and gates an ellipse based on the results.
+    
+    **Parameters**
+    
+    fcs : AGClasses.AGSample object
+        Flow data loaded in an sample object.
+    xCol, yCol : str
+        Marker labels.
+    name : str
+        Name to the resulting gated population.
+    parentGate : AGgate object, optional
+        Parent population to apply the gating to. 
+        If no AGgate object is passed gating is applied to the ungated data frame.
+    widthScale, heightScale : float, optional, default: 1
+        Number of standard deviations to scale eigenvectors with, corresponding to the width and height of the ellipse.
+    center : str, optional, default: 'centroid'
+        Where to center the image for PC analysis, options are 'center', 'centroid' or 'custom'\n
+        Data will temporarily be centered around this point for the PC analysis.
+    customCenter : None or list-like, optional, default: None
+        Only used if center option is 'custom'. Then takes a list-like of two being the coordinates of the center point.
+    filePlot : str, optional, default: None
+        Option to plot the gate to file to specified path. \n
+        Warning: might overwrite stuff.
+    update : bool, optional, default: True
+        Changes the return behaviour. If True (default) will apply the gate and add a new gate object to the samples
+        gate list then return the updated AGsample.\n
+        If false, returns an AGgate object.
+
+    **Returns**
+
+    AGClasses.AGsample object    
+        if update is True (default) 
+    AGClasses.AGgate object
+        if update is False
+
+    **Examples**
+
+    None currently.
+    """
     if ag.execMode in ["jupyter","ipython"]:
         plot=True
     else:
@@ -329,8 +517,13 @@ def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='
     if filePlot is not None:
         if not isinstance(filePlot,str):
             raise TypeError("If plotting to file is requested filePlot must be string filename")
-    if vI is sentinel:
-        vI=fcsDF.index
+    if parentGate is sentinel:
+        vI=fcs.full_index()
+    elif not parentGate.__class__.__name__ == "AGgate":
+        raise TypeError("invalid AGgate object")
+    else:
+        vI=parentGate()
+    fcsDF=fcs()
     if (xCol not in fcsDF.columns or yCol not in fcsDF.columns):
         raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
     if center.lower() not in ['centroid','density','custom']:
@@ -346,7 +539,7 @@ def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='
         sys.stderr.write("Passed index contains no events") 
         return []
     if center.lower() == 'density':
-        center=ag.getHighestDensityPoint(fcsDF, xCol, yCol, vI)
+        center=ag.getHighestDensityPoint(fcs, xCol, yCol, parentGate)
 
     elif center.lower() == 'centroid':
         center=None
@@ -377,7 +570,13 @@ def gatePC(fcsDF, xCol, yCol, vI=sentinel, widthScale=1, heightScale=1, center='
             ag.plotHeatmap(fcsDF, xCol, yCol,result)
             ag.plt.show()
             ag.plt.clf()
-    return result
+    if parentGate is not sentinel:
+        outputGate=ag.AGgate(result, parentGate, xCol, yCol, name)
+    else:
+        outputGate=ag.AGgate(result, fcs.full_index(), xCol, yCol, name)
+    if update:
+        fcs.update(outputGate, QC=True)
+    return outputGate
 
 def getVectorCoordiantes(length, angle):
     theta=math.degrees(angle)
@@ -397,6 +596,41 @@ def getDensityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear', T
     return smoothedHisto, histo[1]
 
 def valleySeek(fcsDF, xCol, vI=sentinel, interval=['start','end'], sigma=3, bins=300, scale='linear', T= 1000):
+    """
+    Function finds the least dense point in a given interval for values in a channel.
+    
+    **Parameters**
+    
+    fcsDF : pandas.DataFrame
+        Flow data loaded in a pandas DataFrame. \n
+        If data is stored in an AGSample object this can be retrieved by
+        calling the sample, i.e. mysample().
+    xCol : str
+        Marker label.
+    name : str
+        Name to the resulting gated population.
+    vI : list-like or AGgate object
+        Parent population to apply the gating to.
+    interval : list-like, optional, default: ['start','end']
+        Interval to limit the search, defaults to entire axis.
+    sigma : float, optional, default: 3
+        Smoothing factor of density function (kernel smooth).
+    bins : int, optional, default: 300
+        Number of bins in density histogram.
+    scale : str, optional, default: 'linear'
+        If plotting enabled, which scale to be used on axis.
+    T : int, optional, default: 1000
+        If plotting enabled and scale is logish, the threshold for linear-loglike transition
+
+    **Returns**
+
+    float
+        Coordinate on axis with lowest density in given interval.
+
+    **Examples**
+
+    None currently.
+    """
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
@@ -445,6 +679,44 @@ def valleySeek(fcsDF, xCol, vI=sentinel, interval=['start','end'], sigma=3, bins
     return (binData[minValIndex+1]+binData[minValIndex])/2
             
 def quadGate(fcsDF, xCol, yCol, xThresh, yThresh, vI=sentinel, scale='linear',T=1000):
+    """
+    Function that gates four populations from one view by drawing a cross.
+    
+    **Parameters**
+    
+    fcsDF : pandas.DataFrame
+        Flow data loaded in a pandas DataFrame. \n 
+        If data is stored in an AGSample object this can be retrieved by
+        calling the sample, i.e. mysample().
+    xCol, yCol : str
+        Marker labels.
+        
+    xThresh : float
+        Threshold for vertical line.
+
+    yThresh : float
+        Threshold for horisontal line.
+
+    vI : list-like or AGgate object
+        Parent population to apply the gating to.
+        
+    scale : str, optional, default: 'linear'
+        If plotting enabled, which scale to be used on both axis.
+        
+    T : int, optional, default: 1000
+        If plotting enabled and scale is logish, the threshold for linear-loglike transition
+
+    **Returns**
+
+    list-like, list-like, list-like, list-like
+        Returns list-like indicies for the four gated populations.\n 
+        In clockwise order; top-left, top-right, bottom-right, bottom-left    
+
+    **Examples**
+
+    None currently.
+    """
+    
     if ag.execMode in ["jupyter","ipython"]:
         plot=True
     else:
@@ -496,6 +768,36 @@ def quadGate(fcsDF, xCol, yCol, xThresh, yThresh, vI=sentinel, scale='linear',T=
     return vTopLeft, vTopRight, vBottomRight, vBottomLeft
 
 def axisStats(fcsDF, xCol, vI=sentinel,bins=300, scale='linear',T=1000):
+    """
+    Report mean, standard deviation and maximum value on axis.
+    
+    **Parameters**
+    
+    fcsDF : pandas.DataFrame
+        Flow data loaded in a pandas DataFrame. \n
+        If data is stored in an AGSample object this can be retrieved by
+        calling the sample, i.e. mysample().
+    xCol : str
+        Marker label.
+    vI : list-like or AGgate object
+        Parent population to apply the gating to.
+    bins : int, optional, default: 300
+        Number of bins in density histogram.
+    scale : str, optional, default: 'linear'
+        The returned values can be transformed to a plotting scale; \n
+        options: 'linear', 'logish'
+    T : int, optional, default: 1000
+        If plotting enabled and scale is logish, the threshold for linear-loglike transition
+
+    **Returns**
+
+    float, float, float
+        mean, standard deviation, maximum value
+
+    **Examples**
+
+    None currently.
+    """
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
@@ -527,13 +829,66 @@ def axisStats(fcsDF, xCol, vI=sentinel,bins=300, scale='linear',T=1000):
         maxVal=result[2]
     return mean, sigma, maxVal
 
-def gateCorner(fcsDF, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrientation='upper', Outer=False, vI=sentinel, bins=300, scale='linear', T=1000):
+def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrientation='upper', Outer=False, parentGate=sentinel, bins=300, scale='linear', T=1000, update=True, filePlot=None):
+    """
+    Gates a corner in the view, with xOrientation and yOrientation parameters deciding the shape (which corner to gate).
+    
+    **Parameters**
+    
+    fcs : AGClasses.AGSample object
+        Flow data loaded in an sample object.
+    xCol, yCol : str
+        Marker labels.
+    name : str
+        Name to the resulting gated population.
+    parentGate : AGClasses.AGgate object, optional
+        Parent population to apply the gating to. 
+        If no AGgate object is passed gating is applied to the ungated data frame.
+    xThresh, yThresh : float
+        The X- and Y-axis thresholds for the gate.
+    xOrientation, yOrientation : str, optional, default: 'upper'
+        Defines which population is gated as positive in relation to the x- and y- thresholds. The default parameter means top right corner.
+    outer : bool, optional, default: False
+        If True, instead returns all events outside of the defined corner.
+    bins : int, optional, default: 300
+        If plotting, defines the resolution of the heatmap.
+    scale : str, optional, default: 'linear'
+        If plotting enabled, which scale to be used on both axis.
+    T : int, optional, default: 1000
+        If plotting enabled and scale is logish, the threshold for linear-loglike transition.    
+    filePlot : str, optional, default: None
+        Option to plot the gate to file to specified path.\n
+        Warning: might overwrite stuff.
+    update : bool, optional, default: True
+        Changes the return behaviour. If True (default) will apply the gate and add a new gate object to the samples
+        gate list then return the updated AGsample.
+        If false, returns an AGgate object.
+
+    **Returns**
+
+    AGClasses.AGsample object    
+        if update is True (default) 
+    AGClasses.AGgate object
+        if update is False
+
+    **Examples**
+
+    None currently.
+    """    
     if ag.execMode in ["jupyter","ipython"]:
         plot=True
     else:
         plot=False    
-    if vI is sentinel:
-        vI=fcsDF.index
+    if parentGate is sentinel:
+        vI=fcs.full_index()
+    elif not parentGate.__class__.__name__ == "AGgate":
+        raise TypeError("invalid AGgate object")
+    else:
+        vI=parentGate()
+    fcsDF=fcs()
+    if filePlot is not None:
+        if not isinstance(filePlot,str):
+            raise TypeError("If plotting to file is requested filePlot must be string filename")
     if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
         raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
     if xOrientation not in ["upper","lower"] or yOrientation not in ["upper","lower"]:
@@ -560,7 +915,7 @@ def gateCorner(fcsDF, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrien
     if len(vOutput)==0:
         return []
     
-    if plot:
+    if plot or filePlot is not None:
         fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
         vX,vY=ag.getGatedVectors(fcsDF,xCol, yCol, vOutput, return_type="nparray")
         xmin=min(vX)
@@ -581,15 +936,62 @@ def gateCorner(fcsDF, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrien
             else:
                 ag.addLine(fig,ax, [xmax,ymax], [xmax, ymin],scale=scale, T=T)
                 ag.addLine(fig,ax, [xmax,ymax], [xmin, ymax],scale=scale, T=T)
-        plt.show()
-        plt.clf()
-        ag.plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
-        plt.show()
+        if filePlot is not None:
+            ag.plt.savefig(filePlot)
+            if not plot:
+                ag.plt.close(fig)
+        if plot:
+            plt.show()
+            plt.clf()
+            ag.plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
+            plt.show()
+
+        
+    if parentGate is not sentinel:
+        outputGate=ag.AGgate(vOutput, parentGate, xCol, yCol, name)
+    else:
+        outputGate=ag.AGgate(vOutput, fcs.full_index(), xCol, yCol, name)
+    if update:
+        fcs.update(outputGate, QC=True)
     reportGateResults(vI, vOutput)
-    return vOutput
+    return outputGate
 
 
-def customQuadGate(fcsDF, xCol, yCol,threshList, vI=sentinel, scale='linear',T=1000):
+def customQuadGate(fcsDF, xCol, yCol,threshList, vI=sentinel, scale='linear',T=1000, filePlot=None):
+    """
+    A quadgate function with one axis fix and the other variable. The threshList argument decides which axis is fix and which can vary.
+    
+    **Parameters**
+    
+    fcsDF : pandas.DataFrame
+        Flow data loaded in a pandas DataFrame. 
+        If data is stored in an AGSample object this can be retrieved by
+        calling the sample, i.e. mysample().
+    xCol, yCol : str
+        Marker labels.
+    vI : list-like or AGgate object
+        Parent population to apply the gating to.
+    threshList : list-like of float or int
+        Requires four float or int values. These are the thresholds in each direction for the gate. \n
+        In order; bottom x threshold, top x threshold, left y threshold, right y threshold.
+        Either the x or y thresholds must be equal (that axis will be fix).
+    scale : str, optional, default: 'linear'
+        If plotting enabled, which scale to be used on both axis.
+    T : int, optional, default: 1000
+        If plotting enabled and scale is logish, the threshold for linear-loglike transition.    
+    filePlot : str, optional, default: None
+        Option to plot the gate to file to specified path. \n
+        Warning: might overwrite stuff.
+
+    **Returns**
+
+    List-like, list-like, list-like, list-like
+        Indicies of events in each quadrant, in order: topleft, topright, bottomright, bottomleft
+        
+    **Examples**
+
+    None currently.
+    """     
     if ag.execMode in ["jupyter","ipython"]:
         plot=True
     else:
@@ -599,6 +1001,9 @@ def customQuadGate(fcsDF, xCol, yCol,threshList, vI=sentinel, scale='linear',T=1
     elif len(vI)==0:
         sys.stderr.write("Passed index contains no events\n") 
         return []
+    if filePlot is not None:
+        if not isinstance(filePlot,str):
+            raise TypeError("If plotting to file is requested filePlot must be string filename")
     if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
         raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
     if not isinstance(threshList, list):
@@ -651,7 +1056,7 @@ def customQuadGate(fcsDF, xCol, yCol,threshList, vI=sentinel, scale='linear',T=1
     if counter==4:
         sys.stderr.write("No quadrant contains events\n")
         return None
-    if plot:
+    if plot or filePlot is not None:
         if scale=='logish':
             fig,ax=ag.plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)    
         else:
@@ -666,11 +1071,53 @@ def customQuadGate(fcsDF, xCol, yCol,threshList, vI=sentinel, scale='linear',T=1
             ag.addLine(fig,ax,[xlim[0],yRightThresh],[xlim[1],yRightThresh],scale=scale, T=T)
             ag.addLine(fig,ax,[xTopThresh,ylim[1]],[xTopThresh,yLeftThresh],scale=scale, T=T)
             ag.addLine(fig,ax,[xBottomThresh,ylim[0]],[xBottomThresh,yLeftThresh],scale=scale, T=T)
-        ag.plt.show()       
+        if filePlot is not None:
+            ag.plt.savefig(filePlot)
+            ag.plt.close()
+        if plot:
+            ag.plt.show()       
     return vTopLeft, vTopRight, vBottomRight, vBottomLeft
 
 #TODO
-def backGate(fcsDF, xCol, yCol, vI=sentinel, backPop=sentinel, markersize=2, scale='linear',xscale='linear',yscale='linear',T=1000):
+def backGate(fcsDF, xCol, yCol, vI=sentinel, backPop=sentinel, markersize=2, scale='linear',xscale='linear',yscale='linear',T=1000, filePlot=None):
+    """
+    Highlights a population onto another view/population.\n
+    Typically used to see where rarer populations are located on an earlier view in a gating strategy.
+    
+    **Parameters**
+    
+    fcsDF : pandas.DataFrame
+        Flow data loaded in a pandas DataFrame. \n
+        If data is stored in an AGSample object this can be retrieved by
+        calling the sample, i.e. mysample().
+    xCol : str
+        Marker label.
+    backPop : list-like or AGgate object
+        Background population.
+    vI : list-like or AGgate object
+        Population that should be highlighted.
+    markersize : float, optional, default: 2
+        Size of events of the 'backPop' population.
+    scale : str, optional, default: 'linear'
+        Which scale to be used on axis.
+    xscale : str, optional, default: 'linear'
+        Which scale to be used on x-axis.
+    yscale : str, optional, default: 'linear'
+        Which scale to be used on y-axis.        
+    T : int, optional, default: 1000
+        If scale is logish, the threshold for linear-loglike transition.
+    filePlot : str, optional, default: None
+        Option to plot the gate to file to specified path. \n
+        Warning: might overwrite stuff.
+
+    **Returns**
+
+    None
+
+    **Examples**
+
+    None currently.
+    """
     if ag.execMode in ["jupyter","ipython"]:
         plot=True
     else:
@@ -688,7 +1135,9 @@ def backGate(fcsDF, xCol, yCol, vI=sentinel, backPop=sentinel, markersize=2, sca
         return None
     if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
         raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
-    
+    if filePlot is not None:
+        if not isinstance(filePlot,str):
+            raise TypeError("If plotting to file is requested filePlot must be string filename")    
     if scale=='logish':
         fig,ax=ag.plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)    
     else:
@@ -709,5 +1158,7 @@ def backGate(fcsDF, xCol, yCol, vI=sentinel, backPop=sentinel, markersize=2, sca
         y=ag.convertToLogishPlotCoordinates(y,vmin,vmax,T)
     #color is 'pinkish red'
     ax.plot(x,y,'o',color='#f10c45',markersize=markersize)
-    
+    if filePlot is not None:
+        ag.plt.savefig(filePlot)
+        ag.plt.close()
     return None

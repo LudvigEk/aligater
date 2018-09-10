@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-#	______|\__________\o/__________
+# -*- coding: utf-8 -*-
+#
 #			~~aliGater~~
 #	(semi)automated gating software
 #
-#	Utilizing Dislin for plots, non-commercial use only!
-#	Relevant EULA section:
-#	Grant of Free Usage
-#	You are allowed to use DISLIN for free as a private person or as a member of an institute that does not earn money with selling any products and services.
-#	http://dislin.de
+#               /^^\
+#   /^^\_______/0  \_
+#  (                 `~+++,,_________,,++~^^^^^^^
+#..V^V^V^V^V^V^\.................................
 #
-#	Utilizing Intels Math Kernel Library (MKL)
+#
+#	Parsing flow data with fcsparser from Eugene Yurtsevs FlowCytometryTools (very slightly modified)
+#	Check out his excellent toolkit for flow cytometry analysis: 
+#	http://eyurtsev.github.io/FlowCytometryTools/
 #
 #	Björn Nilsson & Ludvig Ekdahl 2016~
-#	http://nilssonlab.org
+#	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
 
 import aligater as ag
 import numpy as np
@@ -22,14 +25,81 @@ sentinel = object()
 from scipy.ndimage.filters import gaussian_filter
 from scipy.stats import halfnorm
 
-def variableQuadGate(fcsDF, xCol, yCol, threshList, testRange, position, testSteps=20, vI=sentinel, scale='linear', bins=300, sigma=2, T=1000, only_solution=False, scoreThresh=1):
+def variableQuadGate(fcs, xCol, yCol, threshList, testRange, position, testSteps=20, parentGate=sentinel, scale='linear', bins=300, sigma=2, T=1000, only_solution=False, scoreThresh=1,filePlot=None):
+    """
+    A quadgate function that tests the threshold on one axis and attempts to find the least-dense point to set that limit. \n
+    
+    **Parameters**
+    
+    fcs : AGClasses.AGSample object
+        Flow data loaded in an sample object.
+    xCol, yCol : str
+        Marker labels.
+    threshList : list-like of float or int
+        Requires four float or int values. These are the thresholds in each direction for the gate. \n
+        In order; bottom x threshold, top x threshold, left y threshold, right y threshold.
+        Either the x or y thresholds must be equal (that axis will be fix).
+    testRange : list-like of float or int
+        Requires two float or int values, this is the interval in which the function will search for the least dense point to set the threshold.
+    position : str
+        Which direction to test. \n 
+        Options are: 'left', 'right', 'top', 'bottom'
+    testSteps, int, optional, default: 20
+        The testRange will be equally divided into this many limits and each tested.\n
+        Increase this to increase precision.
+    parentGate : AGgate object, optional
+        Parent population to apply the gating to. 
+        If no AGgate object is passed gating is applied to the ungated data frame.        
+    scale : str, optional, default: 'linear'
+        If plotting enabled, which scale to be used on both axis.
+    T : int, optional, default: 1000
+        If plotting enabled and scale is logish, the threshold for linear-loglike transition.    
+    bins : int, optional, default: 300
+        Defines the resolution of the heatmap.
+    sigma : float, optional, default: 2
+        Smoothing factor for the heatmap.
+    only_solution : bool, optional, default: False
+        Changes return behaviour.\n
+        If True the function does not plot and only returns the resulting float threshold.
+    scoreThresh : float, optional, default: 1
+        Changes the acceptance of new solutions. \n 
+        A solution will be accepted if it's better when multiplied by this value. \n
+        Can be both higher and lower than one.
+    filePlot : str, optional, default: None
+        Option to plot the gate to file to specified path.\n
+        Warning: might overwrite stuff.
+        
+    **Returns**
+
+    List-like, List-like, List-like, List-like, float
+        If only_solution is False, returns the four gated population as list-like indicies in clockwise order;\n
+        top left, top right, bottom right, bottom right \n
+        It also returns the threshold it found to be best.
+    float
+        If only_solution is True, returns the threshold with the best score.
+
+    **Notes**    
+    
+    Can be called iteratively to test many variations of the gate by setting only_solution to True. \n 
+    A final call can then be made with this set to True or used to call customQuadGate.\n
+    
+    **Examples**
+
+    None currently.
+    """
+    
     if ag.execMode in ["jupyter","ipython"]:
         plot=True
     else:
         plot=False    
-    if vI is sentinel:
-        vI=fcsDF.index
-    if len(vI)<2:
+    if parentGate is sentinel:
+        vI=fcs.full_index()
+    elif not parentGate.__class__.__name__ == "AGgate":
+        raise TypeError("invalid AGgate object")
+    else:
+        vI=parentGate()
+    fcsDF=fcs()
+    if len(vI)<ag.minCells:
         sys.stderr.write("Passed index contains no events\n") 
         if only_solution:
             return []
@@ -52,8 +122,7 @@ def variableQuadGate(fcsDF, xCol, yCol, threshList, testRange, position, testSte
     result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, threshList[0], threshList[1], threshList[2], threshList[3], scale, T)
     reportStr="Input quadgate solution score: "+str(result)+"\n"
     sys.stderr.write(reportStr)
-#    if plot:
-#        ag.customQuadGate(fcsDF, "IgD", "CD27", vI=vI,  threshList=threshList[0:4], scale=scale, plot=plot)
+
     solutions.append([threshList[0], threshList[1], threshList[2], threshList[3],result])
     
     testThreshRange=np.linspace(testRange[0],testRange[1],testSteps)
@@ -76,16 +145,13 @@ def variableQuadGate(fcsDF, xCol, yCol, threshList, testRange, position, testSte
     for index, score in enumerate(scores):
         if score < scoreThresh*scores[0]:
             solutionIndex=index
-    #solutionIndex = scores.index(min(scores))
     reportStr="Tested "+str(len(solutions)-1)+" solution(s) excluding the input solution\nBest solution had score: "+str(scores[solutionIndex])+"\n"
     sys.stderr.write(reportStr)
     
     if only_solution:
-#        if plot:
-#            ag.customQuadGate(fcsDF, xCol, yCol, vI=vI,  threshList=solutions[solutionIndex][:-1], scale=scale, plot=plot)
         return solutions[solutionIndex]
     
-    topLeft, topRight, bottomRight, bottomLeft = ag.customQuadGate(fcsDF, xCol, yCol, vI=vI,  threshList=solutions[solutionIndex][:-1], scale=scale)
+    topLeft, topRight, bottomRight, bottomLeft = ag.customQuadGate(fcsDF, xCol, yCol, vI=vI,  threshList=solutions[solutionIndex][:-1], scale=scale, filePlot=filePlot)
     return topLeft, topRight, bottomRight, bottomLeft, solutions[solutionIndex]
 
 def findBin(heatmap, value, edges, scale='linear', T=1000):
@@ -193,6 +259,57 @@ def penalty(dx, phi):
     return penalty
 
 def penaltyValleySeek(fcsDF, xCol, x0, vI=sentinel, direction='up', phi=1, sigma=3, bins=300, scale='linear', T= 1000):
+    """
+    
+    Similar to valleySeek, but searches from a starting point in a given direction with penalty.\n
+    Prefers the starting position unless a new threshold is better even with penalty.
+    
+    **Parameters**
+    
+    fcsDF : pandas.DataFrame
+        Flow data loaded in a pandas DataFrame. \n
+        If data is stored in an AGSample object this can be retrieved by
+        calling the sample, i.e. mysample().
+    xCol : str
+        Marker label.
+    x0 : float
+        Starting position for search.
+    vI : list-like or AGgate object
+        Parent population to apply the gating to.
+    direction, str, optional, default: 'up'
+        Which direction to perform search. \n
+        'up' means from starting point to increasing values on the axis. \n
+        'down' means from starting point towards decreasing values on the axis.
+    phi : float, optional, default: 1
+        Factor for the penalty function. See notes.\n
+    sigma : float, optional, default: 3
+        Smoothing factor of density function (kernel smooth).
+    bins : int, optional, default: 300
+        Number of bins in density histogram.
+    scale : str, optional, default: 'linear'
+        If plotting enabled, which scale to be used on axis.
+    T : int, optional, default: 1000
+        If plotting enabled and scale is logish, the threshold for linear-loglike transition
+
+    **Returns**
+
+    float
+        Coordinate on axis with lowest density in given interval.
+
+    **Notes**
+    
+    The penalty function adds the absolute difference between starting coordinate and end coordinate multiplied by phi to the score of a solution. \n
+    Higher phi will apply heavier penalty for the distance from the starting position.\n
+    If phi is set very low (or 0) it's likely that the best threshold will be found at the very end of the axis.\n
+    
+    Note that the input heatmap is smoothed to avoid finding localized minima due to noise. This has the drawback that returned thresholds are approximate of the least dense point, the error is:\n
+    +- ( bin width / 2 )
+
+    **Examples**
+
+    None currently.
+    """
+    
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:

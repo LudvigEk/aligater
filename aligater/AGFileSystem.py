@@ -1,15 +1,21 @@
-#	______|\__________\o/__________
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
 #			~~aliGater~~
 #	(semi)automated gating software
 #
-#	Utilizing Dislin for plots, non-commercial use only!
-#	Relevant EULA section:
-#	Grant of Free Usage
-#	You are allowed to use DISLIN for free as a private person or as a member of an institute that does not earn money with selling any products and services.
-#	http://dislin.de
+#               /^^\
+#   /^^\_______/0  \_
+#  (                 `~+++,,_________,,++~^^^^^^^
+#..V^V^V^V^V^V^\.................................
+#
+#
+#	Parsing flow data with fcsparser from Eugene Yurtsevs FlowCytometryTools (very slightly modified)
+#	Check out his excellent toolkit for flow cytometry analysis: 
+#	http://eyurtsev.github.io/FlowCytometryTools/
 #
 #	Björn Nilsson & Ludvig Ekdahl 2016~
-#	http://nilssonlab.org
+#	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
 
 import aligater as ag
 import numpy as np
@@ -72,7 +78,7 @@ def getCompensationMatrix(fcsDF, metaDict):
     
     return colNames, comp_matrix
     
-def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=sentinel, non_verbose=False):
+def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=sentinel):
     if not isinstance(return_type, str):
         raise TypeError("return_type must be specified as string and either of 'AGsample' or 'index'")
     if not return_type.lower() in ['agsample', 'index']:
@@ -88,7 +94,7 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
             raise TypeError("Manual compensation matrix must be a numpy ndarray")
     pardir=ag.getFileName(ag.getParent(path))
     parpardir=ag.getFileName(ag.getParent(ag.getParent(path)))
-    if not non_verbose:
+    if ag.ag_verbose:
         sys.stderr.write("Opening file "+ag.getFileName(path)+" from folder /"+parpardir+"/"+pardir+"\n")
     metaDict,fcsDF = ag.parse(path,output_format='DataFrame')
     rows=fcsDF.shape[0]
@@ -100,14 +106,14 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
         sys.stderr.write("First four columns of fcs file are not foward and side scatters, skippping\n")
         return None
         
-    if not non_verbose:
+    if ag.ag_verbose:
         sys.stderr.write("Loaded dataset with "+str(rows)+" events.\n")
     if rows < ag.cellFilter:
-        if not non_verbose:
+        if ag.ag_verbose:
             sys.stderr.write("Sample has fewer events than cellFilter threshold, skipping\n")
         return None
     
-    if not non_verbose:
+    if ag.ag_verbose:
         sys.stderr.write("Marker labels: ")
         for elem in cols:
             sys.stderr.write(elem+ " ")

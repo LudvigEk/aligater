@@ -1,17 +1,22 @@
-#	______|\__________\o/__________
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
 #			~~aliGater~~
 #	(semi)automated gating software
 #
-#	Utilizing Dislin for plots, non-commercial use only!
-#	Relevant EULA section:
-#	Grant of Free Usage
-#	You are allowed to use DISLIN for free as a private person or as a member of an institute that does not earn money with selling any products and services.
-#	http://dislin.de
+#               /^^\
+#   /^^\_______/0  \_
+#  (                 `~+++,,_________,,++~^^^^^^^
+#..V^V^V^V^V^V^\.................................
 #
-#	Utilizing Intels Math Kernel Library (MKL)
+#
+#	Parsing flow data with fcsparser from Eugene Yurtsevs FlowCytometryTools (very slightly modified)
+#	Check out his excellent toolkit for flow cytometry analysis: 
+#	http://eyurtsev.github.io/FlowCytometryTools/
 #
 #	Björn Nilsson & Ludvig Ekdahl 2016~
-#	http://nilssonlab.org
+#	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,19 +26,48 @@ import matplotlib.lines as lines
 import aligater as ag
 import matplotlib.ticker as ticker
 from aligater.AGClasses import LogishLocator, LogishFormatter
+#from ag.AGClasses import LogishLocator, LogishFormatter
 #from scipy.stats import gaussian_kde
 from scipy.ndimage.filters import gaussian_filter1d#, gaussian_filter
 import sys
 
 sentinel = object()
-def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='linear', yscale='linear', thresh=1000, aspect='auto'):
+def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='linear', yscale='linear', thresh=1000, aspect='auto', **kwargs):
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)<2:
         sys.stderr.write("Passed index contains no events\n")
-        return None
+        return None, None
     if len(vI)<bins:
         bins=len(vI)
+    if scale.lower()=='logish':
+        xscale='logish'
+        yscale='logish'
+    #Default x and y lims        
+    bYlim=False
+    bXlim=False
+    #TODO:testing
+    if 'xlim' in kwargs:
+            if not isinstance(kwargs['xlim'],list):
+                raise TypeError("if xlim is passed, it must be a list of float/int")
+            elif not all(isinstance(i,(float,int)) for i in kwargs['xlim']):
+                raise TypeError("Non float/int element encountered in xlim")
+            else:
+                xscale_limits=kwargs['xlim']
+                if xscale.lower()=='logish':
+                    xscale_limits=logishTransform(xscale_limits,thresh)
+                    bXlim=True
+    if 'ylim' in kwargs:
+            if not isinstance(kwargs['ylim'],list):
+                raise TypeError("if ylim is passed, it must be a list of float/int")
+            elif not all(isinstance(i,(float,int)) for i in kwargs['ylim']):
+                raise TypeError("Non float/int element encountered in ylim")
+            else:
+                yscale_limits=kwargs['ylim'] 
+                if yscale.lower()=='logish':
+                    yscale_limits=logishTransform(yscale_limits,thresh)
+                    bYlim=True
+                    
     vX=ag.getGatedVector(fcsDF, x, vI)
     vY=ag.getGatedVector(fcsDF, y, vI)
     plt.clf()
@@ -48,9 +82,7 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     plt.ylabel(y)
     cmap=plt.get_cmap()
     cmap.set_bad(color='white') #Zeroes should be white, not blue
-    if scale.lower()=='logish':
-        xscale='logish'
-        yscale='logish'
+
     if xscale.lower()=='logish':
         ax=plt.gca()
         ax.xaxis.set_major_locator(LogishLocator(subs='all'))
@@ -59,6 +91,10 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
         ax=plt.gca()
         ax.yaxis.set_major_locator(LogishLocator(subs='all'))
         ax.yaxis.set_major_formatter(LogishFormatter())
+    if bXlim:
+        ax.xaxis.set_xlim(left=xscale_limits[0], right=xscale_limits[1])
+    if bYlim:
+        ax.yaxis.set_xlim(left=yscale_limits[0], right=yscale_limits[1])
     return fig,ax
 
 def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xlim=None, ylim=None):
@@ -244,6 +280,14 @@ from sklearn.decomposition import PCA
 
 def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
     immatrix = np.array([im.flatten() for im in imlist],'f')
+    if immatrix.shape[0] == 0:
+        reportStr="ERROR: imagedata missing\n"
+        sys.stderr.write(reportStr)
+        return #TODO: SHOULD BE RAISE
+    if immatrix.shape[0] < nOfComponents:
+        reportStr="WARNING: fewer samples than requested components for PC analysis, adjusting\n"
+        sys.stderr.write(reportStr)
+        nOfComponents=immatrix.shape[0]
     pca_obj = PCA(n_components=nOfComponents)
     pca_obj.fit(immatrix)
     projection_d = pca_obj.transform(immatrix)
@@ -268,6 +312,23 @@ def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
     return projection_d_df
     
 def imagePCA(imlist):
+    """
+    Principal Component Analysis of heatmap images, plots results.
+    Takes a list-like of heatmap images, flattens them and calls image_pca.
+    
+    **Parameters**
+    
+    X, list-like
+        List-like matrix with training data stored as flattened arrays in rows.
+        
+    **Returns** 
+   
+    None
+
+    **Examples**
+
+    None currently.
+    """
     m=16
     n=16
     # create matrix to store all flattened images
@@ -286,34 +347,51 @@ def imagePCA(imlist):
 
 
 def image_pca(X):
-  """  Principal Component Analysis
-    input: X, matrix with training data stored as flattened arrays in rows
-    return: projection matrix (with important dimensions first), variance
-    and mean."""
+    """
+    Principal Component Analysis of heatmap images, main purpose is to be called internally by imagePCA
+    
+    **Parameters**
+    
+    X, list-like
+        List-like matrix with training data stored as flattened arrays in rows.
+        
+   **Returns** 
+   
+    List-like    
+        Projection matrix (with important dimensions first)
+    Float
+        Variance
+    Float
+        Mean
 
-  # get dimensions
-  num_data,dim = X.shape
+    **Examples**
 
-  # center data
-  mean_X = X.mean(axis=0)
-  X = X - mean_X
+    None currently.
+    """
 
-  if dim>num_data:
-    # PCA - compact trick used
-    M = np.dot(X,X.T) # covariance matrix
-    e,EV = np.linalg.eigh(M) # eigenvalues and eigenvectors
-    tmp = np.dot(X.T,EV).T # this is the compact trick
-    V = tmp[::-1] # reverse since last eigenvectors are the ones we want
-    S = np.sqrt(e)[::-1] # reverse since eigenvalues are in increasing order
-    for i in range(V.shape[1]):
-      V[:,i] /= S
-  else:
-    # PCA - SVD used
-    U,S,V = np.linalg.svd(X)
-    V = V[:num_data] # only makes sense to return the first num_data
+    # get dimensions
+    num_data,dim = X.shape
 
-  # return the projection matrix, the variance and the mean
-  return V,S,mean_X
+    # center data
+    mean_X = X.mean(axis=0)
+    X = X - mean_X
+
+    if dim>num_data:
+        # PCA - compact trick used
+        M = np.dot(X,X.T) # covariance matrix
+        e,EV = np.linalg.eigh(M) # eigenvalues and eigenvectors
+        tmp = np.dot(X.T,EV).T # this is the compact trick
+        V = tmp[::-1] # reverse since last eigenvectors are the ones we want
+        S = np.sqrt(e)[::-1] # reverse since eigenvalues are in increasing order
+        for i in range(V.shape[1]):
+            V[:,i] /= S
+    else:
+        # PCA - SVD used
+        U,S,V = np.linalg.svd(X)
+        V = V[:num_data] # only makes sense to return the first num_data
+
+    # return the projection matrix, the variance and the mean
+    return V,S,mean_X
 
 
 def main():

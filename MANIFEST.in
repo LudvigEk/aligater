@@ -1,1 +1,5 @@
-include README.rst
+include aligater/AG*.py* 
+include aligater/__init__.py
+include aligater/fscparser_api.py
+include pyAliGater_testing.ipynb
+include README.txt
