@@ -17,11 +17,18 @@
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
  
-import aligater as ag
+#import aligater as ag
 import sys
 import numpy as np
 from cpython cimport bool
 from scipy.ndimage.filters import gaussian_filter
+import matplotlib.pyplot as plt
+
+#AliGater imports
+import aligater.AGConfig as agconf
+from aligater.AGFileSystem import getGatedVector, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
+from aligater.AGPlotRoutines import addLine, addAxLine, getHeatmap, logishTransform, plotHeatmap, plot_densityFunc, convertToLogishPlotCoordinate
+from aligater.AGClasses import AGsample,AGgate
 
 #For cython optimisations with boundscheck and wraparound
 cimport cython
@@ -41,8 +48,11 @@ sentinel=object()
 
 @cython.boundscheck(False)
 def gateEllipsoid(fcsDF, str xCol, str yCol, float xCenter, float yCenter, list majorAxis, float majorRadii, list minorAxis, float minorRadii, vI=sentinel, str population="inner", bool info=True):   
+    #******************Internal*******************
+    #******Should have wrapper********
     """
     Function that gates an ellipsoid given by direction and length of its axis'.
+    Currently internal function, will produce a user friendly(ier) wrapper.
     
     **Parameters**
     
@@ -98,8 +108,8 @@ def gateEllipsoid(fcsDF, str xCol, str yCol, float xCenter, float yCenter, list 
         raise TypeError("Specify desired population, 'outer' or 'inner' in regard to ellipsoid")    
     vOutput=[]
 
-    cdef np.ndarray[dtype_t, ndim = 1] vX = ag.getGatedVector(fcsDF, xCol, vI, return_type='nparray',dtype=np.float64)
-    cdef np.ndarray[dtype_t, ndim = 1] vY = ag.getGatedVector(fcsDF, yCol, vI, return_type='nparray', dtype=np.float64)
+    cdef np.ndarray[dtype_t, ndim = 1] vX = getGatedVector(fcsDF, xCol, vI, return_type='nparray',dtype=np.float64)
+    cdef np.ndarray[dtype_t, ndim = 1] vY = getGatedVector(fcsDF, yCol, vI, return_type='nparray', dtype=np.float64)
     cdef float Ux=majorAxis[0]*1/majorRadii
     cdef float Uy=majorAxis[1]*1/majorRadii
     cdef float Vx=minorAxis[0]*1/minorRadii
@@ -135,45 +145,94 @@ def gateEllipsoid(fcsDF, str xCol, str yCol, float xCenter, float yCenter, list 
     if (len(vOutput) == 0 and population.lower() == "outer"):
         sys.stderr.write("No events outside ellipsoid\n")
     if info:
-        ag.reportGateResults(vI, vOutput)
+        reportGateResults(vI, vOutput)
     return vOutput
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=sentinel, population="upper", scale='linear', linCutOff=1000, info=True, update=True,filePlot=None):
-    if ag.execMode in ["jupyter","ipython"]:
+def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', linCutOff=1000, update=False,filePlot=None, QC=False, *args, **kwargs):
+    """
+    Threshold gating function. Can be called with one or two markers which affects plotting.\n
+    Call with two markers to get a two dimensional view or with one col which will instead show a density plot.
+    
+    **Parameters**
+    
+    fcs : AGClasses.AGSample object
+        Flow data loaded in an sample object.
+    xCol : str
+        Marker label.
+    yCol : str, optional, default: None
+        Marker label. If specified, opts for a two dimensional view when plotting. Otherwise, a density plot.
+    thresh : float
+        Threshold for cutoff, see orientation and population parameters for how this is applied.
+    orientation, str, optional, default: 'vertical'
+        If two markers are passed this parameter decies if the cut is made on the x- or y-axis.\n
+        'vertical' corresponds to drawing a vertical line in the plot, i.e. cut-off is applied to the x-axis.
+        'horisontal' corresponds to drawing a horisontal line in the plot, i.e. cut-off is applied to the y-axis.
+    population, str, optional, default: 'upper'
+        This parameter determines which population should be returned.\n
+        'upper' means any events with a value above the treshold are returned.\n
+        'lower' means any events with a value below the treshold will be returned.\n
+        The default value means the population that's considered 'positive' in flow cytometry terms is returned.
+    parentGate : AGgate object, optional
+        Parent population to apply the gating to. 
+        If no AGgate object is passed gating is applied to the ungated data frame.
+    scale : str, optional, default: 'linear'
+        If plotting enabled, which scale to be used on both axis.
+    linCutOff : int, optional, default: 1000
+        If plotting enabled and scale is logish, the threshold for linear-loglike transition
+    update : bool, optional, default: False
+        If True will add the resulting gated population(s) to the sample objects gate list in adition to returning the gate object.\n
+        If False (default), returns an AGgate object without adding it to the sample object.
+    filePlot : str, optional, default: None
+        Option to plot the gate to file to specified path. \n
+        Warning: might overwrite stuff.    
+    QC : bool, optional, default: False
+        If True, adds a downsampled image of the gating view to the gate object. These can be collected by an AGExperiment object if it's QC flag is also True.
+        
+    **Returns**
+
+    AGClasses.AGgate object
+         Returns an AGgate object for the gated population.
+
+    **Examples**
+
+    None currently.
+    """ 
+    if agconf.execMode in ["jupyter","ipython"]:
         plot=True
     else:
         plot=False
-    if not fcs.__class__.__name__=="AGsample":
-        raise TypeError("invalid AGsample object")
-    if parentGate is sentinel:
+    if not isinstance(fcs,AGsample):
+        raise invalidSampleError("in gateThreshold:")
+    if parentGate is None:
         vI=fcs.full_index()
-    elif not parentGate.__class__.__name__ == "AGgate":
-        raise TypeError("invalid AGgate object")
+    elif not isinstance(parentGate,AGgate):
+        raise invalidAGgateParentError('in gateThreshold:')
     else:
         vI=parentGate()
     fcsDF=fcs()
     if filePlot is not None:
         if not isinstance(filePlot,str):
-            raise TypeError("If plotting to file is requested filePlot must be string filename")
+            raise filePlotError("in gateThreshold:")
     if not isinstance(thresh, (float,int)):
-        raise TypeError("thresh must be specified as float or integer value")
+        raise AliGaterError("thresh must be specified as float or integer value","in gateThreshold: ")
     if yCol is not None:
         if yCol not in fcsDF.columns:
-            raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
+            raise markerError("in gateThreshold, marker: '"+str(yCol)+"'")
     if xCol not in fcsDF.columns:
-        raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
+        raise markerError("in gateThreshold, marker: '"+str(yCol)+"'")
     if population.lower() not in ["upper","lower"]:
-        raise TypeError("Specify desired population, 'upper' or 'lower' in regard to set threshold")
+        raise AliGaterError("Specify desired population, 'upper' or 'lower' in regard to set threshold","in gateThreshold: ")
     if orientation.lower() not in ["horisontal","vertical"]:
-        raise TypeError("Specify desired population, 'upper' or 'lower' in regard to set threshold") 
-    if len(vI)<ag.minCells:
-        sys.stderr.write("Passed parent population contains too few events\n") 
-        return ag.AGgate([],[],xCol,yCol,"name")
-    if thresh is None:
-        sys.stderr.write("Thresh passed as NoneType, assuming too few elements")
-        return ag.AGgate([],[],xCol,yCol,"name")
+        raise AliGaterError("Specify desired population, 'upper' or 'lower' in regard to set threshold","in gateThreshold: ") 
+    if len(vI)<5:
+        sys.stderr.write("WARNING, in gateThreshold: Passed parent population to "+str(name)+" contains too few events, returning empty gate.\n") 
+        outputGate=AGgate([],parentGate,xCol,yCol,name)
+        if update:
+            fcs.update(outputGate, QC=QC)         
+        return outputGate
+
     if yCol is None:
         densityPlot=True
     else:
@@ -187,7 +246,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
     cdef int nOfEvents = len(vI)
     cdef dtype_t t = np.float64(thresh)
     if orientation.lower() == "vertical":
-        data=ag.getGatedVector(fcsDF, xCol, vI, return_type="nparray", dtype=np.float64)
+        data=getGatedVector(fcsDF, xCol, vI, return_type="nparray", dtype=np.float64)
         if population.lower()=="upper":
             for i in range(0,nOfEvents,1):
                 index=tmp_vI[i]
@@ -202,7 +261,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
                     vOutput.append(index)
     if yCol is not None:
         if orientation.lower() == "horisontal":
-            data=ag.getGatedVector(fcsDF, yCol, vI, return_type="nparray", dtype=np.float64)
+            data=getGatedVector(fcsDF, yCol, vI, return_type="nparray", dtype=np.float64)
             if population.lower()=="upper":
                 for i in range(0,nOfEvents,1):
                     index=tmp_vI[i]
@@ -216,63 +275,69 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
                     if value < t:
                         vOutput.append(index)
 
-    if (plot or filePlot is not None) and not densityPlot and info:
-        fig,ax = ag.plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=linCutOff)
-        ag.addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+    if (plot or filePlot is not None) and not densityPlot:
+        fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=linCutOff)
+        addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
         if filePlot is not None:
-            ag.plt.savefig(filePlot)
+            plt.savefig(filePlot)
             if not plot:
-                ag.plt.close(fig)
+                plt.close(fig)
         if plot:
-            ag.plt.show()
-            ag.plt.clf()
-            ag.plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
-            ag.plt.show()
-    if (plot or filePlot is not None) and densityPlot and info:
-        fig,ax =ag.plot_densityFunc(fcsDF,xCol, vI, scale=scale)
-        ag.addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+            plt.show()
+            plt.clf()
+            plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
+            plt.show()
+    if (plot or filePlot is not None) and densityPlot:
+        fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale,*args,**kwargs)
+        addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
         if filePlot is not None:
-            ag.plt.savefig(filePlot)
+            plt.savefig(filePlot)
             if not plot:
-                ag.plt.close(fig)
+                plt.close(fig)
         if plot:
-            ag.plt.show()
-    if info:
-        ag.reportGateResults(vI, vOutput)
+            plt.show()
+    if agconf.ag_verbose:
+        reportGateResults(vI, vOutput)
     
-    if parentGate is not sentinel:
-        outputGate=ag.AGgate(vOutput, parentGate, xCol, yCol, name)
-    else:
-        outputGate=ag.AGgate(vOutput, fcs.full_index(), xCol, yCol, name)
+
+    outputGate=AGgate(vOutput, parentGate, xCol, yCol, name)
+    
     if update:
-        fcs.update(outputGate, QC=True)
+        fcs.update(outputGate, QC=QC)
     return outputGate
 
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def shortestPathMatrix(fcs, str name, str xCol, str yCol, list boundaries, parentGate=sentinel, float sigma=3, int maxStep=20, str scale='linear', str xscale='linear', str yscale='linear', int bins=300, float T=1000, update=True):
-    if ag.execMode in ["jupyter","ipython"]:
+def shortestPathMatrix(fcs, str name, str xCol, str yCol, list boundaries, parentGate=None, float sigma=3, int maxStep=20, str scale='linear', str xscale='linear', str yscale='linear', int bins=300, float T=1000, update=True, QC=False):
+    if agconf.execMode in ["jupyter","ipython"]:
         plot=True
     else:
         plot=False
     cdef list vI, originalvI
     if not fcs.__class__.__name__=="AGsample":
         raise TypeError("invalid AGsample object")
-    if parentGate is sentinel:
+    if parentGate is None:
         vI=fcs.full_index()
     elif not parentGate.__class__.__name__ == "AGgate":
-        raise TypeError("invalid AGgate object")
+        raise TypeError("Parent population in "+name+" is an invalid AGgate object.")
     else:
         vI=parentGate()
+    if len(vI)<5:
+        sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
+        outputGate=AGgate([],parentGate,xCol,yCol,name)
+        if update:
+            fcs.update(outputGate, QC=QC)         
+        return outputGate
+        
     originalvI=vI
     fcsDF=fcs()
-    tmpvI=ag.gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=boundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=parentGate,info=False, update=False)
-    vI=ag.gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=boundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False,update=False)()
-    cdef np.ndarray vX=ag.getGatedVector(fcsDF, xCol, vI, return_type="nparray")
-    cdef np.ndarray vY=ag.getGatedVector(fcsDF, yCol, vI, return_type="nparray")
+    tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=boundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=parentGate,info=False, update=False)
+    vI=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=boundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False,update=False)()
+    cdef np.ndarray vX=getGatedVector(fcsDF, xCol, vI, return_type="nparray")
+    cdef np.ndarray vY=getGatedVector(fcsDF, yCol, vI, return_type="nparray")
     xscale = yscale = scale
-    heatmap, xedges, yedges = ag.getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
+    heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
     cdef np.ndarray[dtype_t, ndim=2] smoothedHeatmap = gaussian_filter(heatmap.astype(float),sigma=sigma)
     cdef np.ndarray[dtype_t, ndim=2] cost = np.empty_like(smoothedHeatmap, dtype=np.float_)
     cdef np.ndarray[dtype_t, ndim=2] leftBin = np.empty_like(smoothedHeatmap, dtype=np.float_)
@@ -331,13 +396,13 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list boundaries, paren
     cdef list coord
     if plot:
         heatmap=np.ma.masked_where(smoothedHeatmap == 0, smoothedHeatmap)
-        ag.plt.clf()
-        fig, ax = ag.plt.subplots()
+        plt.clf()
+        fig, ax = plt.subplots()
         extent = [xedges[0], xedges[bins], yedges[0], yedges[bins]]
-        ag.plt.imshow(heatmap.T, extent=extent, origin='lower',aspect='auto')
-        ag.plt.xlabel(xCol)
-        ag.plt.ylabel(yCol)
-        cmap=ag.plt.get_cmap()
+        plt.imshow(heatmap.T, extent=extent, origin='lower',aspect='auto')
+        plt.xlabel(xCol)
+        plt.ylabel(yCol)
+        cmap=plt.get_cmap()
         cmap.set_bad(color='white')
     
         #draw line of shortest path
@@ -346,21 +411,21 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list boundaries, paren
                 previousCoord=coord
                 count+=1
                 continue 
-            fig,ax = ag.addLine(fig,ax,previousCoord,coord)
+            fig,ax = addLine(fig,ax,previousCoord,coord)
             previousCoord=coord
             count+=1
-        ag.plt.show()
-    vOut=ag.gatePointList(fcsDF,xCol,yCol,path, vI=originalvI)
-    ag.reportGateResults(originalvI,vOut)
+        plt.show()
+    vOut=gatePointList(fcsDF,xCol,yCol,path, vI=originalvI)
+    reportGateResults(originalvI,vOut)
     
     if plot:
-        ag.plt.clf()
-        ag.plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
-        ag.plt.show()
+        plt.clf()
+        plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
+        plt.show()
     if parentGate is not sentinel:
-        outputGate=ag.AGgate(vOut, parentGate, xCol, yCol, name)
+        outputGate=AGgate(vOut, parentGate, xCol, yCol, name)
     else:
-        outputGate=ag.AGgate(vOut, fcs.full_index(), xCol, yCol, name)
+        outputGate=AGgate(vOut, fcs.full_index(), xCol, yCol, name)
     if update:
         fcs.update(outputGate, QC=True)
         
@@ -384,10 +449,10 @@ def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, scale=
     if scale.lower() not in ['linear', 'logish']:
         raise("specify scale as 'logish' or 'linear'\n")
     vOut=[]
-    vX=ag.getGatedVector(fcsDF, xCol, vI,return_type='nparray')
-    vY=ag.getGatedVector(fcsDF, yCol, vI,return_type='nparray')
+    vX=getGatedVector(fcsDF, xCol, vI,return_type='nparray')
+    vY=getGatedVector(fcsDF, yCol, vI,return_type='nparray')
     if scale.lower()=="logish":
-        vX = ag.logishTransform(vX,T)
+        vX = logishTransform(vX,T)
 
     cdef float x0=min(vX)
     cdef float x1=max(vX)
@@ -424,10 +489,10 @@ def gateTwoPointList(fcsDF, xCol, yCol, vPL, vPL2, vI=sentinel, scale='linear', 
     if len(vPL) != len(vPL2):
         raise("Coordinate lists must be of equal length")
     vOut=[]
-    vX=ag.getGatedVector(fcsDF, xCol, vI,return_type='nparray')
-    vY=ag.getGatedVector(fcsDF, yCol, vI,return_type='nparray')
+    vX=getGatedVector(fcsDF, xCol, vI,return_type='nparray')
+    vY=getGatedVector(fcsDF, yCol, vI,return_type='nparray')
     if scale.lower()=="logish":
-        vX = ag.logishTransform(vX,T)
+        vX = logishTransform(vX,T)
 
     x0=min(vX)
     x1=max(vX)
@@ -457,12 +522,12 @@ def triGate(fcsDF, str xCol, str yCol, list centerCoord, vI=sentinel, int bins=3
     if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
         raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
     xscale=yscale=scale
-    cdef np.ndarray[dtype_t, ndim=1] vX = ag.getGatedVector(fcsDF, xCol, vI, return_type='nparray', dtype=np.float64)
-    cdef np.ndarray[dtype_t, ndim=1] vY = ag.getGatedVector(fcsDF, yCol, vI, return_type='nparray', dtype=np.float64)
-    heatmap, xedges, yedges = ag.getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
+    cdef np.ndarray[dtype_t, ndim=1] vX = getGatedVector(fcsDF, xCol, vI, return_type='nparray', dtype=np.float64)
+    cdef np.ndarray[dtype_t, ndim=1] vY = getGatedVector(fcsDF, yCol, vI, return_type='nparray', dtype=np.float64)
+    heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
     cdef np.ndarray[dtype_t, ndim=2] smoothedHeatmap = gaussian_filter(heatmap.astype(np.float64),sigma=sigma)
-    cdef itype_t xCenterbin = np.int32(ag.findBin(smoothedHeatmap, centerCoord[0], xedges, scale=scale, T=T))
-    cdef itype_t yCenterbin = np.int32(ag.findBin(smoothedHeatmap, centerCoord[1], yedges, scale=scale, T=T))
+    cdef itype_t xCenterbin = np.int32(findBin(smoothedHeatmap, centerCoord[0], xedges, scale=scale, T=T))
+    cdef itype_t yCenterbin = np.int32(findBin(smoothedHeatmap, centerCoord[1], yedges, scale=scale, T=T))
 
     cdef dtype_t bottomDens
     cdef np.ndarray[dtype_t,ndim=1] density=np.zeros(90)
@@ -492,7 +557,7 @@ def triGate(fcsDF, str xCol, str yCol, list centerCoord, vI=sentinel, int bins=3
 @cython.wraparound(False)
 def cythonGateTwoPointList(list vI, np.ndarray[dtype_t, ndim=1] vX, np.ndarray[dtype_t, ndim=1] vY, np.ndarray xedges, np.ndarray yedges, np.ndarray[itype_t, ndim=2] bottomlimit, np.ndarray[itype_t, ndim=2] toplimit, int bins, str scale, float T):
     if scale.lower()=="logish":
-        vX = ag.logishTransform(vX,T)
+        vX = logishTransform(vX,T)
     cdef list top=[]
     cdef list bottom=[]
     cdef list right=[]
@@ -583,6 +648,22 @@ def Stat_GetMeanAndVariance_double(np.ndarray[double, ndim=1, mode="c"] input no
     var=0.0
     c_Stat_GetMeanAndVariance_double(&input[0], m, mean, var);
     return mean, var;
+
+def findBin(heatmap, value, edges, scale='linear', T=1000):
+    assert heatmap.shape[0] == heatmap.shape[1]
+    nBins = heatmap.shape[0]
+    vmin = min(edges)
+    vmax = max(edges)
+    if scale.lower()=='logish':
+        value = convertToLogishPlotCoordinate(value, vmin, vmax, T)
+    binIndex = (value-vmin)/(vmax-vmin) * nBins
+    binIndex = int(round(binIndex,0))
+    if binIndex<0:
+        binIndex=0
+    if binIndex>=nBins:
+        binIndex=nBins-1
+    return binIndex
+
 
 #-----Some simple sample code to look at below------------
 

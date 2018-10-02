@@ -22,16 +22,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors
 from matplotlib.patches import Ellipse, Arrow
-import matplotlib.lines as lines
-import aligater as ag
-import matplotlib.ticker as ticker
-from aligater.AGClasses import LogishLocator, LogishFormatter
-#from ag.AGClasses import LogishLocator, LogishFormatter
-#from scipy.stats import gaussian_kde
-from scipy.ndimage.filters import gaussian_filter1d#, gaussian_filter
+from matplotlib.ticker import Locator, Formatter
+import six
+from matplotlib import rcParams
+
+#AliGater imports
+import aligater.AGConfig as agconf
+from aligater.AGFileSystem import getGatedVector, AliGaterError
+
+from scipy.ndimage.filters import gaussian_filter1d
 import sys
 
 sentinel = object()
+
+
+    
+    
 def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='linear', yscale='linear', thresh=1000, aspect='auto', **kwargs):
     if vI is sentinel:
         vI=fcsDF.index
@@ -46,7 +52,7 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     #Default x and y lims        
     bYlim=False
     bXlim=False
-    #TODO:testing
+    #TODO:testing for auto limits
     if 'xlim' in kwargs:
             if not isinstance(kwargs['xlim'],list):
                 raise TypeError("if xlim is passed, it must be a list of float/int")
@@ -68,8 +74,8 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
                     yscale_limits=logishTransform(yscale_limits,thresh)
                     bYlim=True
                     
-    vX=ag.getGatedVector(fcsDF, x, vI)
-    vY=ag.getGatedVector(fcsDF, y, vI)
+    vX=getGatedVector(fcsDF, x, vI)
+    vY=getGatedVector(fcsDF, y, vI)
     plt.clf()
     matplotlib.rcParams['image.cmap'] = 'jet'
     heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, thresh)
@@ -97,16 +103,37 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
         ax.yaxis.set_xlim(left=yscale_limits[0], right=yscale_limits[1])
     return fig,ax
 
-def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xlim=None, ylim=None):
+def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xlim=None, ylim=None, range=None):
     if not any(isinstance(i,str) for i in [scale,xscale,yscale]):
         raise TypeError("scale, xscale, yscale must be specified as string, such as: 'linear', 'logish'")
     if not all(i in ['linear', 'logish'] for i in [scale,xscale,yscale]):
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
+    if range is not None:
+        if isinstance(range,list):
+            if len(range)==2:
+                if not all(isinstance(i,(list)) for i in range):
+                    AliGaterError("in getHeatmap, invalid dtype encountered in range, expected two list-likes")
+                else:
+                    if not all(isinstance(i,(float,int)) for i in range[0]) or not all(isinstance(i,(float,int)) for i in range[1]):
+                        AliGaterError("in getHeatmap,invalid dtype encountered in range")
+                    else:
+                        defaultRange=range
+                        xRange=range[0]
+                        yRange=range[1]
+            else:
+                AliGaterError("in getHeatmap, range must be list, found "+str(type(range)))
+        else:
+            AliGaterError("in getHeatmap, custom range passed but is not list, found type: "+str(type(range)))
+    else:
+        defaultRange=None
+        xRange=None
+        yRange=None
     assert len(vX) == len(vY)
     index_mask=[]
     for i in np.arange(len(vX)-1,-1,-1):
         if i < 0:
-            print("KASS")
+            #TODO
+            raise
         if xlim is not None:
             if vX[i] < xlim[0] or vX[i] > xlim[1]:
                 index_mask.append(i)
@@ -119,20 +146,23 @@ def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xli
         assert len(vX) == len(vY)
                 
     if scale=='linear' and xscale=='linear' and yscale == 'linear':
-        return np.histogram2d(vX, vY, bins, normed=normalize)
+        return np.histogram2d(vX, vY, bins, normed=normalize, range=defaultRange)
     elif scale=='logish' or (xscale == 'logish' and yscale == 'logish'):
-        xBinEdges=logishBin(vX,bins,T)
-        yBinEdges=logishBin(vY,bins,T)
+        xBinEdges=logishBin(vX,bins,T, xRange)
+        yBinEdges=logishBin(vY,bins,T, yRange)
         return np.histogram2d(vX, vY, [xBinEdges,yBinEdges])
     if xscale=='logish':
-        xBinEdges=logishBin(vX,bins,T)
+        xBinEdges=logishBin(vX,bins,T, xRange)
         return np.histogram2d(vX, vY, [xBinEdges,bins])
     if yscale=='logish':
-        yBinEdges=logishBin(vY,bins,T)
+        yBinEdges=logishBin(vY,bins,T, yRange)
         return np.histogram2d(vX, vY, [bins,yBinEdges])
 
-def logishBin(vX, bins, T):
-    defaultRange=[min(vX),max(vX)]
+def logishBin(vX, bins, T, customRange=None):
+    if customRange is not None:
+        defaultRange=customRange
+    else:
+        defaultRange=[min(vX),max(vX)]
     transformedRange=logishTransform(defaultRange,T)
     transformedBinEdges=np.linspace(transformedRange[0],transformedRange[1],bins+1)
     return inverseLogishTransform(transformedBinEdges, T)
@@ -175,14 +205,14 @@ def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', T=1000):
             lims=ax.get_xlim()
             vmin = lims[0]
             vmax = lims[1]
-            pos = ag.convertToLogishPlotCoordinates([pos],vmin,vmax,T)
+            pos = convertToLogishPlotCoordinates([pos],vmin,vmax,T)
         ax.axvline(pos, c='r')
     else:
         if scale=='logish':
             lims=ax.get_ylim()
             vmin = lims[0]
             vmax = lims[1]
-            pos = ag.convertToLogishPlotCoordinates([pos],vmin,vmax,T)
+            pos = convertToLogishPlotCoordinates([pos],vmin,vmax,T)
         ax.axhline(pos,  c='r')
     return fig
 
@@ -191,9 +221,9 @@ def addLine(fig, ax, lStartCoordinate, lEndCoordinate, size=2, scale='linear', T
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
     if scale.lower()=='logish':
         view=ax.xaxis.get_view_interval()
-        xCoordinates=ag.convertToLogishPlotCoordinates([lStartCoordinate[0],lEndCoordinate[0]], vmin=view[0], vmax=view[1], T=T)
+        xCoordinates=convertToLogishPlotCoordinates([lStartCoordinate[0],lEndCoordinate[0]], vmin=view[0], vmax=view[1], T=T)
         view=ax.yaxis.get_view_interval()
-        yCoordinates=ag.convertToLogishPlotCoordinates([lStartCoordinate[1],lEndCoordinate[1]], vmin=view[0], vmax=view[1], T=T)
+        yCoordinates=convertToLogishPlotCoordinates([lStartCoordinate[1],lEndCoordinate[1]], vmin=view[0], vmax=view[1], T=T)
         lStartCoordinate=[xCoordinates[0],yCoordinates[0]]
         lEndCoordinate=[xCoordinates[1],yCoordinates[1]]
     plt.plot([lStartCoordinate[0], lEndCoordinate[0]], [lStartCoordinate[1], lEndCoordinate[1]], color='r', linestyle='-', linewidth=size,figure=fig)
@@ -206,7 +236,7 @@ def addArrow(fig, ax, lStartCoordinate, lEndCoordinate, size=5000):
     return fig
 
 def draw_ellipse(position, covariance, sigma=2, ax=None, **kwargs):
-    if ag.execMode in ["jupyter","ipython"]:
+    if agconf.execMode in ["jupyter","ipython"]:
         plot=True
     else:
         plot=False
@@ -229,7 +259,7 @@ def draw_ellipse(position, covariance, sigma=2, ax=None, **kwargs):
     return width, height, angle
 
 def plot_gmm(fcsDF, xCol, yCol, vI, gmm, sigma, ax):  
-    if ag.execMode in ["jupyter","ipython"]:
+    if agconf.execMode in ["jupyter","ipython"]:
         plot=True
     else:
         plot=False    
@@ -242,7 +272,7 @@ def plot_gmm(fcsDF, xCol, yCol, vI, gmm, sigma, ax):
         plt.show();
     return vEllipses
 
-def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',  T=1000):
+def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',  T=1000, *args, **kwargs):
     if xCol not in fcsDF.columns:
         raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
     if vI is sentinel:
@@ -255,8 +285,19 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
         bins=len(vI)
     if not all(i in ['linear', 'logish'] for i in [scale]):
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
-
-    data=ag.getGatedVector(fcsDF, xCol, vI, return_type="nparray")
+    if not isinstance(sigma,(float,int)): 
+        raise AliGaterError("Sigma must be float or int, found: "+str(type(sigma)),"in plot_densityFunc")
+    if 'sigma' in kwargs:
+            if not isinstance(kwargs['sigma'],(float,int)):
+                raise AliGaterError("Sigma must be float or int, found: "+str(type(sigma)),"in plot_densityFunc")
+            else:
+                sigma=kwargs['sigma']
+    if 'bins' in kwargs:
+        if not isinstance(kwargs['bins'],int):
+            raise AliGaterError("sigma must be int, found: "+str(type(bins)),"in plot_densityFunc")
+        else:
+            bins=kwargs['bins']
+    data=getGatedVector(fcsDF, xCol, vI, return_type="nparray")
     if scale == 'logish':
         BinEdges=logishBin(data,bins,T)
         histo = np.histogram(data, BinEdges)
@@ -370,8 +411,12 @@ def image_pca(X):
     """
 
     # get dimensions
-    num_data,dim = X.shape
-
+    #TODO: sloppy error handling
+    try:
+        num_data,dim = X.shape
+    except ValueError:
+        sys.stderr.write("WARNING, in image_pca: input matrix seems invalid\n")
+        return None,None,None
     # center data
     mean_X = X.mean(axis=0)
     X = X - mean_X
@@ -393,9 +438,281 @@ def image_pca(X):
     # return the projection matrix, the variance and the mean
     return V,S,mean_X
 
+def is_decade(x, base=10):
+    if not np.isfinite(x):
+        return False
+    if x == 0.0:
+        return True
+    lx = np.log(np.abs(x)) / np.log(base)
+    return is_close_to_int(lx)
 
-def main():
-	return None
+def is_close_to_int(x):
+    if not np.isfinite(x):
+        return False
+    return abs(x - nearest_int(x)) < 1e-10
 
-if __name__ == '__main__':
-	main()
+def nearest_int(x):
+    if x == 0:
+        return int(0)
+    elif x > 0:
+        return int(x + 0.5)
+    else:
+        return int(x - 0.5)
+
+        
+def convertToLogishPlotCoordinates(Ticlocs, vmin, vmax, T):
+    actualRange=vmax-vmin
+    tMinMax = logishTransform([vmin, vmax], T)
+    transformedRange = tMinMax[1]-tMinMax[0]
+    tTiclocs=logishTransform(Ticlocs, T)
+    plotTics=[]
+    for tTic in tTiclocs:
+        plotTic=(tTic-tMinMax[0])/transformedRange*actualRange+vmin
+        plotTics.append(plotTic)
+    assert len(tTiclocs)==len(Ticlocs)
+    return plotTics
+
+def convertToLogishPlotCoordinate(Ticloc, vmin, vmax, T):
+    actualRange=vmax-vmin
+    tMinMax = logishTransform([vmin, vmax], T)
+    transformedRange = tMinMax[1]-tMinMax[0]
+    tTicloc=logishTransform([Ticloc], T)[0]
+    plotTic=(tTicloc-tMinMax[0])/transformedRange*actualRange+vmin
+    return plotTic
+
+def invertLogishPlotcoordinates(plotTics, vmin, vmax, T):
+    actualRange=vmax-vmin
+    tMinMax = logishTransform([vmin, vmax], T)
+    transformedRange = tMinMax[1]-tMinMax[0]
+    invPlotTics=[]
+    for tTic in plotTics:
+        invPlotTic=(tTic-vmin)/actualRange*transformedRange+tMinMax[0]
+        invPlotTics.append(invPlotTic)
+    result=inverseLogishTransform(invPlotTics, T)
+    return result
+
+def invertLogishPlotcoordinate(plotTic, vmin, vmax, T):
+    actualRange=vmax-vmin
+    tMinMax = logishTransform([vmin, vmax], T)
+    transformedRange = tMinMax[1]-tMinMax[0]
+    invPlotTic=(plotTic-vmin)/actualRange*transformedRange+tMinMax[0]
+    result=inverseLogishTransform([invPlotTic], T)[0]
+    return result
+
+
+
+class LogishLocator(Locator):
+    """
+    Determine the tick locations for logish axes based on LogLocator
+    Hacked version of LogLogator that covers normal usecases of the logish scale
+    Only defined with ticlocations for data in range -50000 < x < 1 000 000
+    """
+
+    def __init__(self, linCutOff=1000, subs=(1.0,), numdecs=4, numticks=None):
+        """
+        Place ticks on the locations : subs[j] * base**i
+        Parameters
+        ----------
+        subs : None, string, or sequence of float, optional, default (1.0,)
+            Gives the multiples of integer powers of the base at which
+            to place ticks.  The default places ticks only at
+            integer powers of the base.
+            The permitted string values are ``'auto'`` and ``'all'``,
+            both of which use an algorithm based on the axis view
+            limits to determine whether and how to put ticks between
+            integer powers of the base.  With ``'auto'``, ticks are
+            placed only between integer powers; with ``'all'``, the
+            integer powers are included.  A value of None is
+            equivalent to ``'auto'``.
+        """
+        if numticks is None:
+            if rcParams['_internal.classic_mode']:
+                numticks = 15
+            else:
+                numticks = 'auto'
+                
+        self._base=np.exp(1)
+        self.subs(subs)
+        self.numdecs = numdecs
+        self.numticks = numticks
+        self.T = linCutOff
+        
+    def set_params(self, subs=None, numdecs=4, numticks=None):
+        """Set parameters within this locator."""
+        if subs is not None:
+            self.subs(subs)
+        if numdecs is not None:
+            self.numdecs = numdecs
+        if numticks is not None:
+            self.numticks = numticks
+
+    # FIXME: these base and subs functions are contrary to our
+    # usual and desired API.
+
+    def subs(self, subs):
+        """
+        set the minor ticks for the log scaling every base**i*subs[j]
+        """
+        if subs is None:  # consistency with previous bad API
+            self._subs = 'auto'
+        elif isinstance(subs, six.string_types):
+            if subs not in ('all', 'auto'):
+                raise ValueError("A subs string must be 'all' or 'auto'; "
+                                 "found '%s'." % subs)
+            self._subs = subs
+        else:
+            self._subs = np.asarray(subs, dtype=float)
+
+    def __call__(self):
+        'Return the locations of the ticks'
+        vmin, vmax = self.view_limits()
+        return self.tick_values(vmin, vmax)
+
+    def tick_values(self, vmin, vmax):
+        if self.numticks == 'auto':
+            if self.axis is not None:
+                numticks = np.clip(self.axis.get_tick_space(), 2, 9)
+            else:
+                numticks = 9
+        else:
+            numticks = self.numticks
+        
+    #if vmin < self.T:
+        tmpTicLoc=[-50000, -40000, -30000, -20000, -10000, -5000,-4000,-3000, -2000, -1000, 0]
+        Ticlocs = list(set(np.clip(tmpTicLoc, vmin, self.T)))
+        Ticlocs = list(np.sort(Ticlocs))
+    
+    #if vmax > self.T:
+        tmpTicLoc=[0,1000]
+        tmpTicLoc.extend(np.arange(1000.0,10001,1000))
+        tmpTicLoc.extend(np.arange(10000.0,100001,10000))
+        tmpTicLoc.extend(np.arange(100000.0,1000000,100000)) #[10000.0,100000.0, 200000, 300000, 1000000.0]
+        Ticlocs.extend(tmpTicLoc)
+        clip_Ticlocs=list(set(np.clip(Ticlocs,vmin, vmax)))
+        Ticlocs=np.sort(clip_Ticlocs)
+        #ADD HOC POSSIBLY
+        Ticlocs=Ticlocs[1:-1]
+        Ticlocs=convertToLogishPlotCoordinates(Ticlocs, vmin, vmax, self.T)
+        if vmax < vmin:
+            vmin, vmax = vmax, vmin
+        return self.raise_if_exceeds(np.asarray(Ticlocs))
+
+    def view_limits(self, vmin=None, vmax=None):
+        'Try to choose the view limits intelligently'
+        vmin, vmax = self.axis.get_view_interval()
+        return vmin, vmax
+
+
+class LogishFormatter(Formatter):
+    """
+    Base class for formatting ticks on a logish scale.
+    Hacked version of LogFormatter that covers normal usecases of the logish scale
+    Only defined with formatting ticlabels for data in range -50000 < x < 1 000 000
+
+    
+    Parameters
+    ----------
+    labelOnlyBase : bool, optional, default: False
+        If True, label ticks only at integer powers of base.
+        This is normally True for major ticks and False for
+        minor ticks.
+    minor_thresholds : (subset, all), optional, default: (1, 0.4)
+        If labelOnlyBase is False, these two numbers control
+        the labeling of ticks that are not at integer powers of
+        base; normally these are the minor ticks. The controlling
+        parameter is the log of the axis data range.  In the typical
+        case where base is 10 it is the number of decades spanned
+        by the axis, so we can call it 'numdec'. If ``numdec <= all``,
+        all minor ticks will be labeled.  If ``all < numdec <= subset``,
+        then only a subset of minor ticks will be labeled, so as to
+        avoid crowding. If ``numdec > subset`` then no minor ticks will
+        be labeled.
+    linthresh : float, optional, default: 1000
+        The threshold for the logicle scale change from linear-like to log-like scaling
+ 
+    Notes
+    -----
+    The `set_locs` method must be called to enable the subsetting
+    logic controlled by the ``minor_thresholds`` parameter.
+    In some cases such as the colorbar, there is no distinction between
+    major and minor ticks; the tick locations might be set manually,
+    or by a locator that puts ticks at integer powers of base and
+    at intermediate locations.  For this situation, disable the
+    minor_thresholds logic by using ``minor_thresholds=(np.inf, np.inf)``,
+    so that all ticks will be labeled.
+    To disable labeling of minor ticks when 'labelOnlyBase' is False,
+    use ``minor_thresholds=(0, 0)``.  This is the default for the
+    "classic" style.
+    Examples
+    --------
+    To label a subset of minor ticks when the view limits span up
+    to 2 decades, and all of the ticks when zoomed in to 0.5 decades
+    or less, use ``minor_thresholds=(2, 0.5)``.
+    To label all minor ticks when the view limits span up to 1.5
+    decades, use ``minor_thresholds=(1.5, 1.5)``.
+    """
+    def __init__(self, labelOnlyBase=False,
+                 minor_thresholds=None,
+                 linthresh=1000):
+        
+        self.labelOnlyBase = labelOnlyBase
+        if minor_thresholds is None:
+            if rcParams['_internal.classic_mode']:
+                minor_thresholds = (0, 0)
+            else:
+                minor_thresholds = (1, 0.4)
+        self.minor_thresholds = minor_thresholds
+        self._sublabels = None
+        self._linthresh = linthresh
+        self._base = np.exp(1)
+
+
+
+    def _num_to_string(self, x, vmin, vmax):
+        x = round(x,0)
+        if not x in [-5000, -4000, -3000, -2000, -1000, 0 ,1000,10000,100000,1000000]:
+            s = ''
+        else:
+            s = self.pprint_val(x, vmax - vmin)
+        return s
+
+    def __call__(self, x, pos=None):
+        """
+        Return the format for tick val `x`.
+        """
+        if x == 0.0:  # Symlog
+            return '0'
+        vmin, vmax = self.axis.get_view_interval()
+        #tVals = logishTransform([vmin, vmax, x], self._linthresh)
+        # only label the decades
+        #fx = (x-vmin)/(vmax-vmin)*(tVals[1] - tVals[0])-tVals[0]
+        #fx = inverseLogishTransform([fx],self._linthresh)[0]
+        fx=invertLogishPlotcoordinate(x,vmin,vmax,self._linthresh)
+        #print(fx)
+        s = self._num_to_string(fx, vmin, vmax)
+        return self.fix_minus(s)
+        
+
+    def pprint_val(self, x, d):
+        #If the number is at or below the set lin-cutoff (_lintrehsh)
+        #Print it as an int
+        #TODO: WHY DO I NEED THE +1 HERE?
+        if x <= self._linthresh+1:
+            return '%d' % x
+
+        fmt = '%1.3e'
+        s = fmt % x
+        tup = s.split('e')
+        if len(tup) == 2:
+            mantissa = tup[0].rstrip('0').rstrip('.')
+            exponent = int(tup[1])
+            if exponent:
+                if float(mantissa) > 1:
+                    s = '$%s*10^{%d}$' % (mantissa, exponent)
+                else:
+                    s = '$%s0^{%d}$' % (mantissa, exponent)
+            else:
+                s = mantissa
+        else:
+            s = s.rstrip('0').rstrip('.')
+        return s

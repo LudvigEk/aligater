@@ -17,14 +17,38 @@
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
 
-import aligater as ag
 import numpy as np
 import pandas as pd
 import os
 import sys
+
+#AliGater imports
+from aligater.fscparser_api import parse
+import aligater.AGConfig as agconf
+
+#Dummy object for arguments
 sentinel=object
-#TODO: Perhaps try to avoid conversion from DF -> nparray and back, performance hit?
+
+#Some custom errors from template
+class ExceptionTemplate(Exception):
+    def __call__(self, *args):
+        return self.__class__(*(args + self.args))
+    def __str__(self):
+        return ' '.join(self.args)
+
+
+#General AliGater name to create errors
+class AliGaterError(ExceptionTemplate): pass
+#Some reoccuring, common ones
+invalidAGgateError=AliGaterError('passed gate is not a valid AGgate object')
+invalidAGgateParentError=AliGaterError('Invalid AGgate object passed as parentGate')
+invalidSampleError=AliGaterError('Invalid AGsample object')
+filePlotError=AliGaterError("If plotting to file is requested filePlot must be string filename")
+markerError=AliGaterError("not present in sample, check spelling or control your dataframe.columns labels")
+
+
 def compensateDF(fcsDF, metaDict):
+    #TODO: Perhaps try to avoid conversion from DF -> nparray and back, performance hit?
     spill_matrix=metaDict['SPILL'].split(',')
     n = int(spill_matrix[0]) #number of colors
     
@@ -36,7 +60,7 @@ def compensateDF(fcsDF, metaDict):
     #Raise here instead of warning?
     tmp_identity = np.identity(n)
     if np.array_equal(comp_matrix, tmp_identity):
-        reportStr="WARNING: No compensation data available, compensation NOT applied!\n"
+        reportStr="WARNING: No compensation data available in sample!\n"
         sys.stderr.write(reportStr)
     
     inv_comp_matrix = np.linalg.inv(comp_matrix)
@@ -45,6 +69,12 @@ def compensateDF(fcsDF, metaDict):
     fcsDF.update(pd.DataFrame(compensatedArray,columns=colNames))
     
     return fcsDF
+
+def reportGateResults(vI, vOutput):
+    if agconf.ag_verbose:
+        reportString="After gating, "+str(len(vOutput))+" out of "+str(len(vI))+" events remain.\n"
+        sys.stderr.write(reportString)
+    return
 
 def compensate_manual(fcsDF, comp_matrix):
     n=len(comp_matrix)
@@ -60,6 +90,8 @@ def compensate_manual(fcsDF, comp_matrix):
     inv_comp_matrix = np.linalg.inv(comp_matrix)
     compensatedArray=np.dot(fcsArray, inv_comp_matrix)
     fcsDF.update(pd.DataFrame(compensatedArray,columns=colNames))
+    reportStr="Successfully applied manual compensation\n"
+    sys.stderr.write(reportStr)
     return fcsDF
     
 def getCompensationMatrix(fcsDF, metaDict):
@@ -73,12 +105,108 @@ def getCompensationMatrix(fcsDF, metaDict):
     #Raise here instead of warning?
     tmp_identity = np.identity(n)
     if np.array_equal(comp_matrix, tmp_identity):
-        reportStr="WARNING: No compensation data available, compensation NOT applied!\n"
+        reportStr="WARNING: This samples has no compensation data available\n"
         sys.stderr.write(reportStr)
     
     return colNames, comp_matrix
+
+def getGatedVector(fcsDF, gate, vI=None, return_type="pdseries", dtype=np.float64):
+    """
+    Collects list-like of measured intensities for a population. 
+    Also see getGatedVectors
     
+    **Parameters**
+    
+    fcsDF : pandas.DataFrame
+        Flow data loaded in a pandas DataFrame. \n
+        If data is stored in an AGSample object this can be retrieved by
+        calling the sample, i.e. mysample().
+    gate : str
+        Marker label.
+    vI : list-like or AGgate object
+        Population to collect.
+    return_type : str, optional, default: "pdseries"
+        Format of returned list-like, options are: "pdseries" "nparray"
+    dtype : Type, optional, default: numpy.float64
+        Data type of values in the returned listlike
+
+    **Returns**
+
+    List-like
+
+    **Examples**
+
+    None currently.
+    """
+    if return_type.lower() not in ["pdseries","nparray"]:
+        raise TypeError("Specify return type as 'pdseries' or 'nparray'")
+    if return_type.lower()=="pdseries" and not (dtype is np.float64):
+        sys.stderr.write("dtype specification not supported for pdseries return type, returning default dtype")
+    if vI is None:
+        vI=fcsDF.index
+    if return_type.lower()=="pdseries":
+        gated_vector=fcsDF[gate].loc[vI]
+    else:
+        gated_vector=fcsDF[gate].loc[vI].values.astype(dtype)
+    return gated_vector
+
+def getGatedVectors(fcsDF, gate1, gate2, vI=None, return_type="pdseries"):
+    """
+    Collects list-like of measured intensities for a population. \n
+    Useful to collect both intensity coordinates for events in a view.
+    
+    **Parameters**
+    
+    fcsDF : pandas.DataFrame
+        Flow data loaded in a pandas DataFrame. 
+        If data is stored in an AGSample object this can be retrieved by
+        calling the sample, i.e. mysample().
+    gate1, gate2 : str
+        Marker labels.
+    vI : list-like or AGgate object
+        Population to collect.
+    return_type : str, optional, default: "pdseries"
+        Format of returned list-like, options are: "pdseries" "nparray", matrix
+    dtype : Type, optional, default: numpy.float64
+        Data type of values in the returned list-like
+
+    **Returns**
+    
+    numpy.array[numpy.array, numpy.array]
+        If return type is 'nparray'
+        numpy array of arrays in order: x-array, y-array
+    numpy.array[list]
+        If return_type is 'matrix' returns a numpy array with list-likes of two; x-coord, y-coord
+    list-like, list-like
+        if return_type is 'pdseries' returns two pandas.Series objects in order; X, Y
+
+    **Examples**
+
+    None currently.
+    """
+    if return_type.lower() not in ["pdseries","nparray","matrix"]:
+        raise TypeError("Specify return type as 'pdseries', 'nparray', 'matrix'")
+    if vI is None:
+        vI=fcsDF.index
+    if return_type.lower()=="pdseries":    
+        gated_vector1=fcsDF[gate1].loc[vI]
+        gated_vector2=fcsDF[gate2].loc[vI]
+        return gated_vector1, gated_vector2
+    elif return_type.lower()=="matrix":
+        vX=fcsDF[gate1].loc[vI].values
+        vY=fcsDF[gate2].loc[vI].values
+        return np.array(list(zip(vX,vY)))
+    else:
+        vX=fcsDF[gate1].loc[vI].values
+        vY=fcsDF[gate2].loc[vI].values
+        return np.array([vX, vY])
+
+
 def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=sentinel):
+    #********Lazy loading of*************
+    #TODO; could move to AGClasses, kind of makes sense.
+    from aligater.AGClasses import AGsample
+    #************************************
     if not isinstance(return_type, str):
         raise TypeError("return_type must be specified as string and either of 'AGsample' or 'index'")
     if not return_type.lower() in ['agsample', 'index']:
@@ -92,11 +220,11 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     if comp_matrix is not None:
         if not isinstance(comp_matrix, np.ndarray):
             raise TypeError("Manual compensation matrix must be a numpy ndarray")
-    pardir=ag.getFileName(ag.getParent(path))
-    parpardir=ag.getFileName(ag.getParent(ag.getParent(path)))
-    if ag.ag_verbose:
-        sys.stderr.write("Opening file "+ag.getFileName(path)+" from folder /"+parpardir+"/"+pardir+"\n")
-    metaDict,fcsDF = ag.parse(path,output_format='DataFrame')
+        
+    pardir=getFileName(getParent(path))
+    parpardir=getFileName(getParent(getParent(path)))
+    sys.stderr.write("Opening file "+getFileName(path)+" from folder /"+parpardir+"/"+pardir+"\n")
+    metaDict,fcsDF = parse(path,output_format='DataFrame')
     rows=fcsDF.shape[0]
     cols=fcsDF.columns[4:-1]
     
@@ -106,14 +234,13 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
         sys.stderr.write("First four columns of fcs file are not foward and side scatters, skippping\n")
         return None
         
-    if ag.ag_verbose:
-        sys.stderr.write("Loaded dataset with "+str(rows)+" events.\n")
-    if rows < ag.cellFilter:
-        if ag.ag_verbose:
+    sys.stderr.write("Loaded dataset with "+str(rows)+" events.\n")
+    if rows < agconf.cellFilter:
+        if agconf.ag_verbose:
             sys.stderr.write("Sample has fewer events than cellFilter threshold, skipping\n")
         return None
     
-    if ag.ag_verbose:
+    if agconf.ag_verbose:
         sys.stderr.write("Marker labels: ")
         for elem in cols:
             sys.stderr.write(elem+ " ")
@@ -122,24 +249,25 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     if checkMarkers:
         for elem in cols:
             if elem not in markers:
-                reportStr=elem+" not in specified markers, skipping sample\n"
+                reportStr=elem+" not in specified markers ("+str(markers)+"), skipping sample\n"
                 sys.stderr.write(reportStr)
                 return None
             
     if compensate:
         if comp_matrix is not None:
+            sys.stderr.write("External compensation matrix passed, applying\n")
             fcsDF=compensate_manual(fcsDF, comp_matrix)
         else:
             fcsDF=compensateDF(fcsDF, metaDict)
             
     if metadata:
         if return_type.lower()=='agsample':
-            return metaDict, ag.AGsample(fcsDF,path)
+            return metaDict, AGsample(fcsDF,path)
         else:
             return metaDict, fcsDF
     else:
         if return_type.lower()=='agsample':
-            return ag.AGsample(fcsDF,path)
+            return AGsample(fcsDF,path)
         else:
             return fcsDF
 

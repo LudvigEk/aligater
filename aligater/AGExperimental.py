@@ -17,22 +17,34 @@
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
 
-import aligater as ag
 import numpy as np
 import sys
+import matplotlib.pyplot as plt
+
+#AliGater imports
+import aligater.AGConfig as agconf
+from aligater.AGCore import customQuadGate, getDensityFunc
+from aligater.AGPlotRoutines import getHeatmap, convertToLogishPlotCoordinate, logishTransform, addLine, plotHeatmap
+from aligater.AGCython import gateThreshold, gatePointList
+from aligater.AGFileSystem import getGatedVector, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
+from aligater.AGClasses import AGgate, AGsample
 
 sentinel = object()
 from scipy.ndimage.filters import gaussian_filter
 from scipy.stats import halfnorm
 
-def variableQuadGate(fcs, xCol, yCol, threshList, testRange, position, testSteps=20, parentGate=sentinel, scale='linear', bins=300, sigma=2, T=1000, only_solution=False, scoreThresh=1,filePlot=None):
+def variableQuadGate(fcs, names, xCol, yCol, threshList, testRange, position, testSteps=20, parentGate=None, scale='linear', bins=300, sigma=2, T=1000, only_solution=False, scoreThresh=1,filePlot=None, QC=False, update=False):
     """
     A quadgate function that tests the threshold on one axis and attempts to find the least-dense point to set that limit. \n
+    Does not plot by itself, it does that through a subcall to customQuadGate
     
     **Parameters**
     
     fcs : AGClasses.AGSample object
-        Flow data loaded in an sample object.
+        Flow data loaded in a sample object.
+    names : list-like
+        | list of string with four names for the output gated populations in clockwise order from top-left;
+        | Top-left, top-right, bottom-right, bottom-left
     xCol, yCol : str
         Marker labels.
     threshList : list-like of float or int
@@ -47,7 +59,7 @@ def variableQuadGate(fcs, xCol, yCol, threshList, testRange, position, testSteps
     testSteps, int, optional, default: 20
         The testRange will be equally divided into this many limits and each tested.\n
         Increase this to increase precision.
-    parentGate : AGgate object, optional
+    parentGate : AGgate object, optional, default: None
         Parent population to apply the gating to. 
         If no AGgate object is passed gating is applied to the ungated data frame.        
     scale : str, optional, default: 'linear'
@@ -68,76 +80,84 @@ def variableQuadGate(fcs, xCol, yCol, threshList, testRange, position, testSteps
     filePlot : str, optional, default: None
         Option to plot the gate to file to specified path.\n
         Warning: might overwrite stuff.
-        
+    update : bool, optional, default: False
+        If True will add the resulting gated population(s) to the sample objects gate list in adition to returning the gate object.\n
+        If False (default), returns an AGgate object without adding it to the sample object.
+    QC : bool, optional, default: False
+        If True, adds a downsampled image of the gating view to the gate object. These can be collected by an AGExperiment object if it's QC flag is also True.
+
+    
     **Returns**
 
-    List-like, List-like, List-like, List-like, float
-        If only_solution is False, returns the four gated population as list-like indicies in clockwise order;\n
-        top left, top right, bottom right, bottom right \n
-        It also returns the threshold it found to be best.
+    AGClasses.AGgate, AGClasses.AGgate, AGClasses.AGgate, AGClasses.AGgate, float
+        Returns AGClasses.AGgate objects for the four gated populations and then the treshold with the highest score.\n 
+        The populations are returned in clockwise order; top-left, top-right, bottom-right, bottom-left and then the highest scoring threshold.
     float
         If only_solution is True, returns the threshold with the best score.
 
-    **Notes**    
-    
-    Can be called iteratively to test many variations of the gate by setting only_solution to True. \n 
-    A final call can then be made with this set to True or used to call customQuadGate.\n
+    .. note::
+            Can be called iteratively to test many variations of the gate by setting only_solution to True. \n 
+            A final call can then be made with only_solution set to False to apply the gate.
     
     **Examples**
 
     None currently.
     """
     
-    if ag.execMode in ["jupyter","ipython"]:
+    if agconf.execMode in ["jupyter","ipython"]:
         plot=True
     else:
         plot=False    
-    if parentGate is sentinel:
+    if not isinstance(fcs,AGsample):
+        raise invalidSampleError("in variableQuadGate:")
+    if parentGate is None:
         vI=fcs.full_index()
-    elif not parentGate.__class__.__name__ == "AGgate":
-        raise TypeError("invalid AGgate object")
+    elif not isinstance(parentGate,AGgate):
+        raise invalidAGgateParentError('in variableQuadGate:')
     else:
         vI=parentGate()
     fcsDF=fcs()
-    if len(vI)<ag.minCells:
-        sys.stderr.write("Passed index contains no events\n") 
+    if len(vI)<5:
+        if not only_solution:
+            sys.stderr.write("WARNING: in variableQuadGate: Passed population ("+str(parentGate.name)+") contains <5 events, returning empty gates and None threshold\n") 
+            return AGgate([],parentGate,xCol,yCol,names[0]), AGgate([],parentGate,xCol,yCol,names[1]), AGgate([],parentGate,xCol,yCol,names[2]), AGgate([],parentGate,xCol,yCol,names[3]), None
         if only_solution:
-            return []
-        else:
-            return [],[],[],[],[]    
+            sys.stderr.write("WARNING: in variableQuadGate: Passed population ("+str(parentGate.name)+") contains <5 events, returning None threshold\n") 
+            return None   
     if not isinstance(threshList, list):
-        raise TypeError("threshList argument must be a list instance with [xbottom, xtop, yleft, yright] thresholds")
+        raise AliGaterError("threshList argument must be a python list with [xbottom, xtop, yleft, yright] (float or int) thresholds", "in variableQuadGate: ")
     if not (len(threshList)==5 or len(threshList)==4):
-        raise ValueError("threshList must contain 4 thresholds; [xbottom, xtop, yleft, yright],\nor be a solution from previous quadgate; [xbottom, xtop, yleft, yright, score]")
+        raise AliGaterError("threshList must contain 4 thresholds; [xbottom, xtop, yleft, yright],\nor be a solution from previous quadgate; [xbottom, xtop, yleft, yright, score]", "in variableQuadGate: ")
     if not all(isinstance(i,(float,int)) for i in threshList):
-        raise TypeError("ThreshList elements must be float or int")
+        raise AliGaterError("ThreshList elements must be float or int", "in variableQuadGate: ")
     if not (threshList[0]==threshList[1] or threshList[2]==threshList[3]):
-        raise ValueError("Invalid values in threshList, one axis must be fix.\nEither xbottom must be equal to xtop or yleft must be equal to yright")
-    vX=ag.getGatedVector(fcsDF, xCol, vI)
-    vY=ag.getGatedVector(fcsDF, yCol, vI)
+        raise AliGaterError("Invalid values in threshList, one axis must be fix.\nEither xbottom must be equal to xtop or yleft must be equal to yright","in variableQuadGate: ")
+    vX=getGatedVector(fcsDF, xCol, vI)
+    vY=getGatedVector(fcsDF, yCol, vI)
     xscale = yscale = scale
-    heatmap, xedges, yedges = ag.getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
+    heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
     smoothedHeatmap=gaussian_filter(heatmap.astype(float),sigma=3)
     solutions=[]
-    result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, threshList[0], threshList[1], threshList[2], threshList[3], scale, T)
-    reportStr="Input quadgate solution score: "+str(result)+"\n"
-    sys.stderr.write(reportStr)
+    result = evaluatePartitioning(smoothedHeatmap,xedges, yedges, threshList[0], threshList[1], threshList[2], threshList[3], scale, T)
+    if agconf.ag_verbose:
+        reportStr="Input quadgate solution score: "+str(result)+"\n"
+        sys.stderr.write(reportStr)
 
     solutions.append([threshList[0], threshList[1], threshList[2], threshList[3],result])
     
     testThreshRange=np.linspace(testRange[0],testRange[1],testSteps)
     for testThresh in testThreshRange:
         if position.lower()=='left':
-            result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, threshList[0], threshList[1], testThresh, threshList[3], scale, T)
+            result = evaluatePartitioning(smoothedHeatmap,xedges, yedges, threshList[0], threshList[1], testThresh, threshList[3], scale, T)
             solutions.append([threshList[0], threshList[1],testThresh,threshList[3], result])
         elif position.lower()=='right':
-            result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, threshList[0], threshList[1],threshList[2],testThresh, scale, T)
+            result = evaluatePartitioning(smoothedHeatmap,xedges, yedges, threshList[0], threshList[1],threshList[2],testThresh, scale, T)
             solutions.append([threshList[0], threshList[1], threshList[2],testThresh, result])
         elif position.lower()=='top':
-            result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, threshList[0],testThresh,threshList[2], threshList[3], scale, T)
+            result = evaluatePartitioning(smoothedHeatmap,xedges, yedges, threshList[0],testThresh,threshList[2], threshList[3], scale, T)
             solutions.append([threshList[0],testThresh,threshList[2], threshList[3], result])    
         elif position.lower()=='bottom':
-            result = ag.evaluatePartitioning(smoothedHeatmap,xedges, yedges, testThresh,threshList[1], threshList[2], threshList[3], scale, T)
+            result = evaluatePartitioning(smoothedHeatmap,xedges, yedges, testThresh,threshList[1], threshList[2], threshList[3], scale, T)
             solutions.append([testThresh,threshList[1], threshList[2], threshList[3], result])  
             
     scores = [solution[4] for solution in solutions]
@@ -145,31 +165,19 @@ def variableQuadGate(fcs, xCol, yCol, threshList, testRange, position, testSteps
     for index, score in enumerate(scores):
         if score < scoreThresh*scores[0]:
             solutionIndex=index
-    reportStr="Tested "+str(len(solutions)-1)+" solution(s) excluding the input solution\nBest solution had score: "+str(scores[solutionIndex])+"\n"
-    sys.stderr.write(reportStr)
+    if agconf.ag_verbose:
+        reportStr="Tested "+str(len(solutions)-1)+" solution(s) excluding the input solution\nBest solution had score: "+str(scores[solutionIndex])+"\n"
+        sys.stderr.write(reportStr)
     
     if only_solution:
         return solutions[solutionIndex]
     
-    topLeft, topRight, bottomRight, bottomLeft = ag.customQuadGate(fcsDF, xCol, yCol, vI=vI,  threshList=solutions[solutionIndex][:-1], scale=scale, filePlot=filePlot)
+    topLeft, topRight, bottomRight, bottomLeft = customQuadGate(fcs, names=names, xCol=xCol, yCol=yCol, parentGate=parentGate,  threshList=solutions[solutionIndex][:-1], scale=scale, filePlot=filePlot)
     return topLeft, topRight, bottomRight, bottomLeft, solutions[solutionIndex]
 
-def findBin(heatmap, value, edges, scale='linear', T=1000):
-    assert heatmap.shape[0] == heatmap.shape[1]
-    nBins = heatmap.shape[0]
-    vmin = min(edges)
-    vmax = max(edges)
-    if scale.lower()=='logish':
-        value = ag.convertToLogishPlotCoordinate(value, vmin, vmax, T)
-    binIndex = (value-vmin)/(vmax-vmin) * nBins
-    binIndex = int(round(binIndex,0))
-    if binIndex<0:
-        binIndex=0
-    if binIndex>=nBins:
-        binIndex=nBins-1
-    return binIndex
 
 def evaluatePartitioning(heatmap, xedges, yedges, xB, xT, yL, yR, scale, T):
+    #*****************INTERNAL************
     result=0
     for orientation in ['ul','ur','br','bl']:
         if orientation=='ul':
@@ -184,13 +192,13 @@ def evaluatePartitioning(heatmap, xedges, yedges, xB, xT, yL, yR, scale, T):
         elif orientation=='bl':
             xThresh=xB
             yThresh=yL
-        rectangle = ag.heatmapRect(heatmap,xedges,yedges,xThresh,yThresh,orientation, scale,T)
-        result+=ag.edgeDensity(heatmap, rectangle, orientation)
+        rectangle = heatmapRect(heatmap,xedges,yedges,xThresh,yThresh,orientation, scale,T)
+        result+=edgeDensity(heatmap, rectangle, orientation)
     return result
 
 def heatmapRect(heatmap, xedges, yedges, xlim, ylim, orientation, scale='linear', T=1000):
-    #SOME ERROR HANDLING NEEDED
-
+    #*****************INTERNAL*************
+    #TODO: SOME PROPER ERROR HANDLING NEEDED IN THIS
     assert heatmap.shape[0] == heatmap.shape[1]
     nBins = heatmap.shape[0]
     xmin = min(xedges)
@@ -198,8 +206,8 @@ def heatmapRect(heatmap, xedges, yedges, xlim, ylim, orientation, scale='linear'
     ymin = min(yedges)
     ymax = max(yedges)
     if scale.lower()=='logish':
-        xlim = ag.convertToLogishPlotCoordinate(xlim, xmin, xmax, T)
-        ylim = ag.convertToLogishPlotCoordinate(ylim, ymin, ymax, T)
+        xlim = convertToLogishPlotCoordinate(xlim, xmin, xmax, T)
+        ylim = convertToLogishPlotCoordinate(ylim, ymin, ymax, T)
     xBin = (xlim-xmin)/(xmax-xmin) * nBins
     xBin = int(round(xBin,0))
     if xBin<0:
@@ -224,6 +232,7 @@ def heatmapRect(heatmap, xedges, yedges, xlim, ylim, orientation, scale='linear'
         raise RuntimeError("Unhandled case, unexpected error in heatmapRect")
 
 def edgeDensity(heatmap, rect, orientation):
+    #**************INTERNAL***************
     if orientation.lower() not in ['ul','ur','br','bl']:
         raise("orientation.lower() not in ['ul','ur','br','bl']")
     edgeDensity=0.0
@@ -253,12 +262,13 @@ def edgeDensity(heatmap, rect, orientation):
     return edgeDensity
 
 def penalty(dx, phi):
+    #*********INTERNAL*************
+    #Possible to change behaviour to exponential penalty, TODO: flag? should be under *args **kwargs on parents
     #penalty = pow(x,phi) - 1
     penalty = dx*phi
-    #print("penalty for "+str(x)+": "+str(penalty))
     return penalty
 
-def penaltyValleySeek(fcsDF, xCol, x0, vI=sentinel, direction='up', phi=1, sigma=3, bins=300, scale='linear', T= 1000):
+def penaltyValleySeek(fcs, xCol, x0, parentGate=None, direction='up', phi=1, sigma=3, bins=300, scale='linear', T= 1000):
     """
     
     Similar to valleySeek, but searches from a starting point in a given direction with penalty.\n
@@ -266,16 +276,15 @@ def penaltyValleySeek(fcsDF, xCol, x0, vI=sentinel, direction='up', phi=1, sigma
     
     **Parameters**
     
-    fcsDF : pandas.DataFrame
-        Flow data loaded in a pandas DataFrame. \n
-        If data is stored in an AGSample object this can be retrieved by
-        calling the sample, i.e. mysample().
+    fcs : AGClasses.AGSample object
+        Flow data loaded in an sample object.
     xCol : str
         Marker label.
     x0 : float
         Starting position for search.
-    vI : list-like or AGgate object
-        Parent population to apply the gating to.
+    parentGate : AGgate object, optional, default: None
+        Parent population to apply the gating to. 
+        If no AGgate object is passed gating is applied to the ungated data frame.
     direction, str, optional, default: 'up'
         Which direction to perform search. \n
         'up' means from starting point to increasing values on the axis. \n
@@ -296,38 +305,43 @@ def penaltyValleySeek(fcsDF, xCol, x0, vI=sentinel, direction='up', phi=1, sigma
     float
         Coordinate on axis with lowest density in given interval.
 
-    **Notes**
+    .. note::
+            The penalty function adds the absolute difference between starting coordinate and end coordinate multiplied by phi to the score of a solution. \n
+            Higher phi will apply heavier penalty for increasing distance from the starting position (larger 'jumps').\n
+            If phi is set very low (or 0) it's likely that the best threshold will be found at the very end of the axis.\n
     
-    The penalty function adds the absolute difference between starting coordinate and end coordinate multiplied by phi to the score of a solution. \n
-    Higher phi will apply heavier penalty for the distance from the starting position.\n
-    If phi is set very low (or 0) it's likely that the best threshold will be found at the very end of the axis.\n
-    
-    Note that the input heatmap is smoothed to avoid finding localized minima due to noise. This has the drawback that returned thresholds are approximate of the least dense point, the error is:\n
-    +- ( bin width / 2 )
+    .. note::
+            The input heatmap is smoothed to avoid finding localized minima due to noise. This has the drawback that returned thresholds are approximate of the least dense point, the error is:\n
+            +- ( bin width / 2 )
 
     **Examples**
 
     None currently.
     """
     
-    if vI is sentinel:
-        vI=fcsDF.index
-    elif len(vI)==0:
-        raise ValueError("Passed index contains no events")    
-    if xCol not in fcsDF.columns:
-        raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
-    if not isinstance(x0, (float,int, np.float64)):
-        raise ValueError("x0 must be specified as float or integer value.\nThis is the predefined cutOff to reevaluate with penalty.")
-    if type(direction) is not str:
-        raise ValueError("direction must be specified as string 'up' or 'down', which direction to reevaluate threshold with penalty.")
-    if not (direction=='up' or direction=='down'):
-        raise ValueError("direction must be specified as string 'up' or 'down', which direction to reevaluate threshold with penalty.")
-    if scale=='logish':
-        smoothedHisto, binData=ag.getDensityFunc(fcsDF,xCol, vI, sigma, bins, scale='logish',T=T)
-        searchSpace=ag.logishTransform(binData,T)
-        x0=ag.logishTransform([x0], T)[0]
+    if parentGate is None:
+        vI=fcs.full_index()
+    elif not isinstance(parentGate,AGgate):
+        raise invalidAGgateParentError("in penaltyValleySeek: ")
     else:
-        smoothedHisto, binData=ag.getDensityFunc(fcsDF,xCol, vI, sigma, bins)
+        vI=parentGate()
+    fcsDF=fcs()
+    if len(vI)==0:
+        raise AliGaterError("Passed index contains no events","in penaltyValleySeek: ")
+    if xCol not in fcsDF.columns:
+        raise AliGaterError(str(xCol)+" not found in dataframes columns","in penaltyValleySeek: ")
+    if not isinstance(x0, (float,int, np.float64)):
+        raise AliGaterError("x0 must be specified as float or integer value.\nThis is the predefined cutOff to reevaluate with penalty.","in penaltyValleySeek: ")
+    if type(direction) is not str:
+        raise AliGaterError("Parameter direction had an invalid type, found "+str(type(direction))+" expected "+str(type(str)),"in penaltyValleySeek: ")
+    if not (direction=='up' or direction=='down'):
+        raise AliGaterError("direction must be specified as either 'up' or 'down', which direction to reevaluate threshold with penalty.","in penaltyValleySeek: ")
+    if scale=='logish':
+        smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins, scale='logish',T=T)
+        searchSpace=logishTransform(binData,T)
+        x0=logishTransform([x0], T)[0]
+    else:
+        smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins)
         searchSpace=binData
 
     interval=[]
@@ -346,7 +360,7 @@ def penaltyValleySeek(fcsDF, xCol, x0, vI=sentinel, direction='up', phi=1, sigma
             vIndicies.append(index[0])
             
     if len(vIndicies)<=3:
-        raise ValueError("Specified interval is too narrow (Not enough data points to find a valley)")
+        raise AliGaterError("Specified interval is too narrow (Not enough data points to find a valley)","in penaltyValleySeek: ")
     
     minVal=np.inf
     minValIndex=0
@@ -361,18 +375,62 @@ def penaltyValleySeek(fcsDF, xCol, x0, vI=sentinel, direction='up', phi=1, sigma
             minValIndex=index
     return (binData[minValIndex+1]+binData[minValIndex])/2
 
-def halfNormalDistribution(fcsDF, xCol, mean, direction, vI=sentinel,bins=300, scale='linear',T=1000):
+def halfNormalDistribution(fcs, xCol, mean, direction, parentGate=None, bins=300, scale='linear',T=1000):
+    """
+    Estimates a normal distribution in an axis by only evaluating one direction from a given mean.
+    
+    **Parameters**
+    
+    fcs : AGClasses.AGSample object
+        Flow data loaded in an sample object.
+    xCol, yCol : str
+        Marker labels.
+    mean : float
+        Mean for the normal distribution that should be estimated.
+    parentGate : AGgate object, optional, default: None
+        Parent population to apply the gating to. 
+        If no AGgate object is passed gating is applied to the ungated data frame.
+    bins : int, optional, default: 300
+        Defines the resolution of the density histogram from which the normal distribution is estimated.
+    scale : str, optional, default: 'linear'
+        Which scale to be used on axis. \n
+        **WARNING**: in contrast to many other functions, this actually affects more than plotting behaviour. See notes!
+    T : int, optional, default: 1000
+        If scale is logish, the threshold for linear-loglike transition.
+        
+    .. note::
+            If a scale is changed from the default 'linear', the normal distribution is estimated on the transformed values (i.e. what you would see if plotting with this scale)\n
+            **The returned values will then also be the mean and sigma of the transformed values**.\n 
+            To reverse transform see aligater.AGPlotRoutines.inverseLogishTransform.
+        
+    **Returns**
+
+    float, float
+        Mean, standard deviation
+
+    **Examples**
+
+    None currently.
+    """
+    if not isinstance(direction,str):
+        raise AliGaterError("Parameter direction had an invalid type, found "+str(type(direction))+" expected "+str(type(str)),"in halfNormalDistribution: ")
     if direction.lower() not in ["left","right"]:
-        sys.stderr.write("Specify direction as 'left' or 'right'")
-        return None
-    if vI is sentinel:
-        vI=fcsDF.index
-    elif len(vI)==0:
-        sys.stderr.write("Passed index contains no events\n") 
-        return 0,0
+        raise AliGaterError("Specify direction as 'left' or 'right'","in halfNormalDistribution: ")
+    if not isinstance(fcs,AGsample):
+        raise invalidSampleError("in halfNormalDistribution: ")
+    if parentGate is None:
+        vI=fcs.full_index()
+    elif not isinstance(parentGate,AGgate):
+        raise invalidAGgateParentError("in halfNormalDistribution: ")
+    else:
+        vI=parentGate()
+    fcsDF=fcs()
+    if len(vI)<5:
+        sys.stderr.write("WARNING, in halfNormalDistribution: Passed index contains too few events, returning input mean and standard deviation zero\n")  
+        return mean, 0.0
     if xCol not in fcsDF.columns:
-        raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
-    data=ag.getGatedVector(fcsDF,xCol, vI, return_type="nparray")
+        raise AliGaterError(str(xCol)+" not found in dataframes columns","in halfNormalDistribution: ")
+    data=getGatedVector(fcsDF,xCol, vI, return_type="nparray")
     distribution = []
     if direction.lower()=='up':
         for x in data:
@@ -385,8 +443,8 @@ def halfNormalDistribution(fcsDF, xCol, mean, direction, vI=sentinel,bins=300, s
 
 
     if scale.lower()=='logish':
-        distribution=list(ag.logishTransform(distribution,T))
-        mean=ag.logishTransform([mean],T)[0] 
+        distribution=list(logishTransform(distribution,T))
+        mean=logishTransform([mean],T)[0] 
         
     sumVar=0
     n=len(distribution)
@@ -400,6 +458,7 @@ def halfNormalDistribution(fcsDF, xCol, mean, direction, vI=sentinel,bins=300, s
     return mean, sigma
 
 def dijkstraStep(heatmap, xBin, yBin, bins):
+    #*************INTERNAL************
     if yBin==bins-1:
         if heatmap[xBin-1,yBin] < heatmap[xBin-1,yBin-1]:
             return 0
@@ -417,26 +476,31 @@ def dijkstraStep(heatmap, xBin, yBin, bins):
     
 
 def shortestPath(fcsDF, xCol, yCol, boundaries, vI=sentinel,maxStep=30, sigma=3, points=5, scale='linear', xscale='linear',yscale='linear',bins=300, T=1000):
-    if ag.execMode in ["jupyter","ipython"]:
+    #****************INTERNAL*******************
+    #Deprecated, slow, use the cython implementation
+    sys.stderr.write("WARNING, in shortestPath: This function is deprecated and the cython version (shortestPathMatrix) is vastly superior\n")
+    if agconf.execMode in ["jupyter","ipython"]:
         plot=True
     else:
         plot=False
     originalvI=vI
-    #shortest path estimates a stepwise shortest path through a heatmap from start to end
+    #shortestPath estimates a stepwise shortest path through a heatmap from start to end
     #by one dimensional valleyseeking in a set of points(default 5) between those two coordinates
-    #i.e. 1d gradient descent
+    #i.e. it's a type of 1d gradient descent
     #should be faster than full blown dijkstra's or 2d gradient descent
-    tmpvI=ag.gateThreshold(fcsDF,xCol, yCol,thresh=boundaries[0], orientation='horisontal', population='upper',scale=scale, vI=vI,info=False)
-    vI=ag.gateThreshold(fcsDF,xCol,yCol, thresh=boundaries[1], orientation='horisontal',population='lower',scale=scale,vI=tmpvI, info=False)
+    tmpvI=gateThreshold(fcsDF,xCol, yCol,thresh=boundaries[0], orientation='horisontal', population='upper',scale=scale, vI=vI,info=False)
+    vI=gateThreshold(fcsDF,xCol,yCol, thresh=boundaries[1], orientation='horisontal',population='lower',scale=scale,vI=tmpvI, info=False)
     avgBinDepth=len(vI)/(bins*bins)
-#    print("jump penalty: "+str(avgBinDepth))
-    vX=ag.getGatedVector(fcsDF, xCol, vI)
-    vY=ag.getGatedVector(fcsDF, yCol, vI)
+
+    vX=getGatedVector(fcsDF, xCol, vI)
+    vY=getGatedVector(fcsDF, yCol, vI)
+    #TODO; actual scale handling
+    #**********************
     xscale = yscale = scale
-    heatmap, xedges, yedges = ag.getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
+    #**********************
+    heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
     smoothedHeatmap=gaussian_filter(heatmap.astype(float),sigma=sigma)
     
-    #smoothedHeatmap
 
     #Set all positions except desired end point bin to inf in the last bin-row
     #smoothedHeatmap[-1,bins-1]=0
@@ -445,25 +509,22 @@ def shortestPath(fcsDF, xCol, yCol, boundaries, vI=sentinel,maxStep=30, sigma=3,
         maxStep=int(np.round(bins/2))
     
     maxStep=maxStep
-    #Paths is a list of score ('time spent traveling') plus a list previous steps in that path
+    #Paths is a list of score ('time spent traveling') plus a list of previous steps in that path
     #I.e. paths= [pathScore,[firstStep,secondStep...,latestStep]]
-    #That means paths[0] gives us the currently fastest path
-    #and paths[0][1] it's list of steps taken; the fastests paths [step1, step2,...,lateststep]
+    #That means paths[0] gives us the currently fastest path (best score)
+    #and paths[0][1] is it's list of steps taken; the fastests paths [step1, step2,...,lateststep]
     paths=[]
     #Set up first iteration, all paths have to take their first step from 0,0
     #So we force this
     for tmpBin in np.arange(0,maxStep,1):
         penalty=sum([smoothedHeatmap[1][skippedRow] for skippedRow in np.arange(0,maxStep,1)])
-        #print(penalty)
+
         startScore=smoothedHeatmap[1,tmpBin]+smoothedHeatmap[0,0]+penalty
         paths.append([startScore, [0,tmpBin]])
-        #print(str(startScore)+"\n")
+
         
     paths=sorted(paths, key=lambda x: x[0])
-    #print("initial, sorted, paths")
-    #print(paths)
-    #print("\n")
-    #print(bins)
+
     while len(paths[0][1]) < bins:
         #Which xBin is the current path at? Or, how many steps have this path taken?
         currentPathX=len(paths[0][1])
@@ -471,7 +532,7 @@ def shortestPath(fcsDF, xCol, yCol, boundaries, vI=sentinel,maxStep=30, sigma=3,
         currentPathLeftY=paths[0][1][-1]
         #What are the avaible next steps for this path?
         #We require it to only move in one direction, 'upwards' or horisontally
-        #We also defined a max amount of steps to jump
+        #We also take into consideration the max amount of steps allowed for a jump
         maxAllowedStep=currentPathLeftY+maxStep
         if maxAllowedStep>bins:
             maxAllowedStep=bins
@@ -489,34 +550,29 @@ def shortestPath(fcsDF, xCol, yCol, boundaries, vI=sentinel,maxStep=30, sigma=3,
         tmp=[np.inf for y in np.arange(maxAllowedStep,bins,1)]
         currentPathAllY.extend(tmp)
 
-        #score for best step
+        #Find score for best step
         score=paths[0][0]+min(currentPathAvailableSteps)
-        #bin of best step
+        #Find bin of best step
         step=currentPathAllY.index(min(currentPathAvailableSteps))
         
-        #It's possible that in the last step the algorithm cannot reach the only 'allowed' jump
-        #This allows that jump for the very last bin
-#        if step==np.inf:
-#            step=bins-1
             
-        #add this step to this path
+        #Add this step to this path
         paths[0][1].append(step)
         paths[0][0]=score
         
         #Resort the list
         paths=sorted(paths, key=lambda x: x[0])
         
-    #print("\nbest path:")
-    #print(paths[0][1])
+
     if plot:
         heatmap=np.ma.masked_where(smoothedHeatmap == 0, smoothedHeatmap)
-        ag.plt.clf()
-        fig, ax = ag.plt.subplots()
+        plt.clf()
+        fig, ax = plt.subplots()
         extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
-        ag.plt.imshow(heatmap.T, extent=extent, origin='lower',aspect='equal')
-        ag.plt.xlabel(xCol)
-        ag.plt.ylabel(yCol)
-        cmap=ag.plt.get_cmap()
+        plt.imshow(heatmap.T, extent=extent, origin='lower',aspect='equal')
+        plt.xlabel(xCol)
+        plt.ylabel(yCol)
+        cmap=plt.get_cmap()
         cmap.set_bad(color='white')
         
     #draw line of shortest path
@@ -529,22 +585,22 @@ def shortestPath(fcsDF, xCol, yCol, boundaries, vI=sentinel,maxStep=30, sigma=3,
             continue
         coord=[xedges[count],yedges[step]]
         vPL.append(coord)
-        #ag.plt.plot(previousCoord, coord, 'k-', lw=2)
+        #plt.plot(previousCoord, coord, 'k-', lw=2)
         if plot:
-            fig,ax = ag.addLine(fig,ax,previousCoord,coord)
+            fig,ax = addLine(fig,ax,previousCoord,coord)
         previousCoord=coord
         count+=1
         
     if plot:
-        ag.plt.show()
+        plt.show()
     
     #Gate on originalvI
-    vOut=ag.gatePointList(fcsDF,xCol,yCol,vPL, vI=originalvI)
-    ag.reportGateResults(originalvI,vOut)
+    vOut=gatePointList(fcsDF,xCol,yCol,vPL, vI=originalvI)
+    reportGateResults(originalvI,vOut)
     if plot:
-        ag.plt.clf()
-        ag.plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
-        ag.plt.show()
+        plt.clf()
+        plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
+        plt.show()
     return vOut
 
 

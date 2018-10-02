@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
-#These flags are accessible throughout aligater under it's namespace, i.e. ag.minCells, ag.cellFilter, ag.ag_verbose.
+#These flags/variables are accessible throughout aligater under namespace agconf
+#example: agconf.minCells, agconf.ag_verbose
 #They affect behaviour of several functions.
 
-#the minCells threshold decides a minimum level below which a population is considered non-existent. 
-#I.e. below this threshold it's essentially 'rounded' to zero
-minCells=5
+#If a parent population has less cells than this threshold, the resulting gated population will be considered invalid
+minCells=1000
+
 
 #the cellFilter threshhold is the _initial_ required number of events per sample when it's first loaded
-#If lower than this, the entire sample is skipped and strategy is not applied
-cellFilter=100000
+#If lower than this, the entire sample is skipped and strategy never applied
+cellFilter=50000
 
-#Sets verbosity level, if False only warnings are printed. Does not affect plotting.
+#Sets verbosity level, if False only minor information and warnings are printed. Does not affect plotting behaviour.
 ag_verbose=True
+
+
+#This detects how aligater was started. 
+#You can change which line is commented to set how aligater should behave. It mainly affects auto-plotting behaviour.
+from aligater.check_exec_mode import type_of_script
+execMode = type_of_script()
+#Uncomment below line to force behaviour
+#execMode = 'terminal'  #Options are 'terminal', 'ipython', 'jupyter'

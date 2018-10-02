@@ -18,19 +18,26 @@
 #	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
 
 import numpy as np
-from matplotlib.ticker import Locator, Formatter
-import aligater as ag
-from matplotlib import rcParams
 import pandas as pd
 import sys, os, errno
 import gc   #for manually calling garbage collection during large iterations
-import six
-            
+
+#These are used by the QC object to store downsampled images in tempfiles and then move them once the batch analysis is complete
+import tempfile
+from shutil import copyfile
+
+#AliGater imports
+import aligater.AGConfig as agconf
+from aligater.AGPlotRoutines import getHeatmap, imagePCA_cluster
+from aligater.AGFileSystem import getGatedVectors, getFileName, getParent, collectFiles, listDir, loadFCS, getCompensationMatrix, AliGaterError, invalidAGgateError
+from aligater.fscparser_api import parse
+
 sentinel=object()   
 
+
+def update_progress(progress):
 #Imported StackOverflow progressbar method. Credit to user Brian Khuu.
 #https://stackoverflow.com/questions/3160699/python-progress-bar/15860757#15860757
-def update_progress(progress):
     barLength = 20 # Modify this to change the length of the progress bar
     status = ""
     if isinstance(progress, int):
@@ -50,7 +57,98 @@ def update_progress(progress):
     sys.stderr.flush()
 
 
+def gateIndexWrapper(func, gateObj):
+    #Deprecated
+    if gateObj is None:
+        return None
+    if not isinstance(gateObj, AGgate):
+        reportStr='Invalid AGgate obj encountered in: '+func+", expected AGClasses.AGgate, found "+str(type(gateObj))+"\n"
+        raise TypeError(reportStr)
+    else:
+        return gateObj.current()
+
+    
 class AGgate:
+    """
+    **Overview**
+
+    | Object for containing results from a gating operation.
+    | In essence it contains information on which events belong to a gated population and the name of it's parent population.
+    |  
+    | Optionally it can hold additional information such as which markers labels where on the x- and y-axis', and a downsampled version of the pre-gate view.
+    |  
+    | Such additional information is useful for automating formatted output from a batch gating experiment.
+    |  
+    
+    **Members**
+    
+    current, list-like
+        List-like index tracking rows(events) correspond to a gated population in a AGClasses.AGSample.
+    parent, list-like, optional, default: None
+        | List-like index tracking rows(events) correspond to a population's parent population in a AGClasses.AGSample.
+        | If not passed, assumes that the parent population is the ungated sample.
+    xCol, str, optional, default: None
+        | User-input string name of the x-axis marker label. 
+        | NOTE: Will **not** raise on non-str input, instead sets to None.
+    yCol, str, optional, default: None
+        | User-input string name of the y-axis marker label. 
+        | NOTE: Will **not** raise on non-str input, instead sets to None.
+    name, str
+        | User-input string name of the gated population.
+        | Raises an exception on non-str input.
+    parentName, str or None, default: None
+        User-input string name of the gated population's parent population.
+    
+    **Internal members**
+
+    | These are used by other, internal, AliGater functions and are not ment to be interacted with.
+    |  
+    
+    m_downSample
+        Container for a downsampled heatmap of the pre-gating view.
+    bInvalid
+        | Invalid flag, used for differentiating between a depleted population (0-events) that should be considered and an invalid population that should be disregarded.
+        |  
+        | NOTE: Will be set to True in any gate objects if number of events in parentGate is inclusive less than the threshold agconf.minCells. 
+        | See examples.
+    bNoparent
+        Flag for identifying samples with no parent. If true, these gate objects are assumed to stem from the ungated full sample.
+    
+    **Methods**
+    
+    __init__(self, gate, parentGate, xCol, yCol, name)
+        Initialization method, see examples.
+    __call__(self)
+        | Function for access to the current member with checks for flags and no data.
+        | Should be preferred over direct access of the current member.
+    changeParent(self, parent, name)
+        parent, AGClasses.AGgate
+            Parent population, expects another AGClasses.AGgate object.
+        name, str, optional, default: None
+            Name of parent population.
+    getParent(self)
+        | Function for access to the parent member with checks for flags and no data.
+        | Similar to the __call__ function this is the preferred method for access to the parent member.
+    reportStats(self)
+        | Function that prints a formatted report of the AGgate objects content. 
+        |  
+        | Useful when exploring data, but is not ment to be used for printing gating results in larger batch experiments.
+        | For reporting gating results of an experiment see AGClasses.AGExperiment and it's printExperiment function.
+    
+    **Internal Methods**
+    
+    These are used by other, internal, AliGater functions and are not ment to be interacted with.
+    
+    downSample
+        Function that creates and stores a downsampled version of the gating view.
+        
+    setInvalid
+        Sets the bInvalid member to True
+    
+    **Examples**
+
+    None currently.
+    """
     current=[]
     parent=[]
     xCol=None
@@ -58,69 +156,105 @@ class AGgate:
     name=None
     parentName=None
     m_downSample=None
+    bInvalid=False
+    bNoparent=False
+    bQC=False
+    bRatioGate=False
     
-    def __init__(self, gate, parentGate, xCol, yCol, name):
-        if not isinstance(gate, ag.AGClasses.AGgate):
+    def __init__(self, gate, parentGate, xCol, yCol, name, bRatioGate=False):
+        if not isinstance(gate, AGgate):
             if not isinstance(gate,list):
                 raise
             else:
                 self.current=gate
         else:
             self.current=gate()
-        if not isinstance(parentGate, ag.AGClasses.AGgate):
-            if not isinstance(parentGate,list):
-                raise
+        if not isinstance(bRatioGate,bool):
+            raise TypeError("unexpected type of bRatioGate. Expected bool, found: "+str(type(bRatioGate)))
+        self.bRatioGate=bRatioGate
+        if name is None or not isinstance(name, str):
+            raise ValueError("No, or invalid, name specified for gate")
+        self.name=name
+        if not isinstance(parentGate, AGgate):
+            if parentGate is not None:
+                raise AliGaterError("Invalid init of AGClasses.AGgate object, parentGate must either be AGClasses.AGgate or None.")
             else:
-                self.parent=parentGate
+                self.parent=None
                 self.parentName="total"    #TODO: Is there any situation where assigning parentGate with a list and not meaning full_index?
+                self.bNoparent=True
         else:
             self.parent=parentGate()
             self.parentName=parentGate.name
-        if name is None:
-            raise ValueError("No name specified for gate")
-        self.name=name
-        self.xCol=xCol
-        self.yCol=yCol
+        if not isinstance(xCol, str):
+            self.xCol=None
+        else:
+            self.xCol=xCol
+        if not isinstance(yCol, str):
+            self.yCol=None
+        else:
+            self.yCol=yCol
         
     def __call__(self):
+        if self.bInvalid:
+            sys.stderr.write("Call to AGGate object ("+self.name+") that has had its invalid flag set, returning empty gate\n")
+            return []
+        if not isinstance(self.current, list):
+            raise AliGaterError("This AGGate object ("+self.name+") is had a non-list current member\n")
         if not list(self.current):
-            sys.stderr.write("This AGGate object does not contain any data\n")
             return []
         return self.current
     
-    def changeParent(self, vIParent):
-        if not list(vIParent):
-            raise TypeError("Passed parent population is not a list-index")
-        self.parent=vIParent
+    def changeParent(self, parent=sentinel, name=None):
+        if parent is sentinel:
+            self.parent=None
+            self.parentName="total"
+            self.bNoparent=True
+            return
+        if not isinstance(parent, AGgate):
+            raise TypeError("Error in changeParent call: Passed parent population to AGgate object "+self.name+" is not a AGClasses.AGgate object")
+        self.parent=parent()
+        self.parentName=name
+        self.bNoparent=False
         return
     
     def getParent(self):
         if not list(self.parent):
-            sys.stderr.write("This AGGate object does not contain any parent data\n")
-            return []
+            reportStr="This AGGate object does not contain any parent data\nIf you want the full index, access it through the AGClasses.AGgate object"
+            raise ValueError(reportStr) 
         return self.parent
     
-    def downSample(self, fcsDF , bins):
-        vX, vY = ag.getGatedVectors(fcsDF, self.xCol, self.yCol, vI=self.parent, return_type="nparray")
-        flaggedIndicies=[]
+    def downSample(self, fcsDF, bins, xlim, ylim, scale='linear', xscale='linear', yscale='linear'):
+        vX, vY = getGatedVectors(fcsDF, self.xCol, self.yCol, vI=self.parent, return_type="nparray")
+        #flaggedIndicies=[]
         for i in np.arange(0,len(vX),1):
-            if vX[i]<0 or vX[i] > 500000 or vY[i] < 0 or vY[i] > 500000:
-                flaggedIndicies.append(i)
-        vX=np.delete(vX, flaggedIndicies)
-        vY=np.delete(vY, flaggedIndicies)
-        self.m_downSample = ag.getHeatmap(vX, vY, bins, "linear", "linear", "linear", normalize=True)[0]
+            if vX[i]<xlim[0]:
+                vX[i]=xlim[0]
+            if vX[i]>xlim[1]:
+                vX[i]=xlim[1]
+            if vY[i]<ylim[0]:
+                vY[i]=ylim[0]
+            if vY[i]>ylim[1]:
+                vY[i]=ylim[1]
+        heatmapRange=[xlim, ylim]
+        #vX=np.delete(vX, flaggedIndicies)
+        #vY=np.delete(vY, flaggedIndicies)
+        self.m_downSample = getHeatmap(vX, vY, bins, scale, xscale, yscale, normalize=True, range=heatmapRange)[0]
+        self.bQC=True
+        
+    def setInvalid(self):
+        self.bInvalid=True
     
     def reportStats(self):
         if not list(self.current):
-            raise ValueError("This AGGate object does not contain any data")
+            raise AliGaterError("This AGGate object ("+self.name+") does not contain any data")
         elif not list(self.parent):
-            sys.stderr.write("This AGGate object does not have any parent, only reporting current\n")
+            sys.stderr.write("This AGGate object ("+self.name+") does not have any parent, only reporting current\n")
             return str(len(self.current))
         else:
             nOfcurrent = float(len(self.current))
             nOfparent = float(len(self.parent))
             if any([nOfcurrent==0, nOfparent==0]):
-                sys.stderr.write("this AGGate object have reached 0 population (no gated events)\n")
+                sys.stderr.write("This AGGate object ("+self.name+") have reached 0 population (no gated events)\n")
                 return str(nOfparent)+"\t"+str(nOfcurrent)+"\t0"
             outputStr=str(nOfparent)+"\t"+str(nOfcurrent)+"\t"+str(nOfcurrent/nOfparent)
             return outputStr
@@ -128,12 +262,100 @@ class AGgate:
     
 
 class AGsample:
+    """
+    **Overview**
+
+    The AGSample object contains the data-matrix from the .fcs file input. It also keeps a list of all the AGgate objects that has been applied to it.
+
+    Any user-made strategy should accept an AGSample as input, apply gate functions to it and then return the modified AGSample back to AliGater
+
+    The Pandas DataFrame (the fcsDF member) should never be interacted with directly by the user. If python supported const, it would be const.
+    See notes for more on this.
+      
+    **Members**
+    
+    sample, str, optional, default: See below
+    
+        User-given sample name.
+        
+        | Notes on default behaviour:
+        | If no explicit sample name is given, the name will default to the filename plus the name of its two parent folders.
+        | I.e. if a .fcs file is located in /C/project_name/fcs_files/plate_3/my_fcs_file.fcs it would get the name 'fcs_files/plate_3/my_fcs_file.fcs'
+        | Settings to tweak this default behaviour will be implemented.
+        
+    **Internal members**
+
+    vGates
+        List-like of AGgate objects that belong to this sample.
+
+    filePath
+        Absolute str path to the fcs file.
+        
+        NOTE: if .fcs file paths are changed during runtime, an error will be raised.
+
+    fcsDF
+        The loaded fcs data stored as a pandas DataFrame.
+
+    **Methods**
+    
+    __call__(name)
+        This function can be used to get the full ungated dataframe if no name is given, otherwise can return a specific earlier gate.
+        
+        See sample notebooks for uses.
+    
+    update(gate, QC=False)
+      gate, AGClasses.AGgate
+          A gate object that should be added to the samples gate list.
+      QC, bool, default: False
+          A flag deciding if a downsampled picture of the gating view should be saved.
+          Should be set to True if: 
+
+          A) You want QC post-analysis through PCA and inspection of the downsampled gating views. 
+
+          And
+    
+          B) Not for intermediate gating steps (these will be worthless in your post-analysis QC).
+          
+          See example notebook on QC for best practice
+    
+    report()
+        Function that reports a quick summary of this saples total events and the gates that have been applied to it.
+
+    **Internal Methods**
+    
+    These are used by other, internal, AliGater functions and are not ment to be interacted with.
+    
+    __init__(fcsDF, filePath, sampleName)
+        Initialization method. Intended to either be called by an AGExperiment object or through the AGFileSystem.loadFCS function.
+        
+    printData(file, precision=4, header=True)
+        Function for printing formatted content to a filehandle.
+    
+    printStats(output=None, overwrite=False, precision=4, header=True)    
+        Wrapper function for printData that does file checking, and sets options like overwriting vs appending.
+        
+    resultVector(order=None, precision='.3f')
+        Function that creates a list- or matrix-like table of reported ratios and events in this sample.
+        Called by an AGExperiment object.
+    
+    **Examples**
+    
+    None currently.
+    
+    **Notes**
+    
+    On the fcsDF member:
+     
+    To ensure that no changes has been made to the fcsDF, inadvertently or intentionally, it would be possible for AliGater to store a copy and make a comparison with that copy after each user-strategy has been applied.
+    
+    This can have a significant performance impact depending on how many events are contained in each sample and has **thus been left out by design**. If that functionality is desired you can easily set it up yourself.
+
+    """
     #vGate intended as list of tuple(name, gate)
     vGates=None
     sample=None
     filePath=None
     fcsDF=None
-    gate=None
     
     def __init__(self, fcsDF, filePath, sampleName = sentinel):
         if not isinstance(fcsDF, pd.DataFrame):
@@ -145,9 +367,9 @@ class AGsample:
                 raise
         else:
             #If no name specified, set it to the filename without extension
-            datename=ag.getFileName(ag.getParent(ag.getParent(filePath)))
-            platename=ag.getFileName(ag.getParent(filePath))
-            sampleName=datename+"/"+platename+"/"+ag.getFileName(filePath)
+            datename=getFileName(getParent(getParent(filePath)))
+            platename=getFileName(getParent(filePath))
+            sampleName=datename+"/"+platename+"/"+getFileName(filePath)
             
         self.fcsDF=fcsDF
         self.sample=sampleName
@@ -174,12 +396,16 @@ class AGsample:
                 sys.stderr.write(reportStr)
                 return None
         
-    def update(self, gate, QC=False):
-        if not isinstance(gate,ag.AGClasses.AGgate):
-            raise TypeError("gate is not a valid AGgate object")
+    def update(self, gate, downSamplingBins=32, xlim=[0,500000], ylim=[0,500000], QC=False, scale='linear', xscale='linear', yscale='linear'):
+        if not isinstance(gate,AGgate):
+            raise invalidAGgateError("in AGsample.update: ")
+        if gate.xCol not in self.fcsDF.columns:
+            raise AliGaterError("in update: ","x marker label ("+str(gate.xCol)+") doesn't exist in the sample")
+        if gate.xCol not in self.fcsDF.columns:
+            raise AliGaterError("in update: ","y marker label ("+str(gate.yCol)+") doesn't exist in the sample")
         self.vGates.append(gate)
         if QC:
-            gate.downSample(self.fcsDF, 16)
+            gate.downSample(self.fcsDF, downSamplingBins, xlim, ylim, scale, xscale, yscale)
         
     def full_index(self):
         return list(self.fcsDF.index.values)
@@ -199,7 +425,7 @@ class AGsample:
             header=header+"\n"
             file.write(header)
         #Data
-        reportStr=ag.getFileName(ag.getParent(ag.getParent(self.filePath)))+"\t"+ag.getFileName(ag.getParent(self.filePath))+"\t"+self.sample+"\t"+str(len(self.full_index()))
+        reportStr=getFileName(getParent(getParent(self.filePath)))+"\t"+getFileName(getParent(self.filePath))+"\t"+self.sample+"\t"+str(len(self.full_index()))
         precision="."+str(precision)+"f"
         for gate in self.vGates:
             if len(gate[1].getParent()) == 0 or len(gate[1]()) == 0:
@@ -232,6 +458,9 @@ class AGsample:
                 else: 
                     file = open(output, 'a')
                 self.printData(file, precision, header)
+        else:
+            #TODO
+            raise
                 
     def resultVector(self, order=None, precision='.3f'):
         #Order is a list of marker names that must match those contained in the sample
@@ -270,14 +499,39 @@ class AGsample:
             result[outputCounter]=fraction
             outputCounter+=1
         return result
-        
-import tempfile
-from shutil import copyfile
+
+     
+
 class AGQC:
-    tmpFiles=[]
-    downSamplingBins=16
+    """
+    **Overview**
+
+    TODO
     
-    def __init__(self, downSamplingBins=16, *args, **kwargs):
+    **Members**
+    
+    TODO
+    
+    **Internal members**
+
+    TODO
+
+    **Methods**
+    
+    TODO
+
+    **Internal Methods**
+    
+    TODO
+     
+    **Examples**
+
+    None currently.
+    """
+    tmpFiles=[]
+    downSamplingBins=32
+    
+    def __init__(self, downSamplingBins=32, *args, **kwargs):
         self.nOfBins=downSamplingBins
     
     def __call__(self, fcs, *args, **kwargs):
@@ -294,36 +548,36 @@ class AGQC:
         if not str(gate.name+gate.parentName) in [tmpFile[2] for tmpFile in self.tmpFiles]:
             tf = tempfile.NamedTemporaryFile(prefix="AG")
             name=tf.name
-            #print(name)
             gates=str(gate.name+gate.parentName)
             self.tmpFiles.append([tf, name, gates])
             return tf
         else:
             index = [tmpFile[2] for tmpFile in self.tmpFiles].index(str(gate.name+gate.parentName))
-            #print(index)
             return self.tmpFiles[index][0]
       
     def printDownSample(self, file, gate, name):
         arr=np.array([name, str(self.downSamplingBins)])
         if gate.m_downSample is None:
-            reportStr="WARNING: QC requested but no downsampled data for gate "+gate.name+", skipping\n"
-            sys.stderr.write(reportStr)
-            return
+            if gate.bQC:
+                reportStr="WARNING: QC requested but no downsampled data for gate "+gate.name+", skipping\n"
+                sys.stderr.write(reportStr)
+                return
+            else:
+                return
         flattenedArr=gate.m_downSample.flatten()
         arr=np.append(arr,flattenedArr)
         np.save(file,arr)        
         return
     
-    def reportPCs(self):
+    def reportPCs(self,folder):
         for elem in self.tmpFiles:    
-            destStr="/media/ludvig/Project_Storage/BloodVariome/aligater/tests/"+elem[2]+".txt"
+            destStr="/media/ludvig/Project_Storage/BloodVariome/aligater/tests/"+str(folder)+"/"+str(elem[2])+".txt"
             copyfile(elem[1], destStr)
             
         for file in self.tmpFiles:
             #Create/reset list to contain images and sample names
             imlist=[]
             samplelist=[]
-            #print(file)
             #Reset file to read from beginning
             fhandle=open(file[1],"rb")
             fhandle.seek(0)
@@ -339,10 +593,106 @@ class AGQC:
                 samplelist.append(sampleName)
             reportStr="Calculating PC and clustering for "+file[2]+"\n"
             sys.stderr.write(reportStr)
-            PC_DF=ag.imagePCA_cluster(imlist, samplelist,nOfComponents=10)
+            PC_DF=imagePCA_cluster(imlist, samplelist,nOfComponents=10)
 
             
 class AGExperiment:
+    """
+    **Overview**
+
+    The AGExperiment object is where you define several rules and options for your analysis. 
+    It orchestrates how your custom strategy will interact with the flow data and handles optional settings like automatic QC. 
+    
+    **Members**
+    
+    lFilter, list-like
+        List-like of str. Inclusive filter that will be passed on to AGFileSystem.CollectFiles.
+        
+    lIgnoreTypes, list-like
+        List-like of str. Exclusive filter that will be passed on to AGFileSystem.CollectFiles.
+        
+    lMask, list-like
+        List-like of str. Exclusive filter that will be passed on to AGFileSystem.CollectFiles.
+        
+    lMarkers, list-like
+        List-like of str. Both inclusive and exclusive filter that will be passed on to AGFileSystem.loadFCS. 
+        Any marker labels encountered in a .fcs file must exist in this filter, otherwise sample is skipped.
+        
+        NOTE: Forwardscatters, sidescatters and time should not be included.
+    
+    compensation_exceptions, list-like
+        List like of str. Contains absolute filepaths to .fcs files that should be compensated in a different way than the rest of the samples.
+    
+    comp_matrix, ndarray
+        Optional comp_matrix that can be passed and used for applying compensation manually.
+
+    resultHeader, list-like
+        List-like of str. A custom header to be used for the output file.
+        
+    bQC, bool 
+        Flag if any type of QC has been requested. This will automatically trigger post-analysis PCA, print figures and save a pandas DataFrame with the results.
+
+    **Internal members**
+
+    fcsList, list-like
+        List like of str filepath. Collected through an internal call to AGFileSystem.CollectFiles
+        
+    sampleList, list-like
+        List-like of AGClasses.AGSample objects. Created and expanded as a batch experiment runs.
+        Note that these are not fully-fletched AGSampled object, but rather slimmed versions, with 
+        only enough information to recreate an identical sample object to save memory.
+    
+    man_comp, bool
+        Flag recognizing if a sample should be compensated manually with the compensation matrix stored in comp_matrix.
+
+    flaggedSamples, list-like
+        List-like of list-like. Two-by-n list with [samplename, flagged_population].
+    
+    resultMatrix, list-like
+        Matrix with reported statistics, one sample per row.
+
+    normaliseLevel, str
+        Experimental feature, for plate normalisation. Not fully implemented.
+    
+    nOfPlates, int
+        Count of plates, used for plate normalisation. Not fully implemented.
+    
+    normalise, bool
+        Flag for plate normalisation. Not fully implemented.
+    
+    plateList, list-like
+        List-like of str filepaths. Used for plate normalisation. Not fully implemented.
+        
+    
+    **Methods**
+    
+    apply(strategy, \*args, \*\*kwargs)
+        Main method where you apply your custom strategy to all .fcs files in an experiment.
+        
+        Any arguments defined in \*args or \*\*kwargs will be passed on to your strategy, this way you can pass on and parse custom arguments to your strategy function.
+        See sample notebooks for how to build a strategy.
+        
+        NOTE: The AGExperiment object checks if the passed strategy seems to be a function by checking for a __call__ attribute, this means that you can pass a function, a class or similar as a strategy.
+        The requirement other than that is that the strategy should accept an AGSample object and return an AGSample object.
+        
+    **Internal Methods**
+    
+    TODO
+    
+    **Examples**
+
+    None currently.
+    
+    **Notes**
+    
+    On AGSample objects:
+        
+    | The sample object for each .fcs file only exists while it's being gated. 
+    | After a strategy has been applied the populations are stored in a less memory intensive way and the sample object deconstructed. 
+    | This means that you cannot access the same AGSample object that was gated previously. However, if set up properly, the AGExperiment can recreate an identical AGSample object quickly.
+ 
+    
+    """
     fcsList=[]              #LIST (str filepaths)
     normaliseLevel=None     #STR
     nOfPlates=0             #INT    
@@ -360,6 +710,7 @@ class AGExperiment:
     resultHeader=None
     resultMatrix=None
     bQC=False
+    QCbins=32
     
     def __init__(self, experimentRoot, *args, **kwargs):
         if 'filters' in kwargs:
@@ -432,7 +783,15 @@ class AGExperiment:
             if self.bQC:
                 reportStr="QC requested\n"
                 sys.stderr.write(reportStr)
-
+        
+        if 'QCbins' in kwargs:
+            if self.bQC:
+                if not isinstance(kwargs['QCbins'],int):
+                    raise (TypeError("QCbins must be int"))
+                self.QCbins=kwargs['QCbins']
+            else:
+                raise(ValueError("QCbins specified but QC not requested"))
+        
         if 'compMatrix' in kwargs:
             if not isinstance(kwargs['compMatrix'],np.ndarray):
                 raise TypeError("compensation matrix must be np array if passed")
@@ -453,10 +812,10 @@ class AGExperiment:
             self.compensation_exceptions=kwargs['compList']
 
         #If no normalisation, collect all files
-        self.fcsList=ag.collectFiles(experimentRoot,self.lFilter,self.lMask,self.lIgnoreTypes)
+        self.fcsList=collectFiles(experimentRoot,self.lFilter,self.lMask,self.lIgnoreTypes)
         if self.normalise:
             #Otherwise (plate normalisation) collect abs path to all end-of-tree folders
-            self.plateList=ag.listDir(experimentRoot)
+            self.plateList=listDir(experimentRoot)
             self.checkPlateList()
             reportStr="Files are distributed in "+str(len(self.plateList))+" plates\n"
             sys.stderr.write(reportStr)
@@ -479,56 +838,56 @@ class AGExperiment:
         if not hasattr(strategy, '__call__'):
             raise TypeError("Passed strategy does not seem to be a function")
         if self.bQC:
-            QCObj=ag.AGQC(16)
+            QCObj=AGQC(self.QCbins)
         
-        if self.normalise:
-            reportStr="Applying strategy platewise\n"
-            sys.stderr.write(reportStr)
-            for plate in self.plateList:
-                plate_samples=[]
-                gc.collect()
-                plate_samples=self.parse_folder(strategy, plate, *args)
-                self.check_plate(plate_samples)
-                for sample in plate_samples:
-                    if self.resultHeader is None:
-                        self.initResultMatrix(sample)
-                    self.collectGateData(sample)
-                #self.sampleList.extend(plate_samples)
-        else:
-            reportStr="Applying strategy\n"
-            sys.stderr.write(reportStr)
-            for fcs in self.fcsList:
-                if 'ag_verbose' in kwargs:
-                    ag.ag_verbose = kwargs['ag_verbose']
-                else:
-                    ag.ag_verbose = True
-                if self.compensation_exceptions is not None:
-                    comp_matrix=self.check_compensation_exception(fcs)
-                if self.man_comp:
-                    comp_matrix=self.comp_matrix
-                else:
-                    comp_matrix=None
-                sample = ag.loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=self.lMarkers)
-                if sample is None:
-                    continue
-                gatedSample=self.fcs_apply_strategy(sample,strategy, *args, **kwargs)
-                if self.resultHeader is None:
-                        self.initResultMatrix(sample)
-                self.collectGateData(gatedSample)
-                self.sampleList.append(gatedSample.sample)
-                if self.bQC:
-                    QCObj(gatedSample)
+        for fcs in self.fcsList:
+            if 'ag_verbose' in kwargs:
+                agconf.ag_verbose = kwargs['ag_verbose']
+            else:
+                agconf.ag_verbose = True
+            if self.man_comp:
+                comp_matrix=self.comp_matrix
+            else:
+                comp_matrix=None
+            if self.compensation_exceptions is not None:
+                comp_matrix=self.check_compensation_exception(fcs)
+            sample = loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=self.lMarkers)
+            if sample is None:
+                continue
+            sys.stderr.write("Applying strategy\n")
+            gatedSample=self.fcs_apply_strategy(sample,strategy, *args, **kwargs)
+            if self.resultHeader is None:
+                    self.initResultMatrix(sample)
+            self.collectGateData(gatedSample)
+            self.sampleList.append(gatedSample.sample)
+            if self.bQC:
+                QCObj(gatedSample)
+            sys.stderr.write("Sample gating ")
+            if self.bQC:
+                sys.stderr.write("and QC metrics collection ")
+            sys.stderr.write("done\n")
+            #Flush stderr for logfile between each sample
+            sys.stderr.flush()
+                    
         nOfFlagged=len(self.flaggedSamples)
         fhandle=open("testRun.log.txt",'w')
-        reportStr="Complete, "+str(nOfFlagged)+" samples flagged for inspection\n"
+        reportStr="Complete, "
+        if nOfFlagged>0:
+            reportStr=reportStr+str(nOfFlagged)+"samples had at least one gate with an invalid flag set"
+        else:
+            reportStr=reportStr+"no samples had populations with invalid flags"
+        reportStr=reportStr+"\n"
         sys.stderr.write(reportStr)
         fhandle.write(reportStr)
         for elem in self.flaggedSamples:
-            reportStr=elem[0]+"\n"+elem[1]+"\n"
+            reportStr=elem+"\n"
             sys.stderr.write(reportStr)
             fhandle.write(reportStr)
         if self.bQC:
-            QCObj.reportPCs()
+            if 'folder' in kwargs:
+                folder=kwargs['folder']
+            #TODO: default folder
+            QCObj.reportPCs(folder)
 
     
     def initResultMatrix(self, fcs):
@@ -537,8 +896,7 @@ class AGExperiment:
         self.resultHeader=["sampleName"]
         for gate in fcs.vGates:
             if gate.name==None or gate.parentName is None:
-                print(gate.name)
-                print(gate.parentName)
+                raise AliGaterError("Error when initializing resultmatrix gatename or parentname missing")
             self.resultHeader.extend([gate.name, gate.name+str("/")+gate.parentName])
             
     def collectGateData(self, fcs):
@@ -546,23 +904,37 @@ class AGExperiment:
         #Create empty python list of correct size
         sampleResults=[None]*len(self.resultHeader)
         sampleResults[0] = fcs.sample
+        bFlagged=False
         for gate in fcs.vGates:
             try:
                 indexOfGate=self.resultHeader.index(gate.name)
             except ValueError:
-                reportStr="sample contain unknown gate: "+gate.name+", skipping\n"
+                reportStr="sample contain unknown gate: "+gate.name+", skipping gate\n"
                 sys.stderr.write(reportStr)
                 sys.stderr.write(fcs.filePath)
                 continue
             currentGate=float(len(gate.current))
-            currentGateParent=len(gate.parent)
+            if gate.parent is not None:
+                currentGateParent=len(gate.parent)
+            else: 
+                currentGateParent=len(fcs.full_index())
             if currentGateParent==0:
                 currentRatio="NA"
             else:
-                currentRatio=float(len(gate.current)/len(gate.parent))
-            sampleResults[indexOfGate] = currentGate
-            sampleResults[indexOfGate+1] = currentRatio
+                currentRatio=currentGate/currentGateParent
+            if gate.bInvalid:
+                bFlagged=True
+                sampleResults[indexOfGate]="NA"
+                sampleResults[indexOfGate+1]="NA"
+            elif gate.bRatioGate:
+                sampleResults[indexOfGate]="NA"
+                sampleResults[indexOfGate+1]=currentRatio
+            else:
+                sampleResults[indexOfGate] = currentGate
+                sampleResults[indexOfGate+1] = currentRatio
         self.resultMatrix.append(sampleResults)
+        if bFlagged:
+            self.flaggedSamples.append(fcs.sample)
     
     def printExperiment(self, file):
         assert isinstance(file, str)
@@ -581,19 +953,19 @@ class AGExperiment:
         
     def parse_folder(self, strategy, folder, comp_matrix=None, *args, **kwargs):
         if 'ag_verbose' in kwargs:
-            ag.ag_verbose = kwargs['ag_verbose']
+            agconf.ag_verbose = kwargs['ag_verbose']
         else:
-            ag.ag_verbose = True
+            agconf.ag_verbose = True
         reportStr="Parsing plate: "+folder+" \n"
         sys.stderr.write(reportStr)
-        fcs_in_folder = ag.collectFiles(folder, lFilter=self.lFilter, lMask=self.lMask, lIgnoreTypes=self.lIgnoreTypes)
+        fcs_in_folder = collectFiles(folder, lFilter=self.lFilter, lMask=self.lMask, lIgnoreTypes=self.lIgnoreTypes)
         samples_in_plate=[]
         for fcs in fcs_in_folder:
-            if self.compensation_exceptions is not None:
-                    comp_matrix=self.check_compensation_exception(fcs)
             if self.man_comp:
                 comp_matrix=self.comp_matrix
-            sample = ag.loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=["IgA", "CD27" ,"CD34" ,"CD19", "IgD" ,"CD45","CD38","CD24"])
+            if self.compensation_exceptions is not None:
+                    comp_matrix=self.check_compensation_exception(fcs)
+            sample = loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=["IgA", "CD27" ,"CD34" ,"CD19", "IgD" ,"CD45","CD38","CD24"])
             if sample is None:
                 continue
             sample = self.fcs_apply_strategy(sample, strategy, *args, **kwargs)
@@ -604,47 +976,48 @@ class AGExperiment:
         return samples_in_plate
     
     def fcs_apply_strategy(self, fcs, strategy, *args, **kwargs):
+        #Check for strategy __Call__ functionality
         fcs = strategy(fcs, *args, **kwargs)
         return fcs
     
-    def check_plate(self, plate_samples, order=None):
-        #print(plate_samples)
-        #population_names=[]
-        #population_avgs=[]
-        #Gets list of AGSamples in this plate.
-        #Check for outliers, compute averages and report
-        nOfGates=[len(sample.vGates) for sample in plate_samples]
-        if not nOfGates[1:] == nOfGates[:-1]:
-            sys.stderr.write("plate samples has unequal amount of gates\n")
-            raise  
-        if len(nOfGates)==0:
-            reportStr="Sample object has no gates\n"
-            sys.stderr.write(reportStr)
-            return None
-        
-        nOfGates=nOfGates[0]
-        popList=[]
-        for sample in plate_samples:
-            popList.append(sample.resultVector(order=order))
-        
-        plate_matrix=np.array(popList, dtype=np.float64)
-        #print(plate_matrix)
-        #print("shape: "+str(plate_matrix.shape[1]))
-        #iterate through cols, compute means and std dev
-        t_plate_matrix=np.transpose(plate_matrix)
-        for i in np.arange(0,len(t_plate_matrix),1):
-            #Important, require array to be C continous with order='C'
-            np_popList=np.asarray(t_plate_matrix[i], dtype=np.float64, order='C')
-            #print(np_popList)
-            mean, var = ag.Stat_GetMeanAndVariance_double(np_popList)
-            #print("mean: "+str(mean)+"\nstd_dev: "+str(np.sqrt(var)))
-            std_dev = np.sqrt(var)
-            for x in np.arange(0, len(np_popList),1):
-                if np_popList[x] < (mean - 4*std_dev) or np_popList[x] > (mean + 2*std_dev):
-                    self.flaggedSamples.append((plate_samples[x].filePath, plate_samples[x].vGates[i][0]))
-        #np_popList=np.asarray(popList,dtype=np.float64)
-        #mean, var = ag.Stat_GetMeanAndVariance_double(np_popList)
-        return None
+#    def check_plate(self, plate_samples, order=None):
+#        #print(plate_samples)
+#        #population_names=[]
+#        #population_avgs=[]
+#        #Gets list of AGSamples in this plate.
+#        #Check for outliers, compute averages and report
+#        nOfGates=[len(sample.vGates) for sample in plate_samples]
+#        if not nOfGates[1:] == nOfGates[:-1]:
+#            sys.stderr.write("plate samples has unequal amount of gates\n")
+#            raise  
+#        if len(nOfGates)==0:
+#            reportStr="Sample object has no gates\n"
+#            sys.stderr.write(reportStr)
+#            return None
+#        
+#        nOfGates=nOfGates[0]
+#        popList=[]
+#        for sample in plate_samples:
+#            popList.append(sample.resultVector(order=order))
+#        
+#        plate_matrix=np.array(popList, dtype=np.float64)
+#        #print(plate_matrix)
+#        #print("shape: "+str(plate_matrix.shape[1]))
+#        #iterate through cols, compute means and std dev
+#        t_plate_matrix=np.transpose(plate_matrix)
+#        for i in np.arange(0,len(t_plate_matrix),1):
+#            #Important, require array to be C continous with order='C'
+#            np_popList=np.asarray(t_plate_matrix[i], dtype=np.float64, order='C')
+#            #print(np_popList)
+#            mean, var = Stat_GetMeanAndVariance_double(np_popList)
+#            #print("mean: "+str(mean)+"\nstd_dev: "+str(np.sqrt(var)))
+#            std_dev = np.sqrt(var)
+#            for x in np.arange(0, len(np_popList),1):
+#                if np_popList[x] < (mean - 4*std_dev) or np_popList[x] > (mean + 2*std_dev):
+#                    self.flaggedSamples.append((plate_samples[x].filePath, plate_samples[x].vGates[i][0]))
+#        #np_popList=np.asarray(popList,dtype=np.float64)
+#        #mean, var = Stat_GetMeanAndVariance_double(np_popList)
+#        return None
     
     def check_metadata_internal(self, filePath, fcsDF, lFlagged, metaDict):
         bOk=True
@@ -705,7 +1078,7 @@ class AGExperiment:
         progress_counter=0
         for fcs in self.fcsList:
             progress_counter+=1
-            metadata,fcsDF = ag.parse(fcs,output_format='DataFrame')
+            metadata,fcsDF = parse(fcs,output_format='DataFrame')
             if metadata is None:
                 metadata_warnings+=1
                 lFlagged.append([fcs,"Could not parse metadata"])
@@ -729,295 +1102,26 @@ class AGExperiment:
     
     def check_compensation_exception(self, fcs):
         for i in np.arange(0, len(self.compensation_exceptions),1):
-            if fcs == self.compensation_exceptions[i][0]:
-                reportStr="Sample is in compensation exception list, collecting external compensation matrix\n"
+            if fcs.lower() == self.compensation_exceptions[i][0].lower():
+                reportStr="Sample ("+str(fcs)+") is in compensation exception list, collecting external compensation matrix\n"
                 sys.stderr.write(reportStr)
-                metadata, fcsDF = ag.loadFCS(self.compensation_exceptions[i][1], return_type="index", metadata=True)
-                comp_matrix=ag.getCompensationMatrix(fcsDF, metadata)[1]
+                try:
+                    metadata, fcsDF = loadFCS(self.compensation_exceptions[i][1], return_type="index", metadata=True)
+                except FileNotFoundError:
+                    reportStr="WARNING, file for collecting external compensation matrix does not exist. Could not retrieve the external compensation matrix for this sample\n"
+                    sys.stderr.write(reportStr)
+                    return None
+                comp_matrix=getCompensationMatrix(fcsDF, metadata)[1]
                 if comp_matrix is not None:
                     reportStr="Succesfully collected external compensation matrix\n"
                     sys.stderr.write(reportStr)
                     return comp_matrix
                 else:
-                    reportStr=self.compensation_exceptions[i][1]+" has a zero or none compensation matrix\n"
-                    raise ValueError("External compensation matrix in compList is zero")
+                    reportStr="WARNING, in check_compensation_exception: external compensation sample "+self.compensation_exceptions[i][1]+" had a zero or none compensation matrix\n"
+                    sys.stderr.write(reportStr)
+                    self.flaggedSamples.append((fcs,"NO EXTERNAL COMP"))
         return None
     
-def is_decade(x, base=10):
-    if not np.isfinite(x):
-        return False
-    if x == 0.0:
-        return True
-    lx = np.log(np.abs(x)) / np.log(base)
-    return is_close_to_int(lx)
 
-def is_close_to_int(x):
-    if not np.isfinite(x):
-        return False
-    return abs(x - nearest_int(x)) < 1e-10
-
-def nearest_int(x):
-    if x == 0:
-        return int(0)
-    elif x > 0:
-        return int(x + 0.5)
-    else:
-        return int(x - 0.5)
-
-        
-def convertToLogishPlotCoordinates(Ticlocs, vmin, vmax, T):
-    actualRange=vmax-vmin
-    tMinMax = ag.logishTransform([vmin, vmax], T)
-    transformedRange = tMinMax[1]-tMinMax[0]
-    tTiclocs=ag.logishTransform(Ticlocs, T)
-    plotTics=[]
-    for tTic in tTiclocs:
-        plotTic=(tTic-tMinMax[0])/transformedRange*actualRange+vmin
-        plotTics.append(plotTic)
-    assert len(tTiclocs)==len(Ticlocs)
-    return plotTics
-
-def convertToLogishPlotCoordinate(Ticloc, vmin, vmax, T):
-    actualRange=vmax-vmin
-    tMinMax = ag.logishTransform([vmin, vmax], T)
-    transformedRange = tMinMax[1]-tMinMax[0]
-    tTicloc=ag.logishTransform([Ticloc], T)[0]
-    plotTic=(tTicloc-tMinMax[0])/transformedRange*actualRange+vmin
-    return plotTic
-
-def invertLogishPlotcoordinates(plotTics, vmin, vmax, T):
-    actualRange=vmax-vmin
-    tMinMax = ag.logishTransform([vmin, vmax], T)
-    transformedRange = tMinMax[1]-tMinMax[0]
-    invPlotTics=[]
-    for tTic in plotTics:
-        invPlotTic=(tTic-vmin)/actualRange*transformedRange+tMinMax[0]
-        invPlotTics.append(invPlotTic)
-    result=ag.inverseLogishTransform(invPlotTics, T)
-    return result
-
-def invertLogishPlotcoordinate(plotTic, vmin, vmax, T):
-    actualRange=vmax-vmin
-    tMinMax = ag.logishTransform([vmin, vmax], T)
-    transformedRange = tMinMax[1]-tMinMax[0]
-    invPlotTic=(plotTic-vmin)/actualRange*transformedRange+tMinMax[0]
-    result=ag.inverseLogishTransform([invPlotTic], T)[0]
-    return result
-
-class LogishLocator(Locator):
-    """
-    Determine the tick locations for logish axes based on LogLocator
-    Hacked version of LogLogator that covers normal usecases of the logish scale
-    Only defined with ticlocations for data in range -50000 < x < 1 000 000
-    """
-
-    def __init__(self, linCutOff=1000, subs=(1.0,), numdecs=4, numticks=None):
-        """
-        Place ticks on the locations : subs[j] * base**i
-        Parameters
-        ----------
-        subs : None, string, or sequence of float, optional, default (1.0,)
-            Gives the multiples of integer powers of the base at which
-            to place ticks.  The default places ticks only at
-            integer powers of the base.
-            The permitted string values are ``'auto'`` and ``'all'``,
-            both of which use an algorithm based on the axis view
-            limits to determine whether and how to put ticks between
-            integer powers of the base.  With ``'auto'``, ticks are
-            placed only between integer powers; with ``'all'``, the
-            integer powers are included.  A value of None is
-            equivalent to ``'auto'``.
-        """
-        if numticks is None:
-            if rcParams['_internal.classic_mode']:
-                numticks = 15
-            else:
-                numticks = 'auto'
-                
-        self._base=np.exp(1)
-        self.subs(subs)
-        self.numdecs = numdecs
-        self.numticks = numticks
-        self.T = linCutOff
-        
-    def set_params(self, subs=None, numdecs=4, numticks=None):
-        """Set parameters within this locator."""
-        if subs is not None:
-            self.subs(subs)
-        if numdecs is not None:
-            self.numdecs = numdecs
-        if numticks is not None:
-            self.numticks = numticks
-
-    # FIXME: these base and subs functions are contrary to our
-    # usual and desired API.
-
-    def subs(self, subs):
-        """
-        set the minor ticks for the log scaling every base**i*subs[j]
-        """
-        if subs is None:  # consistency with previous bad API
-            self._subs = 'auto'
-        elif isinstance(subs, six.string_types):
-            if subs not in ('all', 'auto'):
-                raise ValueError("A subs string must be 'all' or 'auto'; "
-                                 "found '%s'." % subs)
-            self._subs = subs
-        else:
-            self._subs = np.asarray(subs, dtype=float)
-
-    def __call__(self):
-        'Return the locations of the ticks'
-        vmin, vmax = self.view_limits()
-        return self.tick_values(vmin, vmax)
-
-    def tick_values(self, vmin, vmax):
-        if self.numticks == 'auto':
-            if self.axis is not None:
-                numticks = np.clip(self.axis.get_tick_space(), 2, 9)
-            else:
-                numticks = 9
-        else:
-            numticks = self.numticks
-        
-    #if vmin < self.T:
-        tmpTicLoc=[-50000, -40000, -30000, -20000, -10000, -5000,-4000,-3000, -2000, -1000, 0]
-        Ticlocs = list(set(np.clip(tmpTicLoc, vmin, self.T)))
-        Ticlocs = list(np.sort(Ticlocs))
-    
-    #if vmax > self.T:
-        tmpTicLoc=[0,1000]
-        tmpTicLoc.extend(np.arange(1000.0,10001,1000))
-        tmpTicLoc.extend(np.arange(10000.0,100001,10000))
-        tmpTicLoc.extend(np.arange(100000.0,1000000,100000)) #[10000.0,100000.0, 200000, 300000, 1000000.0]
-        Ticlocs.extend(tmpTicLoc)
-        clip_Ticlocs=list(set(np.clip(Ticlocs,vmin, vmax)))
-        Ticlocs=np.sort(clip_Ticlocs)
-        #ADD HOC POSSIBLY
-        Ticlocs=Ticlocs[1:-1]
-        Ticlocs=convertToLogishPlotCoordinates(Ticlocs, vmin, vmax, self.T)
-        if vmax < vmin:
-            vmin, vmax = vmax, vmin
-        return self.raise_if_exceeds(np.asarray(Ticlocs))
-
-    def view_limits(self, vmin=None, vmax=None):
-        'Try to choose the view limits intelligently'
-        vmin, vmax = self.axis.get_view_interval()
-        return vmin, vmax
-
-
-class LogishFormatter(Formatter):
-    """
-    Base class for formatting ticks on a logish scale.
-    Hacked version of LogFormatter that covers normal usecases of the logish scale
-    Only defined with formatting ticlabels for data in range -50000 < x < 1 000 000
-
-    
-    Parameters
-    ----------
-    labelOnlyBase : bool, optional, default: False
-        If True, label ticks only at integer powers of base.
-        This is normally True for major ticks and False for
-        minor ticks.
-    minor_thresholds : (subset, all), optional, default: (1, 0.4)
-        If labelOnlyBase is False, these two numbers control
-        the labeling of ticks that are not at integer powers of
-        base; normally these are the minor ticks. The controlling
-        parameter is the log of the axis data range.  In the typical
-        case where base is 10 it is the number of decades spanned
-        by the axis, so we can call it 'numdec'. If ``numdec <= all``,
-        all minor ticks will be labeled.  If ``all < numdec <= subset``,
-        then only a subset of minor ticks will be labeled, so as to
-        avoid crowding. If ``numdec > subset`` then no minor ticks will
-        be labeled.
-    linthresh : float, optional, default: 1000
-        The threshold for the logicle scale change from linear-like to log-like scaling
- 
-    Notes
-    -----
-    The `set_locs` method must be called to enable the subsetting
-    logic controlled by the ``minor_thresholds`` parameter.
-    In some cases such as the colorbar, there is no distinction between
-    major and minor ticks; the tick locations might be set manually,
-    or by a locator that puts ticks at integer powers of base and
-    at intermediate locations.  For this situation, disable the
-    minor_thresholds logic by using ``minor_thresholds=(np.inf, np.inf)``,
-    so that all ticks will be labeled.
-    To disable labeling of minor ticks when 'labelOnlyBase' is False,
-    use ``minor_thresholds=(0, 0)``.  This is the default for the
-    "classic" style.
-    Examples
-    --------
-    To label a subset of minor ticks when the view limits span up
-    to 2 decades, and all of the ticks when zoomed in to 0.5 decades
-    or less, use ``minor_thresholds=(2, 0.5)``.
-    To label all minor ticks when the view limits span up to 1.5
-    decades, use ``minor_thresholds=(1.5, 1.5)``.
-    """
-    def __init__(self, labelOnlyBase=False,
-                 minor_thresholds=None,
-                 linthresh=1000):
-        
-        self.labelOnlyBase = labelOnlyBase
-        if minor_thresholds is None:
-            if rcParams['_internal.classic_mode']:
-                minor_thresholds = (0, 0)
-            else:
-                minor_thresholds = (1, 0.4)
-        self.minor_thresholds = minor_thresholds
-        self._sublabels = None
-        self._linthresh = linthresh
-        self._base = np.exp(1)
-
-
-
-    def _num_to_string(self, x, vmin, vmax):
-        x = round(x,0)
-        if not x in [-5000, -4000, -3000, -2000, -1000, 0 ,1000,10000,100000,1000000]:
-            s = ''
-        else:
-            s = self.pprint_val(x, vmax - vmin)
-        return s
-
-    def __call__(self, x, pos=None):
-        """
-        Return the format for tick val `x`.
-        """
-        if x == 0.0:  # Symlog
-            return '0'
-        vmin, vmax = self.axis.get_view_interval()
-        #tVals = ag.logishTransform([vmin, vmax, x], self._linthresh)
-        # only label the decades
-        #fx = (x-vmin)/(vmax-vmin)*(tVals[1] - tVals[0])-tVals[0]
-        #fx = ag.inverseLogishTransform([fx],self._linthresh)[0]
-        fx=invertLogishPlotcoordinate(x,vmin,vmax,self._linthresh)
-        #print(fx)
-        s = self._num_to_string(fx, vmin, vmax)
-        return self.fix_minus(s)
-        
-
-    def pprint_val(self, x, d):
-        #If the number is at or below the set lin-cutoff (_lintrehsh)
-        #Print it as an int
-        #TODO: WHY DO I NEED THE +1 HERE?
-        if x <= self._linthresh+1:
-            return '%d' % x
-
-        fmt = '%1.3e'
-        s = fmt % x
-        tup = s.split('e')
-        if len(tup) == 2:
-            mantissa = tup[0].rstrip('0').rstrip('.')
-            exponent = int(tup[1])
-            if exponent:
-                if float(mantissa) > 1:
-                    s = '$%s*10^{%d}$' % (mantissa, exponent)
-                else:
-                    s = '$%s0^{%d}$' % (mantissa, exponent)
-            else:
-                s = mantissa
-        else:
-            s = s.rstrip('0').rstrip('.')
-        return s
     
     
