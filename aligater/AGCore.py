@@ -919,7 +919,7 @@ def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yO
         vOutput=list(set(vI).difference(vOutput))
     
     if len(vOutput)==0:
-        return []
+        return AGgate([], parentGate, xCol, yCol, name)
     
     if plot or filePlot is not None:
         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
