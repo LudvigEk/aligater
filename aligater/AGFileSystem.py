@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 import os
 import sys
+import copy #For deep copies of lists
 
 #AliGater imports
 from aligater.fscparser_api import parse
@@ -299,6 +300,42 @@ def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
     sys.stderr.write(sOutputString)
     return pd.Series(lOutput)
 
+def check_exists(sSrc):
+    if not isinstance(sSrc, list):
+        raise AliGaterError("in check_exists: ","invalid input dtype, expected "+str(type(list))+"found: "+str(type(sSrc)))
+    if not all(isinstance(x, str) for x in sSrc):
+       raise AliGaterError("in check_exists: ","invalid dtype in input list, all elements must be str")
+    invalid_paths=[]
+    not_fcs=[]
+    for item in sSrc:
+        if not os.path.isfile(item):
+            invalid_paths.append(item)
+        else:
+            if not len(item) > 4:
+                raise
+            file_ending = item[-4:]
+            if not file_ending == ".fcs":
+                not_fcs.append(item)
+    if len(invalid_paths) == 0:
+        sys.stderr.write("All file paths exists.\n")
+    else:
+        reportStr = str(len(invalid_paths))+" file(s) were invalid/does not exists, note that linux file paths are case sensitive\nInvalid paths:\n"
+        sys.stderr.write(reportStr)
+        for elem in invalid_paths:
+            sys.stderr.write(elem)
+        raise AliGaterError("in check_exists: ","All file paths must be valid")
+        
+    if len(not_fcs) != 0:
+        reportStr="Some file(s) did not have .fcs file endings and will be skipped: \n"
+        sys.stderr.write(reportStr)
+        for elem in not_fcs:
+            sys.stderr.write(elem)
+    result=copy.deepcopy(sSrc)
+    for i in np.arange(len(result)-1,-1,-1):
+        if (result[i] in invalid_paths) or (result[i] in not_fcs):
+            del result[i]
+    return result
+    
 def applyFilter(lOutput, lFilter, lMask, lIgnoreTypes):
     lFlaggedIndicies=[]
     for index, filePath in enumerate(lOutput):

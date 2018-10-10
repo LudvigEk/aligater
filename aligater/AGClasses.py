@@ -29,7 +29,7 @@ from shutil import copyfile
 #AliGater imports
 import aligater.AGConfig as agconf
 from aligater.AGPlotRoutines import getHeatmap, imagePCA_cluster
-from aligater.AGFileSystem import getGatedVectors, getFileName, getParent, collectFiles, listDir, loadFCS, getCompensationMatrix, AliGaterError, invalidAGgateError
+from aligater.AGFileSystem import getGatedVectors, getFileName, getParent, collectFiles, listDir, loadFCS, getCompensationMatrix, AliGaterError, invalidAGgateError, check_exists, applyFilter
 from aligater.fscparser_api import parse
 
 sentinel=object()   
@@ -811,16 +811,33 @@ class AGExperiment:
                 raise ValueError("Cannot both give compensation exception list and provide manual compensation matrix")
             self.compensation_exceptions=kwargs['compList']
 
+        if not isinstance(experimentRoot,str):
+            if not isinstance(experimentRoot, list):
+                raise AliGaterError("in AGExperiment initialisation: ","ExperimentRoot must be str filepath or list of str filepaths")
+            else:
+                bList=True
+        else:
+            bList=False
         #If no normalisation, collect all files
-        self.fcsList=collectFiles(experimentRoot,self.lFilter,self.lMask,self.lIgnoreTypes)
+        if not bList:
+            self.fcsList=collectFiles(experimentRoot,self.lFilter,self.lMask,self.lIgnoreTypes)
+        else:
+            sys.stderr.write("Experiment initialised with file list. Checking entries...\n")
+            file_list=check_exists(experimentRoot)
+            lFlaggedIndicies=applyFilter(file_list, self.lFilter,self.lMask, self.lIgnoreTypes)
+            lOutput = [i for j, i in enumerate(file_list) if j not in lFlaggedIndicies]
+            sOutputString="Collected "+str(len(lOutput))+" files, "+str(len(lFlaggedIndicies))+" files did not pass filter(s) and mask(s).\n"
+            sys.stderr.write(sOutputString)
+            self.fcsList=lOutput
+            
         if self.normalise:
             #Otherwise (plate normalisation) collect abs path to all end-of-tree folders
             self.plateList=listDir(experimentRoot)
             self.checkPlateList()
             reportStr="Files are distributed in "+str(len(self.plateList))+" plates\n"
             sys.stderr.write(reportStr)
-            
-            
+        
+        
     def checkPlateList(self):
         #Function that goes through the list of folders and removes those that do not contain fcs files
         #The remaining folders are considered plates

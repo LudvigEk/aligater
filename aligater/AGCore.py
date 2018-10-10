@@ -35,7 +35,7 @@ from aligater.AGClasses import AGgate, AGsample
 from aligater.AGFileSystem import getGatedVector, getGatedVectors, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
 
 def heatmap(fcs, xmarker, ymarker, population, *args, **kwargs):
-#User friendly wrapper for plotHeatmap
+    #User friendly wrapper for plotHeatmap
     if not isinstance(fcs,AGsample):
         raise invalidSampleError("in heatmap:")
     if not isinstance(population,AGgate):
