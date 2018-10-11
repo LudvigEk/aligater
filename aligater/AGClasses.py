@@ -571,7 +571,8 @@ class AGQC:
     
     def reportPCs(self,folder):
         for elem in self.tmpFiles:    
-            destStr="/media/ludvig/Project_Storage/BloodVariome/aligater/tests/"+str(folder)+"/"+str(elem[2])+".txt"
+            #TODO; ALIGATER_HOME/ALIGATER_OUTPUT path variables
+            destStr="tests/"+str(folder)+"/"+str(elem[2])+".txt"
             copyfile(elem[1], destStr)
             
         for file in self.tmpFiles:
@@ -818,6 +819,7 @@ class AGExperiment:
                 bList=True
         else:
             bList=False
+            
         #If no normalisation, collect all files
         if not bList:
             self.fcsList=collectFiles(experimentRoot,self.lFilter,self.lMask,self.lIgnoreTypes)
