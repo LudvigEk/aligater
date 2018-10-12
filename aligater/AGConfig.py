@@ -4,7 +4,7 @@
 #They affect behaviour of several functions.
 
 #If a parent population has less cells than this threshold, the resulting gated population will be considered invalid
-minCells=1000
+minCells=300
 
 
 #the cellFilter threshhold is the _initial_ required number of events per sample when it's first loaded

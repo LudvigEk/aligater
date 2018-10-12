@@ -268,7 +268,7 @@ def penalty(dx, phi):
     penalty = dx*phi
     return penalty
 
-def penaltyValleySeek(fcs, xCol, x0, parentGate=None, direction='up', phi=1, sigma=3, bins=300, scale='linear', T= 1000):
+def penaltyValleySeek(fcs, xCol, x0, xEnd=None, parentGate=None, direction='up', phi=1, sigma=3, bins=300, scale='linear', T= 1000):
     """
     
     Similar to valleySeek, but searches from a starting point in a given direction with penalty.\n
@@ -282,6 +282,8 @@ def penaltyValleySeek(fcs, xCol, x0, parentGate=None, direction='up', phi=1, sig
         Marker label.
     x0 : float
         Starting position for search.
+    xEnd : float, optional, default: None
+        Endpoint for search
     parentGate : AGgate object, optional, default: None
         Parent population to apply the gating to. 
         If no AGgate object is passed gating is applied to the ungated data frame.
@@ -336,20 +338,37 @@ def penaltyValleySeek(fcs, xCol, x0, parentGate=None, direction='up', phi=1, sig
         raise AliGaterError("Parameter direction had an invalid type, found "+str(type(direction))+" expected "+str(type(str)),"in penaltyValleySeek: ")
     if not (direction=='up' or direction=='down'):
         raise AliGaterError("direction must be specified as either 'up' or 'down', which direction to reevaluate threshold with penalty.","in penaltyValleySeek: ")
+    if xEnd is not None:
+        if not isinstance(xEnd,(float, int)):
+            raise AliGaterError("in penaltyValleySeek: ", "xEnd had unexpected dtype, expected float/int, found: "+str(type(xEnd)))
     if scale=='logish':
         smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins, scale='logish',T=T)
         searchSpace=logishTransform(binData,T)
         x0=logishTransform([x0], T)[0]
+        xEnd=logishTransform([xEnd], T)[0]
     else:
         smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins)
         searchSpace=binData
-
+        
+    if xEnd is not None:
+        end_binData=xEnd
+        
     interval=[]
     if direction=='up':
         interval.append(x0)
-        interval.append(max(binData))
+        if xEnd is not None:
+            if end_binData <= x0:
+                raise
+            interval.append(end_binData)
+        else:
+            interval.append(max(binData))
     else:
-        interval.append(min(binData))
+        if xEnd is not None:
+            if end_binData >= x0:
+                raise
+            interval.append(end_binData)
+        else:
+            interval.append(min(binData))
         interval.append(x0)
     assert len(interval)==2
 
@@ -360,7 +379,8 @@ def penaltyValleySeek(fcs, xCol, x0, parentGate=None, direction='up', phi=1, sig
             vIndicies.append(index[0])
             
     if len(vIndicies)<=3:
-        raise AliGaterError("Specified interval is too narrow (Not enough data points to find a valley)","in penaltyValleySeek: ")
+        sys.stderr.write("in penaltyValleySeek: Specified interval is too narrow (Not enough data points to find a valley), returning x0\n")
+        return x0
     
     minVal=np.inf
     minValIndex=0

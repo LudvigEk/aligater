@@ -98,7 +98,13 @@ class AGgate:
         | Raises an exception on non-str input.
     parentName, str or None, default: None
         User-input string name of the gated population's parent population.
-    
+    RatioGate, bool, optional, default: False
+        If True, only report the percent-of-parent population for this gate (i.e. the ratio between the two input populations)\n
+        It will also ignore the checks to the minCells limit.
+    IgnoreCellLimit, bool, optional, default: False
+        If True, will bypass the check to the minCells limit\n
+        Useful for late gates that are known to have small number events but still should be gated, perhaps with fix unflexible gates.\n
+        This makes it harder to quality control larger sets of samples for this gate, use carefully.
     **Internal members**
 
     | These are used by other, internal, AliGater functions and are not ment to be interacted with.
@@ -160,8 +166,9 @@ class AGgate:
     bNoparent=False
     bQC=False
     bRatioGate=False
+    bIgnoreCellLimit=False
     
-    def __init__(self, gate, parentGate, xCol, yCol, name, bRatioGate=False):
+    def __init__(self, gate, parentGate, xCol, yCol, name, RatioGate=False, IgnoreCellLimit=False):
         if not isinstance(gate, AGgate):
             if not isinstance(gate,list):
                 raise
@@ -169,9 +176,12 @@ class AGgate:
                 self.current=gate
         else:
             self.current=gate()
-        if not isinstance(bRatioGate,bool):
-            raise TypeError("unexpected type of bRatioGate. Expected bool, found: "+str(type(bRatioGate)))
-        self.bRatioGate=bRatioGate
+        if not isinstance(RatioGate,bool):
+            raise TypeError("unexpected type of bRatioGate. Expected bool, found: "+str(type(RatioGate)))
+        self.bRatioGate=RatioGate
+        if not isinstance(IgnoreCellLimit,bool):
+            raise TypeError("unexpected type of IgnoreCellLimit. Expected bool, found: "+str(type(IgnoreCellLimit)))
+        self.bIgnoreCellLimit=IgnoreCellLimit
         if name is None or not isinstance(name, str):
             raise ValueError("No, or invalid, name specified for gate")
         self.name=name
@@ -193,13 +203,17 @@ class AGgate:
             self.yCol=None
         else:
             self.yCol=yCol
+        #Flag gate if parent has fewer cells than minCells    
+        if not self.bRatioGate and not self.bNoparent and not self.bIgnoreCellLimit:
+            if (len(self.parent) < agconf.minCells):
+                self.bInvalid=True
         
     def __call__(self):
         if self.bInvalid:
             sys.stderr.write("Call to AGGate object ("+self.name+") that has had its invalid flag set, returning empty gate\n")
             return []
         if not isinstance(self.current, list):
-            raise AliGaterError("This AGGate object ("+self.name+") is had a non-list current member\n")
+            raise AliGaterError("This AGGate object ("+self.name+") had a non-list current member\n")
         if not list(self.current):
             return []
         return self.current
@@ -405,7 +419,8 @@ class AGsample:
             raise AliGaterError("in update: ","y marker label ("+str(gate.yCol)+") doesn't exist in the sample")
         self.vGates.append(gate)
         if QC:
-            gate.downSample(self.fcsDF, downSamplingBins, xlim, ylim, scale, xscale, yscale)
+            if not gate.bInvalid:
+                gate.downSample(self.fcsDF, downSamplingBins, xlim, ylim, scale, xscale, yscale)
         
     def full_index(self):
         return list(self.fcsDF.index.values)
@@ -892,7 +907,7 @@ class AGExperiment:
         fhandle=open("testRun.log.txt",'w')
         reportStr="Complete, "
         if nOfFlagged>0:
-            reportStr=reportStr+str(nOfFlagged)+"samples had at least one gate with an invalid flag set"
+            reportStr=reportStr+str(nOfFlagged)+" samples had at least one gate with an invalid flag set"
         else:
             reportStr=reportStr+"no samples had populations with invalid flags"
         reportStr=reportStr+"\n"
