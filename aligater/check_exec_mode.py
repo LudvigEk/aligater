@@ -15,3 +15,8 @@ def type_of_script():
         reportStr="AliGater started in terminal mode\n"
         sys.stderr.write(reportStr)
         return 'terminal'
+
+def check_ag_dirs(ag_home, ag_tmp, ag_out):
+	pass
+	return
+	

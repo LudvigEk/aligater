@@ -172,7 +172,7 @@ def variableQuadGate(fcs, names, xCol, yCol, threshList, testRange, position, te
     if only_solution:
         return solutions[solutionIndex]
     
-    topLeft, topRight, bottomRight, bottomLeft = customQuadGate(fcs, names=names, xCol=xCol, yCol=yCol, parentGate=parentGate,  threshList=solutions[solutionIndex][:-1], scale=scale, filePlot=filePlot)
+    topLeft, topRight, bottomRight, bottomLeft = customQuadGate(fcs, names=names, xCol=xCol, yCol=yCol, parentGate=parentGate,  threshList=solutions[solutionIndex][:-1], scale=scale, T=T, filePlot=filePlot)
     return topLeft, topRight, bottomRight, bottomLeft, solutions[solutionIndex]
 
 

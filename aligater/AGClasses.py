@@ -210,11 +210,13 @@ class AGgate:
         
     def __call__(self):
         if self.bInvalid:
-            sys.stderr.write("Call to AGGate object ("+self.name+") that has had its invalid flag set, returning empty gate\n")
-            return []
+            #Invalid flag
+            sys.stderr.write("WARNING: Call to AGGate object ("+self.name+") that has had its invalid flag set\n")
         if not isinstance(self.current, list):
+            #Invalid dtype
             raise AliGaterError("This AGGate object ("+self.name+") had a non-list current member\n")
         if not list(self.current):
+            #Empty
             return []
         return self.current
     
@@ -561,7 +563,7 @@ class AGQC:
     #Then returns that filehandle
     def returnTempFile(self, gate):
         if not str(gate.name+gate.parentName) in [tmpFile[2] for tmpFile in self.tmpFiles]:
-            tf = tempfile.NamedTemporaryFile(prefix="AG")
+            tf = tempfile.NamedTemporaryFile(prefix="AG", dir="/media/ludvig/Project_Storage/aligater_temp")
             name=tf.name
             gates=str(gate.name+gate.parentName)
             self.tmpFiles.append([tf, name, gates])
@@ -958,8 +960,8 @@ class AGExperiment:
                 currentRatio=currentGate/currentGateParent
             if gate.bInvalid:
                 bFlagged=True
-                sampleResults[indexOfGate]="NA"
-                sampleResults[indexOfGate+1]="NA"
+                sampleResults[indexOfGate]=currentGate
+                sampleResults[indexOfGate+1]=currentRatio
             elif gate.bRatioGate:
                 sampleResults[indexOfGate]="NA"
                 sampleResults[indexOfGate+1]=currentRatio
@@ -1102,7 +1104,7 @@ class AGExperiment:
         return bOk
     
     def check_metadata(self, *args, **kwargs):
-        if self.fcsList.empty:
+        if len(self.fcsList) == 0:
             raise ValueError("This AGExperiment does not have any fcs files associated with it")
         bOk=True
         metadata_warnings=0

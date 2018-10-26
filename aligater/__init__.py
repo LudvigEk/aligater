@@ -7,9 +7,9 @@ from aligater.AGFileSystem import *
 from aligater.AGPlotRoutines import *
 from aligater.AGClasses import *
 
-try:
 #Wrapper for AGCython import with a simple reminder on py3.6+ ipykernel while using ipython/Jupyter and py3.6+ otherwise. 
 #If that's not the reason for your error I apologize sincerely for misleading.
+try:
 	from aligater.AGCython import *
 except ImportError as e:
 	if execMode in ['jupyter','ipython']:
