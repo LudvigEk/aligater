@@ -922,7 +922,7 @@ def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yO
         return AGgate([], parentGate, xCol, yCol, name)
     
     if plot or filePlot is not None:
-        fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
+        fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI,bins=bins, scale=scale,thresh=T)
         vX,vY=getGatedVectors(fcsDF,xCol, yCol, vOutput, return_type="nparray")
         xmin=min(vX)
         xmax=max(vX)
@@ -930,18 +930,18 @@ def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yO
         ymax=max(vY)
         if xOrientation.lower() == "upper":
             if yOrientation.lower() == "upper":
-                addLine(fig,ax, [xmin,ymin], [xmin, ymax],scale=scale, T=T)
-                addLine(fig,ax, [xmin,ymin], [xmax, ymin],scale=scale, T=T)
+                addLine(fig,ax, [xThresh,yThresh], [xThresh, ymax],scale=scale, T=T)
+                addLine(fig,ax, [xThresh,yThresh], [xmax, yThresh],scale=scale, T=T)
             else:
-                addLine(fig,ax, [xmin,ymax], [xmax, ymax],scale=scale, T=T)
-                addLine(fig,ax, [xmin,ymax], [xmin, ymin],scale=scale, T=T)
+                addLine(fig,ax, [xThresh,yThresh], [xThresh, ymin],scale=scale, T=T)
+                addLine(fig,ax, [xThresh,yThresh], [xmax, yThresh],scale=scale, T=T)
         else:
             if yOrientation.lower() == "upper":
-                addLine(fig,ax, [xmax,ymin], [xmax, ymax],scale=scale, T=T)
-                addLine(fig,ax, [xmax,ymin], [xmin, ymin],scale=scale, T=T)
+                addLine(fig,ax, [xThresh,yThresh], [xmin, yThresh],scale=scale, T=T)
+                addLine(fig,ax, [xThresh,yThresh], [xThresh, ymax],scale=scale, T=T)
             else:
-                addLine(fig,ax, [xmax,ymax], [xmax, ymin],scale=scale, T=T)
-                addLine(fig,ax, [xmax,ymax], [xmin, ymax],scale=scale, T=T)
+                addLine(fig,ax, [xThresh,yThresh], [xmin, yThresh],scale=scale, T=T)
+                addLine(fig,ax, [xThresh,yThresh], [xThresh, ymin],scale=scale, T=T)
         if filePlot is not None:
             plt.savefig(filePlot)
             if not plot:
@@ -949,7 +949,7 @@ def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yO
         if plot:
             plt.show()
             plt.clf()
-            plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
+            plotHeatmap(fcsDF, xCol, yCol, vOutput,bins=bins, scale=scale, thresh=T)
             plt.show()
 
         

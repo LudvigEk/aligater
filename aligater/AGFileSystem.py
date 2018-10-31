@@ -234,7 +234,11 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     if not all([scatter in ['FSC-A', 'FSC-H', 'SSC-A', 'SSC-H'] for scatter in scatter_cols]):
         sys.stderr.write("First four columns of fcs file are not foward and side scatters, skippping\n")
         return None
-        
+    
+    if not isinstance(agconf.ag_trimMeasurements, (float, int)):
+        raise AliGaterError('in loadFCS: ','ag_trimMeasurements must be float or int, found: '+str(type(agconf.ag_trimMeasurements)))
+    fcsDF=fcsDF.apply(lambda x: np.where(x < agconf.ag_trimMeasurements, agconf.ag_trimMeasurements,x))
+    
     sys.stderr.write("Loaded dataset with "+str(rows)+" events.\n")
     if rows < agconf.cellFilter:
         if agconf.ag_verbose:

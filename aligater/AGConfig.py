@@ -11,6 +11,9 @@ minCells=300
 #If lower than this, the entire sample is skipped and strategy never applied
 cellFilter=100000
 
+#Truncate values below this treshold i.e. if any measured value is lower than this, the value is piled up on this instead. Set with generous margin but might affect viewability of plots if too generous.
+ag_trimMeasurements = -10000
+
 #Sets verbosity level, if False only minor information and warnings are printed. Does not affect plotting behaviour.
 ag_verbose=False
 

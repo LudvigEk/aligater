@@ -150,7 +150,7 @@ def gateEllipsoid(fcsDF, str xCol, str yCol, float xCenter, float yCenter, list 
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', linCutOff=1000, update=False,filePlot=None, QC=False, *args, **kwargs):
+def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', T=1000, update=False,filePlot=None, QC=False, *args, **kwargs):
     """
     Threshold gating function. Can be called with one or two markers which affects plotting.\n
     Call with two markers to get a two dimensional view or with one col which will instead show a density plot.
@@ -179,7 +179,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
         If no AGgate object is passed gating is applied to the ungated data frame.
     scale : str, optional, default: 'linear'
         If plotting enabled, which scale to be used on both axis.
-    linCutOff : int, optional, default: 1000
+    T : int, optional, default: 1000
         If plotting enabled and scale is logish, the threshold for linear-loglike transition
     update : bool, optional, default: False
         If True will add the resulting gated population(s) to the sample objects gate list in adition to returning the gate object.\n
@@ -276,8 +276,8 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
                         vOutput.append(index)
 
     if (plot or filePlot is not None) and not densityPlot:
-        fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=linCutOff)
-        addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+        fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
+        addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
         if filePlot is not None:
             plt.savefig(filePlot)
             if not plot:
@@ -285,11 +285,11 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
         if plot:
             plt.show()
             plt.clf()
-            plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
+            plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale,thresh=T)
             plt.show()
     if (plot or filePlot is not None) and densityPlot:
-        fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale,*args,**kwargs)
-        addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+        fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale, T=T,*args,**kwargs)
+        addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
         if filePlot is not None:
             plt.savefig(filePlot)
             if not plot:

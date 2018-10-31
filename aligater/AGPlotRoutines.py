@@ -23,6 +23,9 @@ import matplotlib.pyplot as plt
 import matplotlib.colors
 from matplotlib.patches import Ellipse, Arrow
 from matplotlib.ticker import Locator, Formatter
+from matplotlib import transforms as mtransforms
+import math
+
 import six
 from matplotlib import rcParams
 
@@ -49,7 +52,10 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     if scale.lower()=='logish':
         xscale='logish'
         yscale='logish'
-    #Default x and y lims        
+    if scale.lower()=='bilog':
+        xscale='bilog'
+        yscale='bilog'
+    #Default x and y lims
     bYlim=False
     bXlim=False
     #TODO:testing for auto limits
@@ -91,12 +97,22 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
 
     if xscale.lower()=='logish':
         ax=plt.gca()
-        ax.xaxis.set_major_locator(LogishLocator(subs='all'))
-        ax.xaxis.set_major_formatter(LogishFormatter())
+        ax.xaxis.set_major_locator(LogishLocator(linCutOff=thresh))
+        ax.xaxis.set_major_formatter(LogishFormatter(linCutOff=thresh))
     if yscale.lower()=='logish':
         ax=plt.gca()
-        ax.yaxis.set_major_locator(LogishLocator(subs='all'))
-        ax.yaxis.set_major_formatter(LogishFormatter())
+        ax.yaxis.set_major_locator(LogishLocator(linCutOff=thresh))
+        ax.yaxis.set_major_formatter(LogishFormatter(linCutOff=thresh))
+    
+    if xscale.lower()=='bilog':
+        ax=plt.gca()
+        ax.xaxis.set_major_locator(BiLogLocator(linCutOff=thresh))
+        ax.xaxis.set_major_formatter(BiLogFormatter(linCutOff=thresh))
+    if yscale.lower()=='bilog':
+        ax=plt.gca()
+        ax.yaxis.set_major_locator(BiLogLocator(linCutOff=thresh))
+        ax.yaxis.set_major_formatter(BiLogFormatter(linCutOff=thresh))
+    
     if bXlim:
         ax.xaxis.set_xlim(left=xscale_limits[0], right=xscale_limits[1])
     if bYlim:
@@ -106,7 +122,7 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
 def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xlim=None, ylim=None, range=None):
     if not any(isinstance(i,str) for i in [scale,xscale,yscale]):
         raise TypeError("scale, xscale, yscale must be specified as string, such as: 'linear', 'logish'")
-    if not all(i in ['linear', 'logish'] for i in [scale,xscale,yscale]):
+    if not all(i.lower() in ['linear', 'logish', 'bilog'] for i in [scale,xscale,yscale]):
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
     if range is not None:
         if isinstance(range,list):
@@ -147,7 +163,7 @@ def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xli
                 
     if scale=='linear' and xscale=='linear' and yscale == 'linear':
         return np.histogram2d(vX, vY, bins, normed=normalize, range=defaultRange)
-    elif scale=='logish' or (xscale == 'logish' and yscale == 'logish'):
+    if scale=='logish' or (xscale == 'logish' and yscale == 'logish'):
         xBinEdges=logishBin(vX,bins,T, xRange)
         yBinEdges=logishBin(vY,bins,T, yRange)
         return np.histogram2d(vX, vY, [xBinEdges,yBinEdges])
@@ -157,6 +173,58 @@ def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xli
     if yscale=='logish':
         yBinEdges=logishBin(vY,bins,T, yRange)
         return np.histogram2d(vX, vY, [bins,yBinEdges])
+    if scale=='bilog' or (xscale == 'bilog' and yscale == 'bilog'):
+        xBinEdges=bilogBin(vX,bins,T, xRange)
+        yBinEdges=bilogBin(vY,bins,T, yRange)
+        #print("xBinEdges: ")
+        #print(xBinEdges)
+        #print("\n\n")
+        #print("yBinEdges: ")
+        #print(yBinEdges)        
+        return np.histogram2d(vX, vY, [xBinEdges,yBinEdges])
+    if xscale=='bilog':
+        xBinEdges=bilogBin(vX,bins,T, xRange)
+        return np.histogram2d(vX, vY, [xBinEdges,bins])
+    if yscale=='bilog':
+        yBinEdges=bilogBin(vY,bins,T, yRange)
+        return np.histogram2d(vX, vY, [bins,yBinEdges])
+
+def bilogBin(vX, bins, T, customRange=None):
+    if customRange is not None:
+        defaultRange=customRange
+    else:
+        defaultRange=[min(vX),max(vX)]
+    transformedRange=bilogTransform(defaultRange,T)
+    transformedBinEdges=np.linspace(transformedRange[0],transformedRange[1],bins+1)
+    return inverseBilogTransform(transformedBinEdges, T)
+
+def bilogTransform(a, T):
+    tA = np.empty_like(a).astype(float)
+    a_idx=0
+    while a_idx < len(a):
+        if a[a_idx] >= T:
+           tA[a_idx] = np.log(10 * a[a_idx] / T)/np.log(10)
+        elif a[a_idx] < T and a[a_idx] > -T:
+            tA[a_idx] = (a[a_idx]/T  + np.log(10) - 1) / np.log(10)
+        else:
+            tA[a_idx] = -np.log(10 * abs(a[a_idx]) / T) / np.log(10)+1.13141103619349642
+        a_idx+=1
+    return tA
+
+def inverseBilogTransform(a, T):
+    invA=np.empty_like(a).astype(float)
+    a_idx=0
+    while a_idx < len(a):
+        if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
+            invA[a_idx] = T*np.exp(np.log(10)*a[a_idx])/10
+            #invA[a_idx]= (np.exp(a[a_idx])+10)*linCutOff/10
+        elif a[a_idx] <= 0.13141103619349642: # This is (np.log(10)-2)/np.log(10) I.e. what is the linear scale value at cutoff X=-T
+            tmpX=a[a_idx]-1.13141103619349642
+            invA[a_idx] = -T*np.exp(np.log(10)*-tmpX)/10
+        else:
+            invA[a_idx] = T * (np.log(10)*a[a_idx] - np.log(10) + 1)
+        a_idx+=1
+    return invA
 
 def logishBin(vX, bins, T, customRange=None):
     if customRange is not None:
@@ -190,40 +258,47 @@ def inverseLogishTransform(a, linCutOff):
         a_idx+=1
     return invA
 
-def ticFormatter(x, T, vmin, vmax):
-    if x<=T:
-        return x 
-    else:
-        exp = np.log10(x)
-        return "$10^{%d}$" % int(exp)
 
 def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', T=1000):
-    if not all(i in ['linear', 'logish'] for i in [scale]):
-        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
+    if not all(i in ['linear', 'logish', 'bilog'] for i in [scale]):
+        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish', 'bilog'")
     if orientation.lower()=='vertical':
-        if scale=='logish':
+        if scale.lower() != 'linear':
             lims=ax.get_xlim()
             vmin = lims[0]
             vmax = lims[1]
-            pos = convertToLogishPlotCoordinates([pos],vmin,vmax,T)
+            if scale.lower() == 'logish':
+                pos = convertToLogishPlotCoordinates([pos],vmin,vmax,T)
+            if scale.lower() == 'bilog':
+                pos = convertToBiLogPlotCoordinates([pos],vmin,vmax,T)
         ax.axvline(pos, c='r')
     else:
-        if scale=='logish':
+        if scale.lower() !='linear':
             lims=ax.get_ylim()
             vmin = lims[0]
             vmax = lims[1]
-            pos = convertToLogishPlotCoordinates([pos],vmin,vmax,T)
+            if scale=='logish':
+                pos = convertToLogishPlotCoordinates([pos],vmin,vmax,T)
+            if scale.lower() == 'bilog':
+                pos = convertToBiLogPlotCoordinates([pos],vmin,vmax,T)
         ax.axhline(pos,  c='r')
     return fig
 
 def addLine(fig, ax, lStartCoordinate, lEndCoordinate, size=2, scale='linear', T=1000):
-    if not all(i in ['linear', 'logish'] for i in [scale]):
-        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
+    if not scale.lower() in ['linear', 'logish', 'bilog']:
+        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish', 'bilog'")
     if scale.lower()=='logish':
         view=ax.xaxis.get_view_interval()
         xCoordinates=convertToLogishPlotCoordinates([lStartCoordinate[0],lEndCoordinate[0]], vmin=view[0], vmax=view[1], T=T)
         view=ax.yaxis.get_view_interval()
         yCoordinates=convertToLogishPlotCoordinates([lStartCoordinate[1],lEndCoordinate[1]], vmin=view[0], vmax=view[1], T=T)
+        lStartCoordinate=[xCoordinates[0],yCoordinates[0]]
+        lEndCoordinate=[xCoordinates[1],yCoordinates[1]]
+    if scale.lower()=='bilog':
+        view=ax.xaxis.get_view_interval()
+        xCoordinates=convertToBiLogPlotCoordinates([lStartCoordinate[0],lEndCoordinate[0]], vmin=view[0], vmax=view[1], T=T)
+        view=ax.yaxis.get_view_interval()
+        yCoordinates=convertToBiLogPlotCoordinates([lStartCoordinate[1],lEndCoordinate[1]], vmin=view[0], vmax=view[1], T=T)
         lStartCoordinate=[xCoordinates[0],yCoordinates[0]]
         lEndCoordinate=[xCoordinates[1],yCoordinates[1]]
     plt.plot([lStartCoordinate[0], lEndCoordinate[0]], [lStartCoordinate[1], lEndCoordinate[1]], color='r', linestyle='-', linewidth=size,figure=fig)
@@ -312,8 +387,8 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     if scale.lower()=='logish':
         ax=plt.gca()
         ax.set_xlim(left=min(data),right=max(data))
-        ax.xaxis.set_major_locator(LogishLocator())
-        ax.xaxis.set_major_formatter(LogishFormatter())
+        ax.xaxis.set_major_locator(LogishLocator(linCutOff=T))
+        ax.xaxis.set_major_formatter(LogishFormatter(linCutOff=T))
     #plt.show()
     return fig,ax
 
@@ -438,6 +513,23 @@ def image_pca(X):
     # return the projection matrix, the variance and the mean
     return V,S,mean_X
 
+#From Ticker.py
+def decade_down(x, base=10):
+    'floor x to the nearest lower decade'
+    if x == 0.0:
+        return -base
+    lx = np.floor(np.log(x) / np.log(base))
+    return base ** lx
+
+#From Ticker.py
+def decade_up(x, base=10):
+    'ceil x to the nearest higher decade'
+    if x == 0.0:
+        return base
+    lx = np.ceil(np.log(x) / np.log(base))
+    return base ** lx
+
+
 def is_decade(x, base=10):
     if not np.isfinite(x):
         return False
@@ -446,11 +538,13 @@ def is_decade(x, base=10):
     lx = np.log(np.abs(x)) / np.log(base)
     return is_close_to_int(lx)
 
+#From Ticker.py
 def is_close_to_int(x):
     if not np.isfinite(x):
         return False
     return abs(x - nearest_int(x)) < 1e-10
 
+#From Ticker.py
 def nearest_int(x):
     if x == 0:
         return int(0)
@@ -458,6 +552,45 @@ def nearest_int(x):
         return int(x + 0.5)
     else:
         return int(x - 0.5)
+
+def convertToBiLogPlotCoordinates(Ticlocs, vmin, vmax, T):
+    actualRange=vmax-vmin
+    tMinMax = bilogTransform([vmin, vmax], T)
+    transformedRange = tMinMax[1]-tMinMax[0]
+    tTiclocs=bilogTransform(Ticlocs, T)
+    plotTics=[]
+    for tTic in tTiclocs:
+        plotTic=(tTic-tMinMax[0])/transformedRange*actualRange+vmin
+        plotTics.append(plotTic)
+    assert len(tTiclocs)==len(Ticlocs)
+    return plotTics
+
+def convertToBiLogPlotCoordinate(Ticloc, vmin, vmax, T):
+    actualRange=vmax-vmin
+    tMinMax = bilogTransform([vmin, vmax], T)
+    transformedRange = tMinMax[1]-tMinMax[0]
+    tTicloc=bilogTransform([Ticloc], T)[0]
+    plotTic=(tTicloc-tMinMax[0])/transformedRange*actualRange+vmin
+    return plotTic
+
+def invertBiLogPlotcoordinates(plotTics, vmin, vmax, T):
+    actualRange=vmax-vmin
+    tMinMax = bilogTransform([vmin, vmax], T)
+    transformedRange = tMinMax[1]-tMinMax[0]
+    invPlotTics=[]
+    for tTic in plotTics:
+        invPlotTic=(tTic-vmin)/actualRange*transformedRange+tMinMax[0]
+        invPlotTics.append(invPlotTic)
+    result=inverseBilogTransform(invPlotTics, T)
+    return result
+
+def invertBiLogPlotcoordinate(plotTic, vmin, vmax, T):
+    actualRange=vmax-vmin
+    tMinMax = bilogTransform([vmin, vmax], T)
+    transformedRange = tMinMax[1]-tMinMax[0]
+    invPlotTic=(plotTic-vmin)/actualRange*transformedRange+tMinMax[0]
+    result=inverseBilogTransform([invPlotTic], T)[0]
+    return result
 
         
 def convertToLogishPlotCoordinates(Ticlocs, vmin, vmax, T):
@@ -503,11 +636,12 @@ def invertLogishPlotcoordinate(plotTic, vmin, vmax, T):
 
 class LogishLocator(Locator):
     """
-    Determine the tick locations for logish axes based on LogLocator
+    Determine the tick locations for logish axes based on LogLocator. Only locates and formats tics for the plot view.
+    Transform of underlying data and heatmap is handled outside matplotlib.
     Hacked version of LogLogator that covers normal usecases of the logish scale
-    Only defined with ticlocations for data in range -50000 < x < 1 000 000
+    Only defined with ticlocations for data in range -1 000 000 < x 
     """
-
+                                            
     def __init__(self, linCutOff=1000, subs=(1.0,), numdecs=4, numticks=None):
         """
         Place ticks on the locations : subs[j] * base**i
@@ -531,10 +665,15 @@ class LogishLocator(Locator):
             else:
                 numticks = 'auto'
                 
-        self._base=np.exp(1)
+        self._base=10.0 #np.exp(1)
         self.subs(subs)
         self.numdecs = numdecs
         self.numticks = numticks
+ 
+        if linCutOff > 10000:
+            raise AliGaterError("in LogishLocator: ","linear-log scale threshold can max be 10000")
+        if linCutOff <=0:
+            raise AliGaterError("in LogishLocator: ","linear-log scale threshold must be > 0")
         self.T = linCutOff
         
     def set_params(self, subs=None, numdecs=4, numticks=None):
@@ -577,24 +716,73 @@ class LogishLocator(Locator):
         else:
             numticks = self.numticks
         
-    #if vmin < self.T:
-        tmpTicLoc=[-50000, -40000, -30000, -20000, -10000, -5000,-4000,-3000, -2000, -1000, 0]
-        Ticlocs = list(set(np.clip(tmpTicLoc, vmin, self.T)))
-        Ticlocs = list(np.sort(Ticlocs))
-    
-    #if vmax > self.T:
-        tmpTicLoc=[0,1000]
-        tmpTicLoc.extend(np.arange(1000.0,10001,1000))
-        tmpTicLoc.extend(np.arange(10000.0,100001,10000))
-        tmpTicLoc.extend(np.arange(100000.0,1000000,100000)) #[10000.0,100000.0, 200000, 300000, 1000000.0]
-        Ticlocs.extend(tmpTicLoc)
-        clip_Ticlocs=list(set(np.clip(Ticlocs,vmin, vmax)))
-        Ticlocs=np.sort(clip_Ticlocs)
-        #ADD HOC POSSIBLY
-        Ticlocs=Ticlocs[1:-1]
-        Ticlocs=convertToLogishPlotCoordinates(Ticlocs, vmin, vmax, self.T)
         if vmax < vmin:
             vmin, vmax = vmax, vmin
+        #If vmax-vmin flipped, correct it
+ 
+            
+        #How many decs in the log part?
+        log_vmin = math.log(self.T) / math.log(self._base)
+        log_vmax = math.log(vmax) / math.log(self._base)      
+
+        numdec = math.floor(log_vmax) - math.ceil(log_vmin)
+        ticklocs = self._base ** numdec   #Base ** decades
+
+        if numdec > 10:
+            subs = np.array([1.0])
+        else:
+            subs = np.arange(1.0, self._base) #(1.0, Base)
+        stride = 1
+        
+        if rcParams['_internal.classic_mode']:
+            # Leave the bug left over from the PY2-PY3 transition.
+            while numdec / stride + 1 > numticks:
+                stride += 1
+        else:
+            while numdec // stride + 1 > numticks:
+                stride += 1
+
+        # Does subs include anything other than 1?
+        have_subs = len(subs) > 1 or (len(subs == 1) and subs[0] != 1.0)
+        decades = np.arange(math.ceil(log_vmin) - stride, math.ceil(log_vmax) + 2 * stride, stride)
+       
+        if have_subs:
+            ticklocs = []
+            if stride == 1:
+                for decadeStart in self._base ** decades:
+                    ticklocs.extend(subs * decadeStart)
+        else:
+            ticklocs = self._base ** decades #Base ** decades
+            
+        #Now we have number of tics and decs in the log part
+
+        
+        tmpTicLoc=[]
+        if vmin < -100000:
+            tmpTicLoc.extend(np.arange(-1000000,-90000,100000))
+        
+        if vmin < -10000:
+            tmpTicLoc.extend(np.arange(-100000,-9000,10000))
+            
+        if vmin < -1000:
+            tmpTicLoc.extend(np.arange(-10000,-900,1000))
+            
+        if vmin < 0:
+            tmpTicLoc.extend(np.arange(-1000,1,200))
+        
+        Ticlocs = list(set(np.clip(tmpTicLoc, vmin, self.T)))
+        Ticlocs = list(np.sort(Ticlocs))
+        if vmax >= 0:
+            tmpTicLoc.extend(np.arange(0, self.T, 1000))
+            Ticlocs.extend(tmpTicLoc)
+            
+        #ticklocs.extend(Ticlocs)    
+        Ticlocs.extend(ticklocs) 
+        clip_Ticlocs=np.sort(list(set(np.clip(Ticlocs,vmin, vmax))))
+        Ticlocs=convertToLogishPlotCoordinates(np.sort(clip_Ticlocs),vmin, vmax, self.T)
+        #ADD HOC POSSIBLY
+        Ticlocs=Ticlocs[1:-1]
+        #Ticlocs=convertToLogishPlotCoordinates(Ticlocs, vmin, vmax, self.T)
         return self.raise_if_exceeds(np.asarray(Ticlocs))
 
     def view_limits(self, vmin=None, vmax=None):
@@ -605,10 +793,11 @@ class LogishLocator(Locator):
 
 class LogishFormatter(Formatter):
     """
-    Base class for formatting ticks on a logish scale.
-    Hacked version of LogFormatter that covers normal usecases of the logish scale
-    Only defined with formatting ticlabels for data in range -50000 < x < 1 000 000
-
+    Base class for formatting ticks on a logish scale. Only locates and formats tics for the plot view.
+    Transform of underlying data and heatmap is handled outside matplotlib.
+    Modfied version of LogFormatter that covers normal usecases of the logish scale
+    Only defined with formatting ticlabels for data in range -1 000 000 < x
+    The passed parameters only affect plotting of the log-part of the scale
     
     Parameters
     ----------
@@ -651,9 +840,9 @@ class LogishFormatter(Formatter):
     To label all minor ticks when the view limits span up to 1.5
     decades, use ``minor_thresholds=(1.5, 1.5)``.
     """
-    def __init__(self, labelOnlyBase=False,
+    def __init__(self, labelOnlyBase=True,
                  minor_thresholds=None,
-                 linthresh=1000):
+                 linCutOff=1000):
         
         self.labelOnlyBase = labelOnlyBase
         if minor_thresholds is None:
@@ -663,17 +852,14 @@ class LogishFormatter(Formatter):
                 minor_thresholds = (1, 0.4)
         self.minor_thresholds = minor_thresholds
         self._sublabels = None
-        self._linthresh = linthresh
+        self._linthresh = linCutOff
         self._base = np.exp(1)
 
 
 
     def _num_to_string(self, x, vmin, vmax):
         x = round(x,0)
-        if not x in [-5000, -4000, -3000, -2000, -1000, 0 ,1000,10000,100000,1000000]:
-            s = ''
-        else:
-            s = self.pprint_val(x, vmax - vmin)
+        s = self.pprint_val(x, vmax - vmin)
         return s
 
     def __call__(self, x, pos=None):
@@ -683,20 +869,35 @@ class LogishFormatter(Formatter):
         if x == 0.0:  # Symlog
             return '0'
         vmin, vmax = self.axis.get_view_interval()
-        #tVals = logishTransform([vmin, vmax, x], self._linthresh)
-        # only label the decades
-        #fx = (x-vmin)/(vmax-vmin)*(tVals[1] - tVals[0])-tVals[0]
-        #fx = inverseLogishTransform([fx],self._linthresh)[0]
-        fx=invertLogishPlotcoordinate(x,vmin,vmax,self._linthresh)
-        #print(fx)
-        s = self._num_to_string(fx, vmin, vmax)
+
+        tx=invertLogishPlotcoordinate(x,vmin,vmax,self._linthresh)
+        
+        if tx > self._linthresh+1:
+            fx = math.log(tx) / math.log(10.0)
+            is_x_decade = is_close_to_int(fx)
+            exponent = np.round(fx) if is_x_decade else np.floor(fx)
+            coeff = np.round(x / 10.0 ** exponent)
+    
+            if self.labelOnlyBase and not is_x_decade:
+                return ''
+            if self._sublabels is not None and coeff not in self._sublabels:
+                return ''
+        else:    
+            #Manually define acceptable negative values
+            accepted_range=list(np.arange(-1000,1001,500))
+            accepted_range.extend(np.arange(-10000,-1000,5000))
+            accepted_range.extend(np.arange(-100000,-9000,10000))
+            accepted_range.extend(np.arange(-1000000,-90000,100000))
+            if not np.round(tx) in accepted_range:
+                return ''
+        s = self._num_to_string(tx, vmin, vmax)
         return self.fix_minus(s)
         
 
     def pprint_val(self, x, d):
         #If the number is at or below the set lin-cutoff (_lintrehsh)
         #Print it as an int
-        #TODO: WHY DO I NEED THE +1 HERE?
+
         if x <= self._linthresh+1:
             return '%d' % x
 
@@ -716,3 +917,457 @@ class LogishFormatter(Formatter):
         else:
             s = s.rstrip('0').rstrip('.')
         return s
+
+
+
+
+class BiLogLocator(Locator):
+    """
+    Modified version of SymmetricalLogLocator. Only locates and formats tics for the plot view.
+    Transform of underlying data and heatmap is handled outside matplotlib classes.
+    Determine the tick locations for symmetric log axes
+    """
+
+    def __init__(self, subs=(1.0,), linCutOff=100):
+        """
+        place ticks on the location= base**i*subs[j]
+        """
+        self._base = 10 #np.exp(1)
+        if isinstance(linCutOff, (float,int)):
+            self.T = linCutOff
+        else:
+            raise AliGaterError("in BiLogLocator: ","linthresh must be float/int. Found: "+str(type(linCutOff)))
+        if subs is None:
+            self._subs = [1.0]
+        else:
+            self._subs = subs
+        self.numticks = 15
+
+    def set_params(self, subs=None, numticks=None):
+        """Set parameters within this locator."""
+        if numticks is not None:
+            self.numticks = numticks
+        if subs is not None:
+            self._subs = subs
+
+    def __call__(self):
+        'Return the locations of the ticks'
+        # Note, these are untransformed coordinates
+        #if view limits are to be chosen intelligently it must be done prior to heatmap creation,
+        #thus at the level of plotheatmap. Before any ticformatting is made.
+        vmin, vmax = self.axis.get_view_interval()
+        return self.tick_values(vmin, vmax)
+
+    def tick_values(self, vmin, vmax):
+        b = self._base
+        t = self.T
+
+        if vmax < vmin:
+            vmin, vmax = vmax, vmin
+        
+        # The domain is divided into three sections, only some of
+        # which may actually be present.
+        #
+        # <======== -t ==0== t ========>
+        # aaaaaaaaa    bbbbb   ccccccccc
+        #
+        # a) and c) will have ticks at integral log positions.  The
+        # number of ticks needs to be reduced if there are more
+        # than self.numticks of them.
+        #
+        # b) has a tick at 0 and only 0 (we assume t is a small
+        # number, and the linear segment is just an implementation
+        # detail and not interesting.)
+        #
+        # We could also add ticks at t, but that seems to usually be
+        # uninteresting.
+        #
+        # "simple" mode is when the range falls entirely within (-t,
+        # t) -- it should just display (vmin, 0, vmax)
+
+        has_a = has_b = has_c = False
+        if vmin < -t:
+            has_a = True
+            if vmax > -t:
+                has_b = True
+                if vmax > t:
+                    has_c = True
+        elif vmin < 0:
+            if vmax > 0:
+                has_b = True
+                if vmax > t:
+                    has_c = True
+            else:
+                return [vmin, vmax]
+        elif vmin < t:
+            if vmax > t:
+                has_b = True
+                has_c = True
+            else:
+                return [vmin, vmax]
+        else:
+            has_c = True
+
+        def get_log_range(lo, hi):
+            lo = np.floor(np.log(lo) / np.log(b))
+            hi = np.ceil(np.log(hi) / np.log(b))
+            return lo, hi
+
+        # First, calculate all the ranges, so we can determine striding
+        if has_a:
+            if has_b:
+                a_range = get_log_range(t, -vmin + 1)
+            else:
+                a_range = get_log_range(-vmax, -vmin + 1)
+        else:
+            a_range = (0, 0)
+
+        if has_c:
+            if has_b:
+                c_range = get_log_range(t, vmax + 1)
+            else:
+                c_range = get_log_range(vmin, vmax + 1)
+        else:
+            c_range = (0, 0)
+
+        total_ticks = (a_range[1] - a_range[0]) + (c_range[1] - c_range[0])
+        if has_b:
+            total_ticks += 1
+        stride = max(total_ticks // (self.numticks - 1), 1)
+
+        decades = []
+        if has_a:
+            decades.extend(-1 * (b ** (np.arange(a_range[0], a_range[1],
+                                                 stride)[::-1])))
+
+        if has_b:
+            decades.append(0.0)
+
+        if has_c:
+            decades.extend(b ** (np.arange(c_range[0], c_range[1], stride)))
+
+        # Add the subticks if requested
+
+        subs = np.arange(2.0, b)
+
+        ticklocs = []
+        for decade in decades:
+            if decade == 0:
+                ticklocs.append(decade)
+            else:
+                ticklocs.append(decade)
+                if len(subs) > 1:
+                    ticklocs.extend(subs * decade)
+
+        clip_Ticlocs=np.sort(list(set(np.clip(ticklocs,vmin, vmax))))
+        Ticlocs=convertToBiLogPlotCoordinates(np.sort(clip_Ticlocs),vmin, vmax, self.T)
+        #dont want extra tic at min and max val
+        Ticlocs=Ticlocs[1:-1]
+
+        return self.raise_if_exceeds(np.array(Ticlocs))
+    
+    def view_limits(self, vmin=None, vmax=None):
+        'Try to choose the view limits intelligently'
+        #if view limits are to be chosen intelligently it must be done prior to heatmap creation,
+        #thus at the level of plotheatmap. Before any ticformatting is made.
+        vmin, vmax = self.axis.get_view_interval()
+        return vmin, vmax
+    
+class BiLogFormatter(Formatter):
+    """
+    Base class for formatting ticks on a log or symlog scale.
+    It may be instantiated directly, or subclassed.
+    Parameters
+    ----------
+    base : float, optional, default: 10.
+        Base of the logarithm used in all calculations.
+    labelOnlyBase : bool, optional, default: False
+        If True, label ticks only at integer powers of base.
+        This is normally True for major ticks and False for
+        minor ticks.
+    minor_thresholds : (subset, all), optional, default: (1, 0.4)
+        If labelOnlyBase is False, these two numbers control
+        the labeling of ticks that are not at integer powers of
+        base; normally these are the minor ticks. The controlling
+        parameter is the log of the axis data range.  In the typical
+        case where base is 10 it is the number of decades spanned
+        by the axis, so we can call it 'numdec'. If ``numdec <= all``,
+        all minor ticks will be labeled.  If ``all < numdec <= subset``,
+        then only a subset of minor ticks will be labeled, so as to
+        avoid crowding. If ``numdec > subset`` then no minor ticks will
+        be labeled.
+    linthresh : None or float, optional, default: None
+        If a symmetric log scale is in use, its ``linthresh``
+        parameter must be supplied here.
+    Notes
+    -----
+    The `set_locs` method must be called to enable the subsetting
+    logic controlled by the ``minor_thresholds`` parameter.
+    In some cases such as the colorbar, there is no distinction between
+    major and minor ticks; the tick locations might be set manually,
+    or by a locator that puts ticks at integer powers of base and
+    at intermediate locations.  For this situation, disable the
+    minor_thresholds logic by using ``minor_thresholds=(np.inf, np.inf)``,
+    so that all ticks will be labeled.
+    To disable labeling of minor ticks when 'labelOnlyBase' is False,
+    use ``minor_thresholds=(0, 0)``.  This is the default for the
+    "classic" style.
+    Examples
+    --------
+    To label a subset of minor ticks when the view limits span up
+    to 2 decades, and all of the ticks when zoomed in to 0.5 decades
+    or less, use ``minor_thresholds=(2, 0.5)``.
+    To label all minor ticks when the view limits span up to 1.5
+    decades, use ``minor_thresholds=(1.5, 1.5)``.
+    """
+    def __init__(self, labelOnlyBase=True,
+                 minor_thresholds=None,
+                 linCutOff=20):
+        
+        self.labelOnlyBase = labelOnlyBase
+        if minor_thresholds is None:
+            if rcParams['_internal.classic_mode']:
+                minor_thresholds = (0, 0)
+            else:
+                minor_thresholds = (1, 0.4)
+        self.minor_thresholds = minor_thresholds
+        self._sublabels = None
+        self._linthresh = linCutOff
+        self._base = np.exp(1)
+
+
+
+    def _num_to_string(self, x, vmin, vmax):
+        x = round(x,0)
+        s = self.pprint_val(x, vmax - vmin)
+        return s
+
+    def __call__(self, x, pos=None):
+        """
+        Return the format for tick val `x`.
+        """
+        if x == 0.0:  # Symlog
+            return '0'
+        vmin, vmax = self.axis.get_view_interval()
+        
+        tx=invertBiLogPlotcoordinate(x,vmin,vmax,self._linthresh)
+        tx=np.round(tx)
+
+        if tx > self._linthresh+1:
+            fx = math.log(tx) / math.log(10.0)
+            is_x_decade = is_close_to_int(fx)
+            exponent = np.round(fx) if is_x_decade else np.floor(fx)
+            coeff = np.round(x / 10.0 ** exponent)
+    
+            if self.labelOnlyBase and not is_x_decade:
+                return ''
+            if self._sublabels is not None and coeff not in self._sublabels:
+                return ''
+        elif tx < -self._linthresh-1:
+            fx = math.log(abs(tx)) / math.log(10.0)
+            is_x_decade = is_close_to_int(fx)
+            exponent = np.round(fx) if is_x_decade else np.floor(fx)
+            coeff = -np.round(x / 10.0 ** exponent)
+    
+            if self.labelOnlyBase and not is_x_decade:
+                return ''
+            if self._sublabels is not None and coeff not in self._sublabels:
+                return ''
+        else:    
+            #Manually define acceptable negative values
+            accepted_range=list([-self._linthresh, 100, 0, 100, self._linthresh])
+            if not np.round(tx) in accepted_range:
+                return ''
+        s = self._num_to_string(tx, vmin, vmax)
+        return self.fix_minus(s)
+        
+
+    def pprint_val(self, x, d):
+        #If the number is at or below the set lin-cutoff (_lintrehsh)
+        #Print it as an int
+
+        if x <= self._linthresh+1 and x >= -self._linthresh-1:
+            return '%d' % x
+
+        fmt = '%1.3e'
+        s = fmt % x
+        tup = s.split('e')
+        if len(tup) == 2:
+            mantissa = tup[0].rstrip('0').rstrip('.')
+            exponent = int(tup[1])
+            if exponent:
+                if float(mantissa) > 1:
+                    s = '$%s*10^{%d}$' % (mantissa, exponent)
+                else:
+                    s = '$%s0^{%d}$' % (mantissa, exponent)
+            else:
+                s = mantissa
+        else:
+            s = s.rstrip('0').rstrip('.')
+        return s
+    
+class SymmetricalLogLocator(Locator):
+    """
+    Determine the tick locations for symmetric log axes
+    """
+
+    def __init__(self, subs=None, linthresh=None):
+        """
+        place ticks on the location= base**i*subs[j]
+        """
+        self._base = np.exp(1)
+        self._linthresh = linthresh
+
+        if subs is None:
+            self._subs = [1.0]
+        else:
+            self._subs = subs
+        self.numticks = 15
+
+    def set_params(self, subs=None, numticks=None):
+        """Set parameters within this locator."""
+        if numticks is not None:
+            self.numticks = numticks
+        if subs is not None:
+            self._subs = subs
+
+    def __call__(self):
+        'Return the locations of the ticks'
+        # Note, these are untransformed coordinates
+        vmin, vmax = self.axis.get_view_interval()
+        return self.tick_values(vmin, vmax)
+
+    def tick_values(self, vmin, vmax):
+        b = self._base
+        t = self._linthresh
+
+        if vmax < vmin:
+            vmin, vmax = vmax, vmin
+
+        # The domain is divided into three sections, only some of
+        # which may actually be present.
+        #
+        # <======== -t ==0== t ========>
+        # aaaaaaaaa    bbbbb   ccccccccc
+        #
+        # a) and c) will have ticks at integral log positions.  The
+        # number of ticks needs to be reduced if there are more
+        # than self.numticks of them.
+        #
+        # b) has a tick at 0 and only 0 (we assume t is a small
+        # number, and the linear segment is just an implementation
+        # detail and not interesting.)
+        #
+        # We could also add ticks at t, but that seems to usually be
+        # uninteresting.
+        #
+        # "simple" mode is when the range falls entirely within (-t,
+        # t) -- it should just display (vmin, 0, vmax)
+
+        has_a = has_b = has_c = False
+        if vmin < -t:
+            has_a = True
+            if vmax > -t:
+                has_b = True
+                if vmax > t:
+                    has_c = True
+        elif vmin < 0:
+            if vmax > 0:
+                has_b = True
+                if vmax > t:
+                    has_c = True
+            else:
+                return [vmin, vmax]
+        elif vmin < t:
+            if vmax > t:
+                has_b = True
+                has_c = True
+            else:
+                return [vmin, vmax]
+        else:
+            has_c = True
+
+        def get_log_range(lo, hi):
+            lo = np.floor(np.log(lo) / np.log(b))
+            hi = np.ceil(np.log(hi) / np.log(b))
+            return lo, hi
+
+        # First, calculate all the ranges, so we can determine striding
+        if has_a:
+            if has_b:
+                a_range = get_log_range(t, -vmin + 1)
+            else:
+                a_range = get_log_range(-vmax, -vmin + 1)
+        else:
+            a_range = (0, 0)
+
+        if has_c:
+            if has_b:
+                c_range = get_log_range(t, vmax + 1)
+            else:
+                c_range = get_log_range(vmin, vmax + 1)
+        else:
+            c_range = (0, 0)
+
+        total_ticks = (a_range[1] - a_range[0]) + (c_range[1] - c_range[0])
+        if has_b:
+            total_ticks += 1
+        stride = max(total_ticks // (self.numticks - 1), 1)
+
+        decades = []
+        if has_a:
+            decades.extend(-1 * (b ** (np.arange(a_range[0], a_range[1],
+                                                 stride)[::-1])))
+
+        if has_b:
+            decades.append(0.0)
+
+        if has_c:
+            decades.extend(b ** (np.arange(c_range[0], c_range[1], stride)))
+
+        # Add the subticks if requested
+        if self._subs is None:
+            subs = np.arange(2.0, b)
+        else:
+            subs = np.asarray(self._subs)
+
+        if len(subs) > 1 or subs[0] != 1.0:
+            ticklocs = []
+            for decade in decades:
+                if decade == 0:
+                    ticklocs.append(decade)
+                else:
+                    ticklocs.extend(subs * decade)
+        else:
+            ticklocs = decades
+
+        return self.raise_if_exceeds(np.array(ticklocs))
+
+    def view_limits(self, vmin, vmax):
+        'Try to choose the view limits intelligently'
+        b = self._base
+        if vmax < vmin:
+            vmin, vmax = vmax, vmin
+
+        if rcParams['axes.autolimit_mode'] == 'round_numbers':
+            if not is_decade(abs(vmin), b):
+                if vmin < 0:
+                    vmin = -decade_up(-vmin, b)
+                else:
+                    vmin = decade_down(vmin, b)
+            if not is_decade(abs(vmax), b):
+                if vmax < 0:
+                    vmax = -decade_down(-vmax, b)
+                else:
+                    vmax = decade_up(vmax, b)
+
+            if vmin == vmax:
+                if vmin < 0:
+                    vmin = -decade_up(-vmin, b)
+                    vmax = -decade_down(-vmax, b)
+                else:
+                    vmin = decade_down(vmin, b)
+                    vmax = decade_up(vmax, b)
+
+        result = mtransforms.nonsingular(vmin, vmax)
+        return result
