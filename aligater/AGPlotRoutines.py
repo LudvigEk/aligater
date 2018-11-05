@@ -358,8 +358,8 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     if len(vI)<bins:
         sys.stderr.write("Fewer events than bins, readjusting number of bins\n")
         bins=len(vI)
-    if not all(i in ['linear', 'logish'] for i in [scale]):
-        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
+    if not all(i in ['linear', 'logish', 'bilog'] for i in [scale]):
+        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish', 'bilog'")
     if not isinstance(sigma,(float,int)): 
         raise AliGaterError("Sigma must be float or int, found: "+str(type(sigma)),"in plot_densityFunc")
     if 'sigma' in kwargs:
@@ -376,6 +376,9 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     if scale == 'logish':
         BinEdges=logishBin(data,bins,T)
         histo = np.histogram(data, BinEdges)
+    elif scale == 'bilog':
+        BinEdges=bilogBin(data,bins,T)
+        histo = np.histogram(data, BinEdges)
     else:
         histo=np.histogram(data, bins)
     vHisto=np.linspace(min(histo[1]),max(histo[1]),bins)
@@ -384,11 +387,15 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     fig,ax = plt.subplots()
     ax.plot(vHisto,smoothedHisto, label="pdf for "+str(xCol)+", sigma: "+str(sigma))
     plt.legend()
-    if scale.lower()=='logish':
+    if scale.lower()!='linear':
         ax=plt.gca()
         ax.set_xlim(left=min(data),right=max(data))
-        ax.xaxis.set_major_locator(LogishLocator(linCutOff=T))
-        ax.xaxis.set_major_formatter(LogishFormatter(linCutOff=T))
+        if scale.lower()=='logish':
+            ax.xaxis.set_major_locator(LogishLocator(linCutOff=T))
+            ax.xaxis.set_major_formatter(LogishFormatter(linCutOff=T))
+        if scale.lower()=='bilog':
+            ax.xaxis.set_major_locator(BiLogLocator(linCutOff=T))
+            ax.xaxis.set_major_formatter(BiLogFormatter(linCutOff=T))            
     #plt.show()
     return fig,ax
 

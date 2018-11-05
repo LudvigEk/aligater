@@ -2509,7 +2509,6 @@ static const char __pyx_k_TypeError[] = "TypeError";
 static const char __pyx_k_addAxLine[] = "addAxLine";
 static const char __pyx_k_adjustIdx[] = "adjustIdx";
 static const char __pyx_k_enumerate[] = "enumerate";
-static const char __pyx_k_linCutOff[] = "linCutOff";
 static const char __pyx_k_majorAxis[] = "majorAxis";
 static const char __pyx_k_minorAxis[] = "minorAxis";
 static const char __pyx_k_nOfEvents[] = "nOfEvents";
@@ -2831,7 +2830,6 @@ static PyObject *__pyx_n_s_kwargs;
 static PyObject *__pyx_n_s_leftBin;
 static PyObject *__pyx_n_s_leftBinIndex;
 static PyObject *__pyx_n_s_leftLine;
-static PyObject *__pyx_n_s_linCutOff;
 static PyObject *__pyx_n_s_linear;
 static PyObject *__pyx_n_s_logish;
 static PyObject *__pyx_n_s_logishTransform;
@@ -3005,7 +3003,7 @@ static PyObject *__pyx_n_s_zeros;
 static PyObject *__pyx_n_s_zeros_like;
 static PyObject *__pyx_n_s_zip;
 static PyObject *__pyx_pf_8aligater_8AGCython_gateEllipsoid(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_fcsDF, PyObject *__pyx_v_xCol, PyObject *__pyx_v_yCol, float __pyx_v_xCenter, float __pyx_v_yCenter, PyObject *__pyx_v_majorAxis, float __pyx_v_majorRadii, PyObject *__pyx_v_minorAxis, float __pyx_v_minorRadii, PyObject *__pyx_v_vI, PyObject *__pyx_v_population, PyBoolObject *__pyx_v_info); /* proto */
-static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_fcs, PyObject *__pyx_v_name, PyObject *__pyx_v_xCol, PyObject *__pyx_v_yCol, PyObject *__pyx_v_thresh, PyObject *__pyx_v_orientation, PyObject *__pyx_v_parentGate, PyObject *__pyx_v_population, PyObject *__pyx_v_scale, PyObject *__pyx_v_linCutOff, PyObject *__pyx_v_update, PyObject *__pyx_v_filePlot, PyObject *__pyx_v_QC, PyObject *__pyx_v_args, PyObject *__pyx_v_kwargs); /* proto */
+static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_fcs, PyObject *__pyx_v_name, PyObject *__pyx_v_xCol, PyObject *__pyx_v_yCol, PyObject *__pyx_v_thresh, PyObject *__pyx_v_orientation, PyObject *__pyx_v_parentGate, PyObject *__pyx_v_population, PyObject *__pyx_v_scale, PyObject *__pyx_v_T, PyObject *__pyx_v_update, PyObject *__pyx_v_filePlot, PyObject *__pyx_v_QC, PyObject *__pyx_v_args, PyObject *__pyx_v_kwargs); /* proto */
 static PyObject *__pyx_pf_8aligater_8AGCython_4shortestPathMatrix(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_fcs, PyObject *__pyx_v_name, PyObject *__pyx_v_xCol, PyObject *__pyx_v_yCol, PyObject *__pyx_v_boundaries, PyObject *__pyx_v_parentGate, float __pyx_v_sigma, int __pyx_v_maxStep, PyObject *__pyx_v_scale, PyObject *__pyx_v_xscale, PyObject *__pyx_v_yscale, int __pyx_v_bins, float __pyx_v_T, PyObject *__pyx_v_update, PyObject *__pyx_v_QC); /* proto */
 static PyObject *__pyx_pf_8aligater_8AGCython_6gatePointList(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_fcsDF, PyObject *__pyx_v_xCol, PyObject *__pyx_v_yCol, PyObject *__pyx_v_vPL, PyObject *__pyx_v_population, PyObject *__pyx_v_vI, PyObject *__pyx_v_scale, PyObject *__pyx_v_T); /* proto */
 static PyObject *__pyx_pf_8aligater_8AGCython_8gateTwoPointList(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_fcsDF, PyObject *__pyx_v_xCol, PyObject *__pyx_v_yCol, PyObject *__pyx_v_vPL, PyObject *__pyx_v_vPL2, PyObject *__pyx_v_vI, PyObject *__pyx_v_scale, PyObject *__pyx_v_T); /* proto */
@@ -4510,14 +4508,14 @@ static PyObject *__pyx_pf_8aligater_8AGCython_gateEllipsoid(CYTHON_UNUSED PyObje
 /* "aligater/AGCython.pyx":153
  * @cython.wraparound(False)
  * @cython.boundscheck(False)
- * def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', linCutOff=1000, update=False,filePlot=None, QC=False, *args, **kwargs):             # <<<<<<<<<<<<<<
+ * def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', T=1000, update=False,filePlot=None, QC=False, *args, **kwargs):             # <<<<<<<<<<<<<<
  *     """
  *     Threshold gating function. Can be called with one or two markers which affects plotting.\n
  */
 
 /* Python wrapper */
 static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
-static char __pyx_doc_8aligater_8AGCython_2gateThreshold[] = "\n    Threshold gating function. Can be called with one or two markers which affects plotting.\n\n    Call with two markers to get a two dimensional view or with one col which will instead show a density plot.\n    \n    **Parameters**\n    \n    fcs : AGClasses.AGSample object\n        Flow data loaded in an sample object.\n    xCol : str\n        Marker label.\n    yCol : str, optional, default: None\n        Marker label. If specified, opts for a two dimensional view when plotting. Otherwise, a density plot.\n    thresh : float\n        Threshold for cutoff, see orientation and population parameters for how this is applied.\n    orientation, str, optional, default: 'vertical'\n        If two markers are passed this parameter decies if the cut is made on the x- or y-axis.\n\n        'vertical' corresponds to drawing a vertical line in the plot, i.e. cut-off is applied to the x-axis.\n        'horisontal' corresponds to drawing a horisontal line in the plot, i.e. cut-off is applied to the y-axis.\n    population, str, optional, default: 'upper'\n        This parameter determines which population should be returned.\n\n        'upper' means any events with a value above the treshold are returned.\n\n        'lower' means any events with a value below the treshold will be returned.\n\n        The default value means the population that's considered 'positive' in flow cytometry terms is returned.\n    parentGate : AGgate object, optional\n        Parent population to apply the gating to. \n        If no AGgate object is passed gating is applied to the ungated data frame.\n    scale : str, optional, default: 'linear'\n        If plotting enabled, which scale to be used on both axis.\n    linCutOff : int, optional, default: 1000\n        If plotting enabled and scale is logish, the threshold for linear-loglike transition\n    update : bool, optional, default: False\n        If True will add the resulting gated population(s) to the sample objects gate list in adition to ""returning the gate object.\n\n        If False (default), returns an AGgate object without adding it to the sample object.\n    filePlot : str, optional, default: None\n        Option to plot the gate to file to specified path. \n\n        Warning: might overwrite stuff.    \n    QC : bool, optional, default: False\n        If True, adds a downsampled image of the gating view to the gate object. These can be collected by an AGExperiment object if it's QC flag is also True.\n        \n    **Returns**\n\n    AGClasses.AGgate object\n         Returns an AGgate object for the gated population.\n\n    **Examples**\n\n    None currently.\n    ";
+static char __pyx_doc_8aligater_8AGCython_2gateThreshold[] = "\n    Threshold gating function. Can be called with one or two markers which affects plotting.\n\n    Call with two markers to get a two dimensional view or with one col which will instead show a density plot.\n    \n    **Parameters**\n    \n    fcs : AGClasses.AGSample object\n        Flow data loaded in an sample object.\n    xCol : str\n        Marker label.\n    yCol : str, optional, default: None\n        Marker label. If specified, opts for a two dimensional view when plotting. Otherwise, a density plot.\n    thresh : float\n        Threshold for cutoff, see orientation and population parameters for how this is applied.\n    orientation, str, optional, default: 'vertical'\n        If two markers are passed this parameter decies if the cut is made on the x- or y-axis.\n\n        'vertical' corresponds to drawing a vertical line in the plot, i.e. cut-off is applied to the x-axis.\n        'horisontal' corresponds to drawing a horisontal line in the plot, i.e. cut-off is applied to the y-axis.\n    population, str, optional, default: 'upper'\n        This parameter determines which population should be returned.\n\n        'upper' means any events with a value above the treshold are returned.\n\n        'lower' means any events with a value below the treshold will be returned.\n\n        The default value means the population that's considered 'positive' in flow cytometry terms is returned.\n    parentGate : AGgate object, optional\n        Parent population to apply the gating to. \n        If no AGgate object is passed gating is applied to the ungated data frame.\n    scale : str, optional, default: 'linear'\n        If plotting enabled, which scale to be used on both axis.\n    T : int, optional, default: 1000\n        If plotting enabled and scale is logish, the threshold for linear-loglike transition\n    update : bool, optional, default: False\n        If True will add the resulting gated population(s) to the sample objects gate list in adition to returnin""g the gate object.\n\n        If False (default), returns an AGgate object without adding it to the sample object.\n    filePlot : str, optional, default: None\n        Option to plot the gate to file to specified path. \n\n        Warning: might overwrite stuff.    \n    QC : bool, optional, default: False\n        If True, adds a downsampled image of the gating view to the gate object. These can be collected by an AGExperiment object if it's QC flag is also True.\n        \n    **Returns**\n\n    AGClasses.AGgate object\n         Returns an AGgate object for the gated population.\n\n    **Examples**\n\n    None currently.\n    ";
 static PyMethodDef __pyx_mdef_8aligater_8AGCython_3gateThreshold = {"gateThreshold", (PyCFunction)__pyx_pw_8aligater_8AGCython_3gateThreshold, METH_VARARGS|METH_KEYWORDS, __pyx_doc_8aligater_8AGCython_2gateThreshold};
 static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds) {
   PyObject *__pyx_v_fcs = 0;
@@ -4529,7 +4527,7 @@ static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_sel
   PyObject *__pyx_v_parentGate = 0;
   PyObject *__pyx_v_population = 0;
   PyObject *__pyx_v_scale = 0;
-  PyObject *__pyx_v_linCutOff = 0;
+  PyObject *__pyx_v_T = 0;
   PyObject *__pyx_v_update = 0;
   PyObject *__pyx_v_filePlot = 0;
   PyObject *__pyx_v_QC = 0;
@@ -4552,7 +4550,7 @@ static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_sel
     __pyx_v_args = __pyx_empty_tuple; __Pyx_INCREF(__pyx_empty_tuple);
   }
   {
-    static PyObject **__pyx_pyargnames[] = {&__pyx_n_s_fcs,&__pyx_n_s_name,&__pyx_n_s_xCol,&__pyx_n_s_yCol,&__pyx_n_s_thresh,&__pyx_n_s_orientation,&__pyx_n_s_parentGate,&__pyx_n_s_population,&__pyx_n_s_scale,&__pyx_n_s_linCutOff,&__pyx_n_s_update,&__pyx_n_s_filePlot,&__pyx_n_s_QC,0};
+    static PyObject **__pyx_pyargnames[] = {&__pyx_n_s_fcs,&__pyx_n_s_name,&__pyx_n_s_xCol,&__pyx_n_s_yCol,&__pyx_n_s_thresh,&__pyx_n_s_orientation,&__pyx_n_s_parentGate,&__pyx_n_s_population,&__pyx_n_s_scale,&__pyx_n_s_T,&__pyx_n_s_update,&__pyx_n_s_filePlot,&__pyx_n_s_QC,0};
     PyObject* values[13] = {0,0,0,0,0,0,0,0,0,0,0,0,0};
     values[3] = ((PyObject *)Py_None);
     values[4] = ((PyObject *)Py_None);
@@ -4653,7 +4651,7 @@ static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_sel
         CYTHON_FALLTHROUGH;
         case  9:
         if (kw_args > 0) {
-          PyObject* value = __Pyx_PyDict_GetItemStr(__pyx_kwds, __pyx_n_s_linCutOff);
+          PyObject* value = __Pyx_PyDict_GetItemStr(__pyx_kwds, __pyx_n_s_T);
           if (value) { values[9] = value; kw_args--; }
         }
         CYTHON_FALLTHROUGH;
@@ -4721,7 +4719,7 @@ static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_sel
     __pyx_v_parentGate = values[6];
     __pyx_v_population = values[7];
     __pyx_v_scale = values[8];
-    __pyx_v_linCutOff = values[9];
+    __pyx_v_T = values[9];
     __pyx_v_update = values[10];
     __pyx_v_filePlot = values[11];
     __pyx_v_QC = values[12];
@@ -4738,7 +4736,7 @@ static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_sel
   __pyx_L4_argument_unpacking_done:;
   if (unlikely(!__Pyx_ArgTypeTest(((PyObject *)__pyx_v_name), (&PyString_Type), 1, "name", 1))) __PYX_ERR(0, 153, __pyx_L1_error)
   if (unlikely(!__Pyx_ArgTypeTest(((PyObject *)__pyx_v_xCol), (&PyString_Type), 1, "xCol", 1))) __PYX_ERR(0, 153, __pyx_L1_error)
-  __pyx_r = __pyx_pf_8aligater_8AGCython_2gateThreshold(__pyx_self, __pyx_v_fcs, __pyx_v_name, __pyx_v_xCol, __pyx_v_yCol, __pyx_v_thresh, __pyx_v_orientation, __pyx_v_parentGate, __pyx_v_population, __pyx_v_scale, __pyx_v_linCutOff, __pyx_v_update, __pyx_v_filePlot, __pyx_v_QC, __pyx_v_args, __pyx_v_kwargs);
+  __pyx_r = __pyx_pf_8aligater_8AGCython_2gateThreshold(__pyx_self, __pyx_v_fcs, __pyx_v_name, __pyx_v_xCol, __pyx_v_yCol, __pyx_v_thresh, __pyx_v_orientation, __pyx_v_parentGate, __pyx_v_population, __pyx_v_scale, __pyx_v_T, __pyx_v_update, __pyx_v_filePlot, __pyx_v_QC, __pyx_v_args, __pyx_v_kwargs);
 
   /* function exit code */
   goto __pyx_L0;
@@ -4751,7 +4749,7 @@ static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_sel
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_fcs, PyObject *__pyx_v_name, PyObject *__pyx_v_xCol, PyObject *__pyx_v_yCol, PyObject *__pyx_v_thresh, PyObject *__pyx_v_orientation, PyObject *__pyx_v_parentGate, PyObject *__pyx_v_population, PyObject *__pyx_v_scale, PyObject *__pyx_v_linCutOff, PyObject *__pyx_v_update, PyObject *__pyx_v_filePlot, PyObject *__pyx_v_QC, PyObject *__pyx_v_args, PyObject *__pyx_v_kwargs) {
+static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_fcs, PyObject *__pyx_v_name, PyObject *__pyx_v_xCol, PyObject *__pyx_v_yCol, PyObject *__pyx_v_thresh, PyObject *__pyx_v_orientation, PyObject *__pyx_v_parentGate, PyObject *__pyx_v_population, PyObject *__pyx_v_scale, PyObject *__pyx_v_T, PyObject *__pyx_v_update, PyObject *__pyx_v_filePlot, PyObject *__pyx_v_QC, PyObject *__pyx_v_args, PyObject *__pyx_v_kwargs) {
   int __pyx_v_plot;
   PyObject *__pyx_v_vI = NULL;
   PyObject *__pyx_v_fcsDF = NULL;
@@ -6437,8 +6435,8 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
  *                         vOutput.append(index)
  * 
  *     if (plot or filePlot is not None) and not densityPlot:             # <<<<<<<<<<<<<<
- *         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=linCutOff)
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+ *         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
  */
   __pyx_t_4 = (__pyx_v_plot != 0);
   if (!__pyx_t_4) {
@@ -6461,8 +6459,8 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     /* "aligater/AGCython.pyx":279
  * 
  *     if (plot or filePlot is not None) and not densityPlot:
- *         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=linCutOff)             # <<<<<<<<<<<<<<
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+ *         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)             # <<<<<<<<<<<<<<
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
  *         if filePlot is not None:
  */
     __pyx_t_1 = __Pyx_GetModuleGlobalName(__pyx_n_s_plotHeatmap); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 279, __pyx_L1_error)
@@ -6484,7 +6482,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     __pyx_t_8 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 279, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_8);
     if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_scale, __pyx_v_scale) < 0) __PYX_ERR(0, 279, __pyx_L1_error)
-    if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_thresh, __pyx_v_linCutOff) < 0) __PYX_ERR(0, 279, __pyx_L1_error)
+    if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_thresh, __pyx_v_T) < 0) __PYX_ERR(0, 279, __pyx_L1_error)
     __pyx_t_2 = __Pyx_PyObject_Call(__pyx_t_1, __pyx_t_5, __pyx_t_8); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 279, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
@@ -6543,8 +6541,8 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
 
     /* "aligater/AGCython.pyx":280
  *     if (plot or filePlot is not None) and not densityPlot:
- *         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=linCutOff)
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)             # <<<<<<<<<<<<<<
+ *         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)             # <<<<<<<<<<<<<<
  *         if filePlot is not None:
  *             plt.savefig(filePlot)
  */
@@ -6567,7 +6565,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     __pyx_t_8 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 280, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_8);
     if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_scale, __pyx_v_scale) < 0) __PYX_ERR(0, 280, __pyx_L1_error)
-    if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_T, __pyx_v_linCutOff) < 0) __PYX_ERR(0, 280, __pyx_L1_error)
+    if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_T, __pyx_v_T) < 0) __PYX_ERR(0, 280, __pyx_L1_error)
     __pyx_t_1 = __Pyx_PyObject_Call(__pyx_t_2, __pyx_t_5, __pyx_t_8); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 280, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
@@ -6576,8 +6574,8 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
     /* "aligater/AGCython.pyx":281
- *         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=linCutOff)
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+ *         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
  *         if filePlot is not None:             # <<<<<<<<<<<<<<
  *             plt.savefig(filePlot)
  *             if not plot:
@@ -6587,7 +6585,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     if (__pyx_t_6) {
 
       /* "aligater/AGCython.pyx":282
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
  *         if filePlot is not None:
  *             plt.savefig(filePlot)             # <<<<<<<<<<<<<<
  *             if not plot:
@@ -6720,8 +6718,8 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
       }
 
       /* "aligater/AGCython.pyx":281
- *         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=linCutOff)
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+ *         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
  *         if filePlot is not None:             # <<<<<<<<<<<<<<
  *             plt.savefig(filePlot)
  *             if not plot:
@@ -6743,7 +6741,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
  *         if plot:
  *             plt.show()             # <<<<<<<<<<<<<<
  *             plt.clf()
- *             plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
+ *             plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale,thresh=T)
  */
       __pyx_t_2 = __Pyx_GetModuleGlobalName(__pyx_n_s_plt); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 286, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_2);
@@ -6774,7 +6772,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
  *         if plot:
  *             plt.show()
  *             plt.clf()             # <<<<<<<<<<<<<<
- *             plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
+ *             plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale,thresh=T)
  *             plt.show()
  */
       __pyx_t_8 = __Pyx_GetModuleGlobalName(__pyx_n_s_plt); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 287, __pyx_L1_error)
@@ -6805,7 +6803,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
       /* "aligater/AGCython.pyx":288
  *             plt.show()
  *             plt.clf()
- *             plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)             # <<<<<<<<<<<<<<
+ *             plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale,thresh=T)             # <<<<<<<<<<<<<<
  *             plt.show()
  *     if (plot or filePlot is not None) and densityPlot:
  */
@@ -6825,9 +6823,10 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
       __Pyx_INCREF(__pyx_v_vOutput);
       __Pyx_GIVEREF(__pyx_v_vOutput);
       PyTuple_SET_ITEM(__pyx_t_2, 3, __pyx_v_vOutput);
-      __pyx_t_8 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 288, __pyx_L1_error)
+      __pyx_t_8 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 288, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_8);
       if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_scale, __pyx_v_scale) < 0) __PYX_ERR(0, 288, __pyx_L1_error)
+      if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_thresh, __pyx_v_T) < 0) __PYX_ERR(0, 288, __pyx_L1_error)
       __pyx_t_5 = __Pyx_PyObject_Call(__pyx_t_1, __pyx_t_2, __pyx_t_8); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 288, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_5);
       __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
@@ -6837,10 +6836,10 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
 
       /* "aligater/AGCython.pyx":289
  *             plt.clf()
- *             plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
+ *             plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale,thresh=T)
  *             plt.show()             # <<<<<<<<<<<<<<
  *     if (plot or filePlot is not None) and densityPlot:
- *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale,*args,**kwargs)
+ *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale, T=T,*args,**kwargs)
  */
       __pyx_t_8 = __Pyx_GetModuleGlobalName(__pyx_n_s_plt); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 289, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_8);
@@ -6880,17 +6879,17 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
  *                         vOutput.append(index)
  * 
  *     if (plot or filePlot is not None) and not densityPlot:             # <<<<<<<<<<<<<<
- *         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=linCutOff)
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+ *         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
  */
   }
 
   /* "aligater/AGCython.pyx":290
- *             plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
+ *             plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale,thresh=T)
  *             plt.show()
  *     if (plot or filePlot is not None) and densityPlot:             # <<<<<<<<<<<<<<
- *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale,*args,**kwargs)
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+ *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale, T=T,*args,**kwargs)
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
  */
   __pyx_t_3 = (__pyx_v_plot != 0);
   if (!__pyx_t_3) {
@@ -6913,8 +6912,8 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     /* "aligater/AGCython.pyx":291
  *             plt.show()
  *     if (plot or filePlot is not None) and densityPlot:
- *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale,*args,**kwargs)             # <<<<<<<<<<<<<<
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+ *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale, T=T,*args,**kwargs)             # <<<<<<<<<<<<<<
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
  *         if filePlot is not None:
  */
     __pyx_t_5 = __Pyx_GetModuleGlobalName(__pyx_n_s_plot_densityFunc); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 291, __pyx_L1_error)
@@ -6933,9 +6932,10 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     __pyx_t_8 = PyNumber_Add(__pyx_t_2, __pyx_v_args); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 291, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_8);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-    __pyx_t_1 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 291, __pyx_L1_error)
+    __pyx_t_1 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 291, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_scale, __pyx_v_scale) < 0) __PYX_ERR(0, 291, __pyx_L1_error)
+    if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_T, __pyx_v_T) < 0) __PYX_ERR(0, 291, __pyx_L1_error)
     __pyx_t_2 = __pyx_t_1;
     __pyx_t_1 = 0;
     if (__Pyx_MergeKeywords(__pyx_t_2, __pyx_v_kwargs) < 0) __PYX_ERR(0, 291, __pyx_L1_error)
@@ -6997,8 +6997,8 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
 
     /* "aligater/AGCython.pyx":292
  *     if (plot or filePlot is not None) and densityPlot:
- *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale,*args,**kwargs)
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)             # <<<<<<<<<<<<<<
+ *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale, T=T,*args,**kwargs)
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)             # <<<<<<<<<<<<<<
  *         if filePlot is not None:
  *             plt.savefig(filePlot)
  */
@@ -7021,7 +7021,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     __pyx_t_2 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 292, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
     if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_scale, __pyx_v_scale) < 0) __PYX_ERR(0, 292, __pyx_L1_error)
-    if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_T, __pyx_v_linCutOff) < 0) __PYX_ERR(0, 292, __pyx_L1_error)
+    if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_T, __pyx_v_T) < 0) __PYX_ERR(0, 292, __pyx_L1_error)
     __pyx_t_5 = __Pyx_PyObject_Call(__pyx_t_1, __pyx_t_8, __pyx_t_2); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 292, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_5);
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
@@ -7030,8 +7030,8 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
     /* "aligater/AGCython.pyx":293
- *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale,*args,**kwargs)
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+ *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale, T=T,*args,**kwargs)
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
  *         if filePlot is not None:             # <<<<<<<<<<<<<<
  *             plt.savefig(filePlot)
  *             if not plot:
@@ -7041,7 +7041,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     if (__pyx_t_4) {
 
       /* "aligater/AGCython.pyx":294
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
  *         if filePlot is not None:
  *             plt.savefig(filePlot)             # <<<<<<<<<<<<<<
  *             if not plot:
@@ -7174,8 +7174,8 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
       }
 
       /* "aligater/AGCython.pyx":293
- *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale,*args,**kwargs)
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+ *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale, T=T,*args,**kwargs)
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
  *         if filePlot is not None:             # <<<<<<<<<<<<<<
  *             plt.savefig(filePlot)
  *             if not plot:
@@ -7234,11 +7234,11 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     }
 
     /* "aligater/AGCython.pyx":290
- *             plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale)
+ *             plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale,thresh=T)
  *             plt.show()
  *     if (plot or filePlot is not None) and densityPlot:             # <<<<<<<<<<<<<<
- *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale,*args,**kwargs)
- *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=linCutOff)
+ *         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale, T=T,*args,**kwargs)
+ *         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
  */
   }
 
@@ -7447,7 +7447,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
   /* "aligater/AGCython.pyx":153
  * @cython.wraparound(False)
  * @cython.boundscheck(False)
- * def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', linCutOff=1000, update=False,filePlot=None, QC=False, *args, **kwargs):             # <<<<<<<<<<<<<<
+ * def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', T=1000, update=False,filePlot=None, QC=False, *args, **kwargs):             # <<<<<<<<<<<<<<
  *     """
  *     Threshold gating function. Can be called with one or two markers which affects plotting.\n
  */
@@ -33032,7 +33032,6 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_n_s_leftBin, __pyx_k_leftBin, sizeof(__pyx_k_leftBin), 0, 0, 1, 1},
   {&__pyx_n_s_leftBinIndex, __pyx_k_leftBinIndex, sizeof(__pyx_k_leftBinIndex), 0, 0, 1, 1},
   {&__pyx_n_s_leftLine, __pyx_k_leftLine, sizeof(__pyx_k_leftLine), 0, 0, 1, 1},
-  {&__pyx_n_s_linCutOff, __pyx_k_linCutOff, sizeof(__pyx_k_linCutOff), 0, 0, 1, 1},
   {&__pyx_n_s_linear, __pyx_k_linear, sizeof(__pyx_k_linear), 0, 0, 1, 1},
   {&__pyx_n_s_logish, __pyx_k_logish, sizeof(__pyx_k_logish), 0, 0, 1, 1},
   {&__pyx_n_s_logishTransform, __pyx_k_logishTransform, sizeof(__pyx_k_logishTransform), 0, 0, 1, 1},
@@ -33840,11 +33839,11 @@ static int __Pyx_InitCachedConstants(void) {
   /* "aligater/AGCython.pyx":153
  * @cython.wraparound(False)
  * @cython.boundscheck(False)
- * def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', linCutOff=1000, update=False,filePlot=None, QC=False, *args, **kwargs):             # <<<<<<<<<<<<<<
+ * def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', T=1000, update=False,filePlot=None, QC=False, *args, **kwargs):             # <<<<<<<<<<<<<<
  *     """
  *     Threshold gating function. Can be called with one or two markers which affects plotting.\n
  */
-  __pyx_tuple__65 = PyTuple_Pack(30, __pyx_n_s_fcs, __pyx_n_s_name, __pyx_n_s_xCol, __pyx_n_s_yCol, __pyx_n_s_thresh, __pyx_n_s_orientation, __pyx_n_s_parentGate, __pyx_n_s_population, __pyx_n_s_scale, __pyx_n_s_linCutOff, __pyx_n_s_update, __pyx_n_s_filePlot, __pyx_n_s_QC, __pyx_n_s_args, __pyx_n_s_kwargs, __pyx_n_s_plot, __pyx_n_s_vI, __pyx_n_s_fcsDF, __pyx_n_s_outputGate, __pyx_n_s_densityPlot, __pyx_n_s_vOutput, __pyx_n_s_index, __pyx_n_s_i, __pyx_n_s_value, __pyx_n_s_tmp_vI, __pyx_n_s_data, __pyx_n_s_nOfEvents, __pyx_n_s_t, __pyx_n_s_fig, __pyx_n_s_ax); if (unlikely(!__pyx_tuple__65)) __PYX_ERR(0, 153, __pyx_L1_error)
+  __pyx_tuple__65 = PyTuple_Pack(30, __pyx_n_s_fcs, __pyx_n_s_name, __pyx_n_s_xCol, __pyx_n_s_yCol, __pyx_n_s_thresh, __pyx_n_s_orientation, __pyx_n_s_parentGate, __pyx_n_s_population, __pyx_n_s_scale, __pyx_n_s_T, __pyx_n_s_update, __pyx_n_s_filePlot, __pyx_n_s_QC, __pyx_n_s_args, __pyx_n_s_kwargs, __pyx_n_s_plot, __pyx_n_s_vI, __pyx_n_s_fcsDF, __pyx_n_s_outputGate, __pyx_n_s_densityPlot, __pyx_n_s_vOutput, __pyx_n_s_index, __pyx_n_s_i, __pyx_n_s_value, __pyx_n_s_tmp_vI, __pyx_n_s_data, __pyx_n_s_nOfEvents, __pyx_n_s_t, __pyx_n_s_fig, __pyx_n_s_ax); if (unlikely(!__pyx_tuple__65)) __PYX_ERR(0, 153, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__65);
   __Pyx_GIVEREF(__pyx_tuple__65);
   __pyx_codeobj__66 = (PyObject*)__Pyx_PyCode_New(13, 0, 30, 0, CO_OPTIMIZED|CO_NEWLOCALS|CO_VARARGS|CO_VARKEYWORDS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__65, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_aligater_AGCython_pyx, __pyx_n_s_gateThreshold, 153, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__66)) __PYX_ERR(0, 153, __pyx_L1_error)
@@ -34620,7 +34619,7 @@ if (!__Pyx_RefNanny) {
   /* "aligater/AGCython.pyx":153
  * @cython.wraparound(False)
  * @cython.boundscheck(False)
- * def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', linCutOff=1000, update=False,filePlot=None, QC=False, *args, **kwargs):             # <<<<<<<<<<<<<<
+ * def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', T=1000, update=False,filePlot=None, QC=False, *args, **kwargs):             # <<<<<<<<<<<<<<
  *     """
  *     Threshold gating function. Can be called with one or two markers which affects plotting.\n
  */

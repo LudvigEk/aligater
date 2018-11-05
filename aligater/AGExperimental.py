@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 #AliGater imports
 import aligater.AGConfig as agconf
 from aligater.AGCore import customQuadGate, getDensityFunc
-from aligater.AGPlotRoutines import getHeatmap, convertToLogishPlotCoordinate, logishTransform, addLine, plotHeatmap
+from aligater.AGPlotRoutines import getHeatmap, convertToLogishPlotCoordinate, logishTransform, bilogTransform, inverseLogishTransform, inverseBilogTransform, addLine, plotHeatmap
 from aligater.AGCython import gateThreshold, gatePointList
 from aligater.AGFileSystem import getGatedVector, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
 from aligater.AGClasses import AGgate, AGsample
@@ -258,7 +258,10 @@ def edgeDensity(heatmap, rect, orientation):
     for yindex in yBins:
         value=heatmap[xEdgeBin][yindex]
         edgeDensity+=value
-    edgeDensity=edgeDensity/(len(xBins)+len(yBins))
+    if len(xBins)+len(yBins)==0:
+        edgeDensity=0
+    else:
+        edgeDensity=edgeDensity/(len(xBins)+len(yBins))
     return edgeDensity
 
 def penalty(dx, phi):
@@ -422,6 +425,7 @@ def halfNormalDistribution(fcs, xCol, mean, direction, parentGate=None, bins=300
             If a scale is changed from the default 'linear', the normal distribution is estimated on the transformed values (i.e. what you would see if plotting with this scale)\n
             **The returned values will then also be the mean and sigma of the transformed values**.\n 
             To reverse transform see aligater.AGPlotRoutines.inverseLogishTransform.
+            When setting a treshold based on these values (such as mean+2*sigma), use transformed values and then invert.
         
     **Returns**
 
@@ -450,9 +454,10 @@ def halfNormalDistribution(fcs, xCol, mean, direction, parentGate=None, bins=300
         return mean, 0.0
     if xCol not in fcsDF.columns:
         raise AliGaterError(str(xCol)+" not found in dataframes columns","in halfNormalDistribution: ")
+        
     data=getGatedVector(fcsDF,xCol, vI, return_type="nparray")
     distribution = []
-    if direction.lower()=='up':
+    if direction.lower()=='right':
         for x in data:
             if x >= mean:
                 distribution.append(x)
@@ -465,16 +470,29 @@ def halfNormalDistribution(fcs, xCol, mean, direction, parentGate=None, bins=300
     if scale.lower()=='logish':
         distribution=list(logishTransform(distribution,T))
         mean=logishTransform([mean],T)[0] 
-        
+    
+    if scale.lower()=='bilog':
+        distribution=list(bilogTransform(distribution,T))
+        mean=bilogTransform([mean],T)[0] 
+    
     sumVar=0
     n=len(distribution)
     for x in range(0,n):
         sumVar += (distribution[x] - mean)**2
+        
     if n != 0:    
         sigma=np.sqrt(sumVar/n)
     else:
         sigma=0
     
+    #if scale=='bilog':
+    #    mean=inverseBilogTransform([mean],T)[0]
+    #    sigma=inverseBilogTransform([sigma],T)[0]
+    
+    #if scale=='logish':
+    #    mean=inverseLogishTransform([mean],T)[0]
+    #    sigma=inverseLogishTransform([sigma],T)[0]
+        
     return mean, sigma
 
 def dijkstraStep(heatmap, xBin, yBin, bins):

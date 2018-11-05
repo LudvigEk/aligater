@@ -203,7 +203,7 @@ def getGatedVectors(fcsDF, gate1, gate2, vI=None, return_type="pdseries"):
         return np.array([vX, vY])
 
 
-def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=sentinel):
+def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=sentinel, marker_names='label'):
     #********Lazy loading of*************
     #TODO; could move to AGClasses, kind of makes sense.
     from aligater.AGClasses import AGsample
@@ -212,6 +212,10 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
         raise TypeError("return_type must be specified as string and either of 'AGsample' or 'index'")
     if not return_type.lower() in ['agsample', 'index']:
         raise ValueError("return_type must be specified as string and either of 'AGsample' or 'index'")
+    if not isinstance(marker_names,str):
+        raise AliGaterError("in loadFCS:","invalid dtype in marker_names, expected "+str(type(str))+" found "+str(type(marker_names)))
+    if not marker_names.lower() in ['label','color']:
+        raise AliGaterError("in loadFCS:"," marker_names must be either of 'label' or 'color' found: "+str(marker_names))
     if markers is sentinel:
         checkMarkers=False
     else:
@@ -225,7 +229,12 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     pardir=getFileName(getParent(path))
     parpardir=getFileName(getParent(getParent(path)))
     sys.stderr.write("Opening file "+getFileName(path)+" from folder /"+parpardir+"/"+pardir+"\n")
-    metaDict,fcsDF = parse(path,output_format='DataFrame')
+    if marker_names.lower()=='label':
+        channel_naming='$PnS'
+    elif marker_names.lower()=='color':
+        channel_naming='$PnN'
+
+    metaDict,fcsDF = parse(path,output_format='DataFrame',channel_naming=channel_naming)
     rows=fcsDF.shape[0]
     cols=fcsDF.columns[4:-1]
     

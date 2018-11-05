@@ -29,7 +29,7 @@ from scipy.ndimage.filters import gaussian_filter1d
 
 #AliGater imports
 import aligater.AGConfig as agconf
-from aligater.AGPlotRoutines import plotHeatmap, plot_gmm, addLine, addAxLine, convertToLogishPlotCoordinates, logishBin, logishTransform, inverseLogishTransform
+from aligater.AGPlotRoutines import plotHeatmap, plot_gmm, addLine, addAxLine, convertToLogishPlotCoordinates, convertToBiLogPlotCoordinates, logishBin, logishTransform, inverseLogishTransform
 from aligater.AGCython import gateEllipsoid
 from aligater.AGClasses import AGgate, AGsample
 from aligater.AGFileSystem import getGatedVector, getGatedVectors, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
@@ -833,6 +833,7 @@ def axisStats(fcsDF, xCol, vI=None,bins=300, scale='linear',T=1000):
         mean=result[0]
         sigma=abs(result[1])
         maxVal=result[2]
+        
     return mean, sigma, maxVal
 
 def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrientation='upper', Outer=False, parentGate=None, bins=300, scale='linear', T=1000, update=False, filePlot=None, QC=False):
@@ -1199,7 +1200,7 @@ def backGate(fcs, xCol, yCol, population, background_population=None, markersize
             
     #backPop = population to highlight
     #vI = background population
-    if scale=='logish':
+    if scale!='linear':
         fig,ax=plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)    
     else:
         fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
@@ -1208,16 +1209,25 @@ def backGate(fcs, xCol, yCol, population, background_population=None, markersize
     if scale=='logish':
         xscale='logish'
         yscale='logish'
-    if xscale=='logish':
+    if scale=='bilog':
+        xscale='bilog'
+        yscale='bilog'
+    if xscale!='linear':
         xview=ax.get_xlim()
         vmin=xview[0]
         vmax=xview[1]
-        x=convertToLogishPlotCoordinates(x,vmin,vmax,T)
-    if yscale=='logish':
+        if xscale=='logish':
+            x=convertToLogishPlotCoordinates(x,vmin,vmax,T)
+        if xscale=='bilog':
+            x=convertToBiLogPlotCoordinates(x,vmin,vmax,T)
+    if yscale!='linear':
         yview=ax.get_ylim()
         vmin=yview[0]
         vmax=yview[1]
-        y=convertToLogishPlotCoordinates(y,vmin,vmax,T)
+        if yscale=='logish':
+            y=convertToLogishPlotCoordinates(y,vmin,vmax,T)
+        if yscale=='bilog':
+            y=convertToBiLogPlotCoordinates(y,vmin,vmax,T)
     ax.plot(x,y,'o',color=color,markersize=markersize)
     if filePlot is not None:
         plt.savefig(filePlot)

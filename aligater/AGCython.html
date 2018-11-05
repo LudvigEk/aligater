@@ -1533,10 +1533,10 @@ static PyObject *__pyx_pf_8aligater_8AGCython_gateEllipsoid(CYTHON_UNUSED PyObje
 </pre><pre class="cython line score-0">&#xA0;<span class="">150</span>: </pre>
 <pre class="cython line score-0">&#xA0;<span class="">151</span>: <span class="nd">@cython</span><span class="o">.</span><span class="n">wraparound</span><span class="p">(</span><span class="bp">False</span><span class="p">)</span></pre>
 <pre class="cython line score-0">&#xA0;<span class="">152</span>: <span class="nd">@cython</span><span class="o">.</span><span class="n">boundscheck</span><span class="p">(</span><span class="bp">False</span><span class="p">)</span></pre>
-<pre class="cython line score-132" onclick="(function(s){s.display=s.display==='block'?'none':'block'})(this.nextElementSibling.style)">+<span class="">153</span>: <span class="k">def</span> <span class="nf">gateThreshold</span><span class="p">(</span><span class="n">fcs</span><span class="p">,</span> <span class="nb">str</span> <span class="n">name</span><span class="p">,</span> <span class="nb">str</span> <span class="n">xCol</span><span class="p">,</span> <span class="n">yCol</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">thresh</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">orientation</span><span class="o">=</span><span class="s">&quot;vertical&quot;</span><span class="p">,</span> <span class="n">parentGate</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">population</span><span class="o">=</span><span class="s">&quot;upper&quot;</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="s">&#39;linear&#39;</span><span class="p">,</span> <span class="n">linCutOff</span><span class="o">=</span><span class="mf">1000</span><span class="p">,</span> <span class="n">update</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span><span class="n">filePlot</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">QC</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span></pre>
+<pre class="cython line score-132" onclick="(function(s){s.display=s.display==='block'?'none':'block'})(this.nextElementSibling.style)">+<span class="">153</span>: <span class="k">def</span> <span class="nf">gateThreshold</span><span class="p">(</span><span class="n">fcs</span><span class="p">,</span> <span class="nb">str</span> <span class="n">name</span><span class="p">,</span> <span class="nb">str</span> <span class="n">xCol</span><span class="p">,</span> <span class="n">yCol</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">thresh</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">orientation</span><span class="o">=</span><span class="s">&quot;vertical&quot;</span><span class="p">,</span> <span class="n">parentGate</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">population</span><span class="o">=</span><span class="s">&quot;upper&quot;</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="s">&#39;linear&#39;</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mf">1000</span><span class="p">,</span> <span class="n">update</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span><span class="n">filePlot</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">QC</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span></pre>
 <pre class='cython code score-132 '>/* Python wrapper */
 static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
-static char __pyx_doc_8aligater_8AGCython_2gateThreshold[] = "\n    Threshold gating function. Can be called with one or two markers which affects plotting.\n\n    Call with two markers to get a two dimensional view or with one col which will instead show a density plot.\n    \n    **Parameters**\n    \n    fcs : AGClasses.AGSample object\n        Flow data loaded in an sample object.\n    xCol : str\n        Marker label.\n    yCol : str, optional, default: None\n        Marker label. If specified, opts for a two dimensional view when plotting. Otherwise, a density plot.\n    thresh : float\n        Threshold for cutoff, see orientation and population parameters for how this is applied.\n    orientation, str, optional, default: 'vertical'\n        If two markers are passed this parameter decies if the cut is made on the x- or y-axis.\n\n        'vertical' corresponds to drawing a vertical line in the plot, i.e. cut-off is applied to the x-axis.\n        'horisontal' corresponds to drawing a horisontal line in the plot, i.e. cut-off is applied to the y-axis.\n    population, str, optional, default: 'upper'\n        This parameter determines which population should be returned.\n\n        'upper' means any events with a value above the treshold are returned.\n\n        'lower' means any events with a value below the treshold will be returned.\n\n        The default value means the population that's considered 'positive' in flow cytometry terms is returned.\n    parentGate : AGgate object, optional\n        Parent population to apply the gating to. \n        If no AGgate object is passed gating is applied to the ungated data frame.\n    scale : str, optional, default: 'linear'\n        If plotting enabled, which scale to be used on both axis.\n    linCutOff : int, optional, default: 1000\n        If plotting enabled and scale is logish, the threshold for linear-loglike transition\n    update : bool, optional, default: False\n        If True will add the resulting gated population(s) to the sample objects gate list in adition to ""returning the gate object.\n\n        If False (default), returns an AGgate object without adding it to the sample object.\n    filePlot : str, optional, default: None\n        Option to plot the gate to file to specified path. \n\n        Warning: might overwrite stuff.    \n    QC : bool, optional, default: False\n        If True, adds a downsampled image of the gating view to the gate object. These can be collected by an AGExperiment object if it's QC flag is also True.\n        \n    **Returns**\n\n    AGClasses.AGgate object\n         Returns an AGgate object for the gated population.\n\n    **Examples**\n\n    None currently.\n    ";
+static char __pyx_doc_8aligater_8AGCython_2gateThreshold[] = "\n    Threshold gating function. Can be called with one or two markers which affects plotting.\n\n    Call with two markers to get a two dimensional view or with one col which will instead show a density plot.\n    \n    **Parameters**\n    \n    fcs : AGClasses.AGSample object\n        Flow data loaded in an sample object.\n    xCol : str\n        Marker label.\n    yCol : str, optional, default: None\n        Marker label. If specified, opts for a two dimensional view when plotting. Otherwise, a density plot.\n    thresh : float\n        Threshold for cutoff, see orientation and population parameters for how this is applied.\n    orientation, str, optional, default: 'vertical'\n        If two markers are passed this parameter decies if the cut is made on the x- or y-axis.\n\n        'vertical' corresponds to drawing a vertical line in the plot, i.e. cut-off is applied to the x-axis.\n        'horisontal' corresponds to drawing a horisontal line in the plot, i.e. cut-off is applied to the y-axis.\n    population, str, optional, default: 'upper'\n        This parameter determines which population should be returned.\n\n        'upper' means any events with a value above the treshold are returned.\n\n        'lower' means any events with a value below the treshold will be returned.\n\n        The default value means the population that's considered 'positive' in flow cytometry terms is returned.\n    parentGate : AGgate object, optional\n        Parent population to apply the gating to. \n        If no AGgate object is passed gating is applied to the ungated data frame.\n    scale : str, optional, default: 'linear'\n        If plotting enabled, which scale to be used on both axis.\n    T : int, optional, default: 1000\n        If plotting enabled and scale is logish, the threshold for linear-loglike transition\n    update : bool, optional, default: False\n        If True will add the resulting gated population(s) to the sample objects gate list in adition to returnin""g the gate object.\n\n        If False (default), returns an AGgate object without adding it to the sample object.\n    filePlot : str, optional, default: None\n        Option to plot the gate to file to specified path. \n\n        Warning: might overwrite stuff.    \n    QC : bool, optional, default: False\n        If True, adds a downsampled image of the gating view to the gate object. These can be collected by an AGExperiment object if it's QC flag is also True.\n        \n    **Returns**\n\n    AGClasses.AGgate object\n         Returns an AGgate object for the gated population.\n\n    **Examples**\n\n    None currently.\n    ";
 static PyMethodDef __pyx_mdef_8aligater_8AGCython_3gateThreshold = {"gateThreshold", (PyCFunction)__pyx_pw_8aligater_8AGCython_3gateThreshold, METH_VARARGS|METH_KEYWORDS, __pyx_doc_8aligater_8AGCython_2gateThreshold};
 static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds) {
   PyObject *__pyx_v_fcs = 0;
@@ -1548,7 +1548,7 @@ static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_sel
   PyObject *__pyx_v_parentGate = 0;
   PyObject *__pyx_v_population = 0;
   PyObject *__pyx_v_scale = 0;
-  PyObject *__pyx_v_linCutOff = 0;
+  PyObject *__pyx_v_T = 0;
   PyObject *__pyx_v_update = 0;
   PyObject *__pyx_v_filePlot = 0;
   PyObject *__pyx_v_QC = 0;
@@ -1571,7 +1571,7 @@ static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_sel
     __pyx_v_args = __pyx_empty_tuple; <span class='pyx_macro_api'>__Pyx_INCREF</span>(__pyx_empty_tuple);
   }
   {
-    static PyObject **__pyx_pyargnames[] = {&amp;__pyx_n_s_fcs,&amp;__pyx_n_s_name,&amp;__pyx_n_s_xCol,&amp;__pyx_n_s_yCol,&amp;__pyx_n_s_thresh,&amp;__pyx_n_s_orientation,&amp;__pyx_n_s_parentGate,&amp;__pyx_n_s_population,&amp;__pyx_n_s_scale,&amp;__pyx_n_s_linCutOff,&amp;__pyx_n_s_update,&amp;__pyx_n_s_filePlot,&amp;__pyx_n_s_QC,0};
+    static PyObject **__pyx_pyargnames[] = {&amp;__pyx_n_s_fcs,&amp;__pyx_n_s_name,&amp;__pyx_n_s_xCol,&amp;__pyx_n_s_yCol,&amp;__pyx_n_s_thresh,&amp;__pyx_n_s_orientation,&amp;__pyx_n_s_parentGate,&amp;__pyx_n_s_population,&amp;__pyx_n_s_scale,&amp;__pyx_n_s_T,&amp;__pyx_n_s_update,&amp;__pyx_n_s_filePlot,&amp;__pyx_n_s_QC,0};
     PyObject* values[13] = {0,0,0,0,0,0,0,0,0,0,0,0,0};
     values[3] = ((PyObject *)Py_None);
     values[4] = ((PyObject *)Py_None);
@@ -1672,7 +1672,7 @@ static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_sel
         CYTHON_FALLTHROUGH;
         case  9:
         if (kw_args &gt; 0) {
-          PyObject* value = <span class='pyx_c_api'>__Pyx_PyDict_GetItemStr</span>(__pyx_kwds, __pyx_n_s_linCutOff);
+          PyObject* value = <span class='pyx_c_api'>__Pyx_PyDict_GetItemStr</span>(__pyx_kwds, __pyx_n_s_T);
           if (value) { values[9] = value; kw_args--; }
         }
         CYTHON_FALLTHROUGH;
@@ -1740,7 +1740,7 @@ static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_sel
     __pyx_v_parentGate = values[6];
     __pyx_v_population = values[7];
     __pyx_v_scale = values[8];
-    __pyx_v_linCutOff = values[9];
+    __pyx_v_T = values[9];
     __pyx_v_update = values[10];
     __pyx_v_filePlot = values[11];
     __pyx_v_QC = values[12];
@@ -1757,7 +1757,7 @@ static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_sel
   __pyx_L4_argument_unpacking_done:;
   if (unlikely(!<span class='pyx_c_api'>__Pyx_ArgTypeTest</span>(((PyObject *)__pyx_v_name), (&amp;PyString_Type), 1, "name", 1))) <span class='error_goto'>__PYX_ERR(0, 153, __pyx_L1_error)</span>
   if (unlikely(!<span class='pyx_c_api'>__Pyx_ArgTypeTest</span>(((PyObject *)__pyx_v_xCol), (&amp;PyString_Type), 1, "xCol", 1))) <span class='error_goto'>__PYX_ERR(0, 153, __pyx_L1_error)</span>
-  __pyx_r = __pyx_pf_8aligater_8AGCython_2gateThreshold(__pyx_self, __pyx_v_fcs, __pyx_v_name, __pyx_v_xCol, __pyx_v_yCol, __pyx_v_thresh, __pyx_v_orientation, __pyx_v_parentGate, __pyx_v_population, __pyx_v_scale, __pyx_v_linCutOff, __pyx_v_update, __pyx_v_filePlot, __pyx_v_QC, __pyx_v_args, __pyx_v_kwargs);
+  __pyx_r = __pyx_pf_8aligater_8AGCython_2gateThreshold(__pyx_self, __pyx_v_fcs, __pyx_v_name, __pyx_v_xCol, __pyx_v_yCol, __pyx_v_thresh, __pyx_v_orientation, __pyx_v_parentGate, __pyx_v_population, __pyx_v_scale, __pyx_v_T, __pyx_v_update, __pyx_v_filePlot, __pyx_v_QC, __pyx_v_args, __pyx_v_kwargs);
 
   /* function exit code */
   goto __pyx_L0;
@@ -1770,7 +1770,7 @@ static PyObject *__pyx_pw_8aligater_8AGCython_3gateThreshold(PyObject *__pyx_sel
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_fcs, PyObject *__pyx_v_name, PyObject *__pyx_v_xCol, PyObject *__pyx_v_yCol, PyObject *__pyx_v_thresh, PyObject *__pyx_v_orientation, PyObject *__pyx_v_parentGate, PyObject *__pyx_v_population, PyObject *__pyx_v_scale, PyObject *__pyx_v_linCutOff, PyObject *__pyx_v_update, PyObject *__pyx_v_filePlot, PyObject *__pyx_v_QC, PyObject *__pyx_v_args, PyObject *__pyx_v_kwargs) {
+static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_fcs, PyObject *__pyx_v_name, PyObject *__pyx_v_xCol, PyObject *__pyx_v_yCol, PyObject *__pyx_v_thresh, PyObject *__pyx_v_orientation, PyObject *__pyx_v_parentGate, PyObject *__pyx_v_population, PyObject *__pyx_v_scale, PyObject *__pyx_v_T, PyObject *__pyx_v_update, PyObject *__pyx_v_filePlot, PyObject *__pyx_v_QC, PyObject *__pyx_v_args, PyObject *__pyx_v_kwargs) {
   int __pyx_v_plot;
   PyObject *__pyx_v_vI = NULL;
   PyObject *__pyx_v_fcsDF = NULL;
@@ -1836,7 +1836,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
   return __pyx_r;
 }
 /* … */
-  __pyx_tuple__65 = <span class='py_c_api'>PyTuple_Pack</span>(30, __pyx_n_s_fcs, __pyx_n_s_name, __pyx_n_s_xCol, __pyx_n_s_yCol, __pyx_n_s_thresh, __pyx_n_s_orientation, __pyx_n_s_parentGate, __pyx_n_s_population, __pyx_n_s_scale, __pyx_n_s_linCutOff, __pyx_n_s_update, __pyx_n_s_filePlot, __pyx_n_s_QC, __pyx_n_s_args, __pyx_n_s_kwargs, __pyx_n_s_plot, __pyx_n_s_vI, __pyx_n_s_fcsDF, __pyx_n_s_outputGate, __pyx_n_s_densityPlot, __pyx_n_s_vOutput, __pyx_n_s_index, __pyx_n_s_i, __pyx_n_s_value, __pyx_n_s_tmp_vI, __pyx_n_s_data, __pyx_n_s_nOfEvents, __pyx_n_s_t, __pyx_n_s_fig, __pyx_n_s_ax);<span class='error_goto'> if (unlikely(!__pyx_tuple__65)) __PYX_ERR(0, 153, __pyx_L1_error)</span>
+  __pyx_tuple__65 = <span class='py_c_api'>PyTuple_Pack</span>(30, __pyx_n_s_fcs, __pyx_n_s_name, __pyx_n_s_xCol, __pyx_n_s_yCol, __pyx_n_s_thresh, __pyx_n_s_orientation, __pyx_n_s_parentGate, __pyx_n_s_population, __pyx_n_s_scale, __pyx_n_s_T, __pyx_n_s_update, __pyx_n_s_filePlot, __pyx_n_s_QC, __pyx_n_s_args, __pyx_n_s_kwargs, __pyx_n_s_plot, __pyx_n_s_vI, __pyx_n_s_fcsDF, __pyx_n_s_outputGate, __pyx_n_s_densityPlot, __pyx_n_s_vOutput, __pyx_n_s_index, __pyx_n_s_i, __pyx_n_s_value, __pyx_n_s_tmp_vI, __pyx_n_s_data, __pyx_n_s_nOfEvents, __pyx_n_s_t, __pyx_n_s_fig, __pyx_n_s_ax);<span class='error_goto'> if (unlikely(!__pyx_tuple__65)) __PYX_ERR(0, 153, __pyx_L1_error)</span>
   <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_tuple__65);
   <span class='refnanny'>__Pyx_GIVEREF</span>(__pyx_tuple__65);
 /* … */
@@ -1873,7 +1873,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
 <pre class="cython line score-0">&#xA0;<span class="">179</span>: <span class="sd">        If no AGgate object is passed gating is applied to the ungated data frame.</span></pre>
 <pre class="cython line score-0">&#xA0;<span class="">180</span>: <span class="sd">    scale : str, optional, default: &#39;linear&#39;</span></pre>
 <pre class="cython line score-0">&#xA0;<span class="">181</span>: <span class="sd">        If plotting enabled, which scale to be used on both axis.</span></pre>
-<pre class="cython line score-0">&#xA0;<span class="">182</span>: <span class="sd">    linCutOff : int, optional, default: 1000</span></pre>
+<pre class="cython line score-0">&#xA0;<span class="">182</span>: <span class="sd">    T : int, optional, default: 1000</span></pre>
 <pre class="cython line score-0">&#xA0;<span class="">183</span>: <span class="sd">        If plotting enabled and scale is logish, the threshold for linear-loglike transition</span></pre>
 <pre class="cython line score-0">&#xA0;<span class="">184</span>: <span class="sd">    update : bool, optional, default: False</span></pre>
 <pre class="cython line score-0">&#xA0;<span class="">185</span>: <span class="sd">        If True will add the resulting gated population(s) to the sample objects gate list in adition to returning the gate object.\n</span></pre>
@@ -2947,7 +2947,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
   if (__pyx_t_3) {
 /* … */
   }
-</pre><pre class="cython line score-76" onclick="(function(s){s.display=s.display==='block'?'none':'block'})(this.nextElementSibling.style)">+<span class="">279</span>:         <span class="n">fig</span><span class="p">,</span><span class="n">ax</span> <span class="o">=</span> <span class="n">plotHeatmap</span><span class="p">(</span><span class="n">fcsDF</span><span class="p">,</span> <span class="n">xCol</span><span class="p">,</span> <span class="n">yCol</span><span class="p">,</span> <span class="n">vI</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span><span class="n">thresh</span><span class="o">=</span><span class="n">linCutOff</span><span class="p">)</span></pre>
+</pre><pre class="cython line score-76" onclick="(function(s){s.display=s.display==='block'?'none':'block'})(this.nextElementSibling.style)">+<span class="">279</span>:         <span class="n">fig</span><span class="p">,</span><span class="n">ax</span> <span class="o">=</span> <span class="n">plotHeatmap</span><span class="p">(</span><span class="n">fcsDF</span><span class="p">,</span> <span class="n">xCol</span><span class="p">,</span> <span class="n">yCol</span><span class="p">,</span> <span class="n">vI</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span><span class="n">thresh</span><span class="o">=</span><span class="n">T</span><span class="p">)</span></pre>
 <pre class='cython code score-76 '>    __pyx_t_1 = <span class='pyx_c_api'>__Pyx_GetModuleGlobalName</span>(__pyx_n_s_plotHeatmap);<span class='error_goto'> if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 279, __pyx_L1_error)</span>
     <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_1);
     __pyx_t_5 = <span class='py_c_api'>PyTuple_New</span>(4);<span class='error_goto'> if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 279, __pyx_L1_error)</span>
@@ -2967,7 +2967,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     __pyx_t_8 = <span class='pyx_c_api'>__Pyx_PyDict_NewPresized</span>(2);<span class='error_goto'> if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 279, __pyx_L1_error)</span>
     <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_8);
     if (<span class='py_c_api'>PyDict_SetItem</span>(__pyx_t_8, __pyx_n_s_scale, __pyx_v_scale) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 279, __pyx_L1_error)</span>
-    if (<span class='py_c_api'>PyDict_SetItem</span>(__pyx_t_8, __pyx_n_s_thresh, __pyx_v_linCutOff) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 279, __pyx_L1_error)</span>
+    if (<span class='py_c_api'>PyDict_SetItem</span>(__pyx_t_8, __pyx_n_s_thresh, __pyx_v_T) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 279, __pyx_L1_error)</span>
     __pyx_t_2 = <span class='pyx_c_api'>__Pyx_PyObject_Call</span>(__pyx_t_1, __pyx_t_5, __pyx_t_8);<span class='error_goto'> if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 279, __pyx_L1_error)</span>
     <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_2);
     <span class='pyx_macro_api'>__Pyx_DECREF</span>(__pyx_t_1); __pyx_t_1 = 0;
@@ -3023,7 +3023,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     __pyx_t_8 = 0;
     __pyx_v_ax = __pyx_t_5;
     __pyx_t_5 = 0;
-</pre><pre class="cython line score-33" onclick="(function(s){s.display=s.display==='block'?'none':'block'})(this.nextElementSibling.style)">+<span class="">280</span>:         <span class="n">addAxLine</span><span class="p">(</span><span class="n">fig</span><span class="p">,</span><span class="n">ax</span><span class="p">,</span><span class="n">thresh</span><span class="p">,</span><span class="n">orientation</span><span class="p">,</span><span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="n">linCutOff</span><span class="p">)</span></pre>
+</pre><pre class="cython line score-33" onclick="(function(s){s.display=s.display==='block'?'none':'block'})(this.nextElementSibling.style)">+<span class="">280</span>:         <span class="n">addAxLine</span><span class="p">(</span><span class="n">fig</span><span class="p">,</span><span class="n">ax</span><span class="p">,</span><span class="n">thresh</span><span class="p">,</span><span class="n">orientation</span><span class="p">,</span><span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="n">T</span><span class="p">)</span></pre>
 <pre class='cython code score-33 '>    __pyx_t_2 = <span class='pyx_c_api'>__Pyx_GetModuleGlobalName</span>(__pyx_n_s_addAxLine);<span class='error_goto'> if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 280, __pyx_L1_error)</span>
     <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_2);
     __pyx_t_5 = <span class='py_c_api'>PyTuple_New</span>(4);<span class='error_goto'> if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 280, __pyx_L1_error)</span>
@@ -3043,7 +3043,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     __pyx_t_8 = <span class='pyx_c_api'>__Pyx_PyDict_NewPresized</span>(2);<span class='error_goto'> if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 280, __pyx_L1_error)</span>
     <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_8);
     if (<span class='py_c_api'>PyDict_SetItem</span>(__pyx_t_8, __pyx_n_s_scale, __pyx_v_scale) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 280, __pyx_L1_error)</span>
-    if (<span class='py_c_api'>PyDict_SetItem</span>(__pyx_t_8, __pyx_n_s_T, __pyx_v_linCutOff) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 280, __pyx_L1_error)</span>
+    if (<span class='py_c_api'>PyDict_SetItem</span>(__pyx_t_8, __pyx_n_s_T, __pyx_v_T) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 280, __pyx_L1_error)</span>
     __pyx_t_1 = <span class='pyx_c_api'>__Pyx_PyObject_Call</span>(__pyx_t_2, __pyx_t_5, __pyx_t_8);<span class='error_goto'> if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 280, __pyx_L1_error)</span>
     <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_1);
     <span class='pyx_macro_api'>__Pyx_DECREF</span>(__pyx_t_2); __pyx_t_2 = 0;
@@ -3216,8 +3216,8 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
       <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_1);
       <span class='pyx_macro_api'>__Pyx_DECREF</span>(__pyx_t_2); __pyx_t_2 = 0;
       <span class='pyx_macro_api'>__Pyx_DECREF</span>(__pyx_t_1); __pyx_t_1 = 0;
-</pre><pre class="cython line score-28" onclick="(function(s){s.display=s.display==='block'?'none':'block'})(this.nextElementSibling.style)">+<span class="">288</span>:             <span class="n">plotHeatmap</span><span class="p">(</span><span class="n">fcsDF</span><span class="p">,</span> <span class="n">xCol</span><span class="p">,</span> <span class="n">yCol</span><span class="p">,</span> <span class="n">vOutput</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">)</span></pre>
-<pre class='cython code score-28 '>      __pyx_t_1 = <span class='pyx_c_api'>__Pyx_GetModuleGlobalName</span>(__pyx_n_s_plotHeatmap);<span class='error_goto'> if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 288, __pyx_L1_error)</span>
+</pre><pre class="cython line score-33" onclick="(function(s){s.display=s.display==='block'?'none':'block'})(this.nextElementSibling.style)">+<span class="">288</span>:             <span class="n">plotHeatmap</span><span class="p">(</span><span class="n">fcsDF</span><span class="p">,</span> <span class="n">xCol</span><span class="p">,</span> <span class="n">yCol</span><span class="p">,</span> <span class="n">vOutput</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span><span class="n">thresh</span><span class="o">=</span><span class="n">T</span><span class="p">)</span></pre>
+<pre class='cython code score-33 '>      __pyx_t_1 = <span class='pyx_c_api'>__Pyx_GetModuleGlobalName</span>(__pyx_n_s_plotHeatmap);<span class='error_goto'> if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 288, __pyx_L1_error)</span>
       <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_1);
       __pyx_t_2 = <span class='py_c_api'>PyTuple_New</span>(4);<span class='error_goto'> if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 288, __pyx_L1_error)</span>
       <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_2);
@@ -3233,9 +3233,10 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
       <span class='pyx_macro_api'>__Pyx_INCREF</span>(__pyx_v_vOutput);
       <span class='refnanny'>__Pyx_GIVEREF</span>(__pyx_v_vOutput);
       <span class='py_macro_api'>PyTuple_SET_ITEM</span>(__pyx_t_2, 3, __pyx_v_vOutput);
-      __pyx_t_8 = <span class='pyx_c_api'>__Pyx_PyDict_NewPresized</span>(1);<span class='error_goto'> if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 288, __pyx_L1_error)</span>
+      __pyx_t_8 = <span class='pyx_c_api'>__Pyx_PyDict_NewPresized</span>(2);<span class='error_goto'> if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 288, __pyx_L1_error)</span>
       <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_8);
       if (<span class='py_c_api'>PyDict_SetItem</span>(__pyx_t_8, __pyx_n_s_scale, __pyx_v_scale) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 288, __pyx_L1_error)</span>
+      if (<span class='py_c_api'>PyDict_SetItem</span>(__pyx_t_8, __pyx_n_s_thresh, __pyx_v_T) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 288, __pyx_L1_error)</span>
       __pyx_t_5 = <span class='pyx_c_api'>__Pyx_PyObject_Call</span>(__pyx_t_1, __pyx_t_2, __pyx_t_8);<span class='error_goto'> if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 288, __pyx_L1_error)</span>
       <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_5);
       <span class='pyx_macro_api'>__Pyx_DECREF</span>(__pyx_t_1); __pyx_t_1 = 0;
@@ -3287,8 +3288,8 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
   if (__pyx_t_6) {
 /* … */
   }
-</pre><pre class="cython line score-79" onclick="(function(s){s.display=s.display==='block'?'none':'block'})(this.nextElementSibling.style)">+<span class="">291</span>:         <span class="n">fig</span><span class="p">,</span><span class="n">ax</span> <span class="o">=</span><span class="n">plot_densityFunc</span><span class="p">(</span><span class="n">fcsDF</span><span class="p">,</span><span class="n">xCol</span><span class="p">,</span> <span class="n">vI</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span><span class="o">*</span><span class="n">args</span><span class="p">,</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></pre>
-<pre class='cython code score-79 '>    __pyx_t_5 = <span class='pyx_c_api'>__Pyx_GetModuleGlobalName</span>(__pyx_n_s_plot_densityFunc);<span class='error_goto'> if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 291, __pyx_L1_error)</span>
+</pre><pre class="cython line score-84" onclick="(function(s){s.display=s.display==='block'?'none':'block'})(this.nextElementSibling.style)">+<span class="">291</span>:         <span class="n">fig</span><span class="p">,</span><span class="n">ax</span> <span class="o">=</span><span class="n">plot_densityFunc</span><span class="p">(</span><span class="n">fcsDF</span><span class="p">,</span><span class="n">xCol</span><span class="p">,</span> <span class="n">vI</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="n">T</span><span class="p">,</span><span class="o">*</span><span class="n">args</span><span class="p">,</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></pre>
+<pre class='cython code score-84 '>    __pyx_t_5 = <span class='pyx_c_api'>__Pyx_GetModuleGlobalName</span>(__pyx_n_s_plot_densityFunc);<span class='error_goto'> if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 291, __pyx_L1_error)</span>
     <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_5);
     __pyx_t_2 = <span class='py_c_api'>PyTuple_New</span>(3);<span class='error_goto'> if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 291, __pyx_L1_error)</span>
     <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_2);
@@ -3304,9 +3305,10 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     __pyx_t_8 = <span class='py_c_api'>PyNumber_Add</span>(__pyx_t_2, __pyx_v_args);<span class='error_goto'> if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 291, __pyx_L1_error)</span>
     <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_8);
     <span class='pyx_macro_api'>__Pyx_DECREF</span>(__pyx_t_2); __pyx_t_2 = 0;
-    __pyx_t_1 = <span class='pyx_c_api'>__Pyx_PyDict_NewPresized</span>(1);<span class='error_goto'> if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 291, __pyx_L1_error)</span>
+    __pyx_t_1 = <span class='pyx_c_api'>__Pyx_PyDict_NewPresized</span>(2);<span class='error_goto'> if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 291, __pyx_L1_error)</span>
     <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_1);
     if (<span class='py_c_api'>PyDict_SetItem</span>(__pyx_t_1, __pyx_n_s_scale, __pyx_v_scale) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 291, __pyx_L1_error)</span>
+    if (<span class='py_c_api'>PyDict_SetItem</span>(__pyx_t_1, __pyx_n_s_T, __pyx_v_T) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 291, __pyx_L1_error)</span>
     __pyx_t_2 = __pyx_t_1;
     __pyx_t_1 = 0;
     if (<span class='pyx_c_api'>__Pyx_MergeKeywords</span>(__pyx_t_2, __pyx_v_kwargs) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 291, __pyx_L1_error)</span>
@@ -3365,7 +3367,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     __pyx_t_2 = 0;
     <span class='pyx_macro_api'>__Pyx_XDECREF_SET</span>(__pyx_v_ax, __pyx_t_8);
     __pyx_t_8 = 0;
-</pre><pre class="cython line score-33" onclick="(function(s){s.display=s.display==='block'?'none':'block'})(this.nextElementSibling.style)">+<span class="">292</span>:         <span class="n">addAxLine</span><span class="p">(</span><span class="n">fig</span><span class="p">,</span><span class="n">ax</span><span class="p">,</span><span class="n">thresh</span><span class="p">,</span><span class="n">orientation</span><span class="p">,</span><span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="n">linCutOff</span><span class="p">)</span></pre>
+</pre><pre class="cython line score-33" onclick="(function(s){s.display=s.display==='block'?'none':'block'})(this.nextElementSibling.style)">+<span class="">292</span>:         <span class="n">addAxLine</span><span class="p">(</span><span class="n">fig</span><span class="p">,</span><span class="n">ax</span><span class="p">,</span><span class="n">thresh</span><span class="p">,</span><span class="n">orientation</span><span class="p">,</span><span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="n">T</span><span class="p">)</span></pre>
 <pre class='cython code score-33 '>    __pyx_t_1 = <span class='pyx_c_api'>__Pyx_GetModuleGlobalName</span>(__pyx_n_s_addAxLine);<span class='error_goto'> if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 292, __pyx_L1_error)</span>
     <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_1);
     __pyx_t_8 = <span class='py_c_api'>PyTuple_New</span>(4);<span class='error_goto'> if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 292, __pyx_L1_error)</span>
@@ -3385,7 +3387,7 @@ static PyObject *__pyx_pf_8aligater_8AGCython_2gateThreshold(CYTHON_UNUSED PyObj
     __pyx_t_2 = <span class='pyx_c_api'>__Pyx_PyDict_NewPresized</span>(2);<span class='error_goto'> if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 292, __pyx_L1_error)</span>
     <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_2);
     if (<span class='py_c_api'>PyDict_SetItem</span>(__pyx_t_2, __pyx_n_s_scale, __pyx_v_scale) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 292, __pyx_L1_error)</span>
-    if (<span class='py_c_api'>PyDict_SetItem</span>(__pyx_t_2, __pyx_n_s_T, __pyx_v_linCutOff) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 292, __pyx_L1_error)</span>
+    if (<span class='py_c_api'>PyDict_SetItem</span>(__pyx_t_2, __pyx_n_s_T, __pyx_v_T) &lt; 0) <span class='error_goto'>__PYX_ERR(0, 292, __pyx_L1_error)</span>
     __pyx_t_5 = <span class='pyx_c_api'>__Pyx_PyObject_Call</span>(__pyx_t_1, __pyx_t_8, __pyx_t_2);<span class='error_goto'> if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 292, __pyx_L1_error)</span>
     <span class='refnanny'>__Pyx_GOTREF</span>(__pyx_t_5);
     <span class='pyx_macro_api'>__Pyx_DECREF</span>(__pyx_t_1); __pyx_t_1 = 0;
