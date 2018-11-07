@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+ #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
 #			~~aliGater~~
@@ -414,7 +414,7 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
     xCol, yCol : str
         Marker labels.
     name : str
-        Name to the resulting gated population.
+        Name to the resulting gated population.F
     parentGate : AGgate object, optional
         Parent population to apply the gating to. 
         If no AGgate object is passed gating is applied to the ungated data frame.

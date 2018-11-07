@@ -563,7 +563,8 @@ class AGQC:
     #Then returns that filehandle
     def returnTempFile(self, gate):
         if not str(gate.name+gate.parentName) in [tmpFile[2] for tmpFile in self.tmpFiles]:
-            tf = tempfile.NamedTemporaryFile(prefix="AG", dir="/media/ludvig/Project_Storage/aligater_temp")
+            tmpFileDir=str(agconf.ag_tmp)
+            tf = tempfile.NamedTemporaryFile(prefix="AG", dir=tmpFileDir)
             name=tf.name
             gates=str(gate.name+gate.parentName)
             self.tmpFiles.append([tf, name, gates])
@@ -589,7 +590,7 @@ class AGQC:
     def reportPCs(self,folder):
         for elem in self.tmpFiles:    
             #TODO; ALIGATER_HOME/ALIGATER_OUTPUT path variables
-            destStr="tests/"+str(folder)+"/"+str(elem[2])+".txt"
+            destStr=str(agconf.ag_out)+"tests/"+str(folder)+"-"+str(elem[2])+".txt"
             copyfile(elem[1], destStr)
             
         for file in self.tmpFiles:
