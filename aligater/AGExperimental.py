@@ -198,8 +198,9 @@ def evaluatePartitioning(heatmap, xedges, yedges, xB, xT, yL, yR, scale, T):
 
 def heatmapRect(heatmap, xedges, yedges, xlim, ylim, orientation, scale='linear', T=1000):
     #*****************INTERNAL*************
-    #TODO: SOME PROPER ERROR HANDLING NEEDED IN THIS
-    assert heatmap.shape[0] == heatmap.shape[1]
+    if not heatmap.shape[0] == heatmap.shape[1]:
+        reportStr="passed heatmap must be symmetrical, passed heatmap dimensions: "+str(heatmap.shape[0])+str(heatmap.shape[1])
+        raise AliGaterError("in heatmapRect:",reportStr)
     nBins = heatmap.shape[0]
     xmin = min(xedges)
     xmax = max(xedges)
@@ -515,7 +516,7 @@ def dijkstraStep(heatmap, xBin, yBin, bins):
 
 def shortestPath(fcsDF, xCol, yCol, boundaries, vI=sentinel,maxStep=30, sigma=3, points=5, scale='linear', xscale='linear',yscale='linear',bins=300, T=1000):
     #****************INTERNAL*******************
-    #Deprecated, slow, use the cython implementation
+    #TODO: Deprecated, slow, use the cython implementation
     sys.stderr.write("WARNING, in shortestPath: This function is deprecated and the cython version (shortestPathMatrix) is vastly superior\n")
     if agconf.execMode in ["jupyter","ipython"]:
         plot=True
@@ -532,10 +533,8 @@ def shortestPath(fcsDF, xCol, yCol, boundaries, vI=sentinel,maxStep=30, sigma=3,
 
     vX=getGatedVector(fcsDF, xCol, vI)
     vY=getGatedVector(fcsDF, yCol, vI)
-    #TODO; actual scale handling
-    #**********************
+
     xscale = yscale = scale
-    #**********************
     heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
     smoothedHeatmap=gaussian_filter(heatmap.astype(float),sigma=sigma)
     

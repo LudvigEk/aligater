@@ -49,7 +49,7 @@ markerError=AliGaterError("not present in sample, check spelling or control your
 
 
 def compensateDF(fcsDF, metaDict):
-    #TODO: Perhaps try to avoid conversion from DF -> nparray and back, performance hit?
+
     spill_matrix=metaDict['SPILL'].split(',')
     n = int(spill_matrix[0]) #number of colors
     
@@ -58,7 +58,6 @@ def compensateDF(fcsDF, metaDict):
     
     comp_matrix = np.array(spill_matrix[n+1:]).reshape(n, n).astype(float)
     #Sanity check that the compensation matrix is non-zero if compensation was requested
-    #Raise here instead of warning?
     tmp_identity = np.identity(n)
     if np.array_equal(comp_matrix, tmp_identity):
         reportStr="WARNING: No compensation data available in sample!\n"
@@ -203,7 +202,7 @@ def getGatedVectors(fcsDF, gate1, gate2, vI=None, return_type="pdseries"):
         return np.array([vX, vY])
 
 
-def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=sentinel, marker_names='label'):
+def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=sentinel, marker_names='label',ignore_minCell_filter=False):
     #********Lazy loading of*************
     #TODO; could move to AGClasses, kind of makes sense.
     from aligater.AGClasses import AGsample
@@ -249,7 +248,7 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     fcsDF=fcsDF.apply(lambda x: np.where(x < agconf.ag_trimMeasurements, agconf.ag_trimMeasurements,x))
     
     sys.stderr.write("Loaded dataset with "+str(rows)+" events.\n")
-    if rows < agconf.cellFilter:
+    if rows < agconf.cellFilter and not ignore_minCell_filter:
         if agconf.ag_verbose:
             sys.stderr.write("Sample has fewer events than cellFilter threshold, skipping\n")
         return None
