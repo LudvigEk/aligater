@@ -190,7 +190,7 @@ class AGgate:
                 raise AliGaterError("Invalid init of AGClasses.AGgate object, parentGate must either be AGClasses.AGgate or None.")
             else:
                 self.parent=None
-                self.parentName="total"    #TODO: Is there any situation where assigning parentGate with a list and not meaning full_index?
+                self.parentName="total"    
                 self.bNoparent=True
         else:
             self.parent=parentGate()
@@ -476,7 +476,7 @@ class AGsample:
                     file = open(output, 'a')
                 self.printData(file, precision, header)
         else:
-            #TODO
+            #TODO, deprecation?
             raise
                 
     def resultVector(self, order=None, precision='.3f'):
@@ -1143,7 +1143,7 @@ class AGExperiment:
                 reportStr="Sample ("+str(fcs)+") is in compensation exception list, collecting external compensation matrix\n"
                 sys.stderr.write(reportStr)
                 try:
-                    metadata, fcsDF = loadFCS(self.compensation_exceptions[i][1], return_type="index", metadata=True)
+                    metadata, fcsDF = loadFCS(self.compensation_exceptions[i][1], return_type="index", metadata=True,ignore_minCell_filter=True)
                 except FileNotFoundError:
                     reportStr="WARNING, file for collecting external compensation matrix does not exist. Could not retrieve the external compensation matrix for this sample\n"
                     sys.stderr.write(reportStr)

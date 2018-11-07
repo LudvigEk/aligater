@@ -58,7 +58,6 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     #Default x and y lims
     bYlim=False
     bXlim=False
-    #TODO:testing for auto limits
     if 'xlim' in kwargs:
             if not isinstance(kwargs['xlim'],list):
                 raise TypeError("if xlim is passed, it must be a list of float/int")
@@ -144,12 +143,14 @@ def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xli
         defaultRange=None
         xRange=None
         yRange=None
-    assert len(vX) == len(vY)
+
+    if not len(vX) == len(vY):
+        raise AliGaterError("in getHeatmap: ","Coordinate vectors are of unequal length")
+    if len(vX)==0:
+        raise AliGaterError("in getHeatmap: ","Coordinate vectors are empty")
+        
     index_mask=[]
     for i in np.arange(len(vX)-1,-1,-1):
-        if i < 0:
-            #TODO
-            raise
         if xlim is not None:
             if vX[i] < xlim[0] or vX[i] > xlim[1]:
                 index_mask.append(i)
@@ -207,7 +208,7 @@ def bilogTransform(a, T):
         elif a[a_idx] < T and a[a_idx] > -T:
             tA[a_idx] = (a[a_idx]/T  + np.log(10) - 1) / np.log(10)
         else:
-            tA[a_idx] = -np.log(10 * abs(a[a_idx]) / T) / np.log(10)+1.13141103619349642
+            tA[a_idx] = -np.log(10 * abs(a[a_idx]) / T) / np.log(10)+1.13141103619349642 #This shift ensures that the transformed coordinates are continous, important for bins and plotting
         a_idx+=1
     return tA
 
@@ -217,9 +218,8 @@ def inverseBilogTransform(a, T):
     while a_idx < len(a):
         if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
             invA[a_idx] = T*np.exp(np.log(10)*a[a_idx])/10
-            #invA[a_idx]= (np.exp(a[a_idx])+10)*linCutOff/10
-        elif a[a_idx] <= 0.13141103619349642: # This is (np.log(10)-2)/np.log(10) I.e. what is the linear scale value at cutoff X=-T
-            tmpX=a[a_idx]-1.13141103619349642
+        elif a[a_idx] <= 0.13141103619349642: #This is (np.log(10)-2)/np.log(10) I.e. the linear scale value at X=-T
+            tmpX=a[a_idx]-1.13141103619349642 #This shift ensures that the transformed coordinates are continous, important for bins and plotting
             invA[a_idx] = -T*np.exp(np.log(10)*-tmpX)/10
         else:
             invA[a_idx] = T * (np.log(10)*a[a_idx] - np.log(10) + 1)
@@ -404,9 +404,9 @@ from sklearn.decomposition import PCA
 def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
     immatrix = np.array([im.flatten() for im in imlist],'f')
     if immatrix.shape[0] == 0:
-        reportStr="ERROR: imagedata missing\n"
+        reportStr="No data in passed image matrix\n"
         sys.stderr.write(reportStr)
-        return #TODO: SHOULD BE RAISE
+        return None
     if immatrix.shape[0] < nOfComponents:
         reportStr="WARNING: fewer samples than requested components for PC analysis, adjusting\n"
         sys.stderr.write(reportStr)

@@ -343,6 +343,7 @@ def getVectorLength(lStartCoordinate, lEndCoordinate):
 
 def calculateAngle(lStartCoordinate, lEndCoordinate):
     #****************INTERNAL*****************
+    #Angle in radians
     if not all(isinstance(i, list) for i in [lStartCoordinate, lEndCoordinate]):
         raise TypeError("Input arguments for getVectorLength (lStartCoordinate, lEndCoordinate) must be list.")
     if not len(lStartCoordinate)==len(lEndCoordinate)==2:
@@ -350,6 +351,16 @@ def calculateAngle(lStartCoordinate, lEndCoordinate):
     angle=math.atan(np.subtract(lEndCoordinate,lStartCoordinate)[1]/np.subtract(lEndCoordinate,lStartCoordinate)[0])
     
     return angle
+
+def calculateNormVector(lStartCoordinate, angle):
+    #****************INTERNAL*****************
+    #Angle in radians
+    x0=lStartCoordinate[0]
+    y0=lStartCoordinate[1]
+    x1=math.cos(angle)+x0
+    y1=math.sin(angle)+y0
+    lEndCoordinate=[x1,y1]
+    return lEndCoordinate
 
 def getHighestDensityPoint(fcs, xCol, yCol, parentGate=None, bins=300):
     """
@@ -403,7 +414,7 @@ def getHighestDensityPoint(fcs, xCol, yCol, parentGate=None, bins=300):
     
 
 
-def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, center='centroid', customCenter=None, filePlot=None, update=False, QC=False):
+def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, center='centroid', customCenter=None, filePlot=None, update=False, QC=False, **kwargs):
     """
     Function that performs a 2D principal component analysis and gates an ellipse based on the results.
     
@@ -489,12 +500,30 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
     width=getVectorLength(center, PC1)
     height=getVectorLength(center, PC2)
     angle=calculateAngle(center, PC1)
+    if 'adjustAngle' in kwargs:
+        #Collect requested adjustment
+        adjustAngle=kwargs['adjustAngle']
+        assert isinstance(adjustAngle,(float, int))
+        #Recalculate eigen 1
+        adjustAngle=math.radians(adjustAngle)
+        angle=angle+adjustAngle
+        new_eigen1=calculateNormVector([0,0], adjustAngle)
+        #Recalculate eigen 2
+        secondAngle=calculateAngle(center, PC2)
+        secondAngle=secondAngle+adjustAngle
+        new_eigen2=calculateNormVector([0,0],secondAngle)
 
-    result=gateEllipsoid(fcsDF, xCol, yCol,xCenter=center[0],yCenter=center[1], majorAxis=[eigen1[1],eigen1[2]], minorAxis=[eigen2[1],eigen2[2]],majorRadii=width, minorRadii=height,vI=vI)
+        eigen1[1]=new_eigen1[0]
+        eigen1[2]=new_eigen1[1]
+        eigen2[1]=new_eigen2[0]
+        eigen2[2]=new_eigen2[1]
+       
+
+    result=gateEllipsoid(fcsDF, xCol, yCol,xCenter=center[0],yCenter=center[1], majorAxis=[eigen1[1],eigen1[2]],majorRadii=width ,minorAxis=[eigen2[1],eigen2[2]], minorRadii=height,vI=vI)
 
     if plot or filePlot is not None:
-        addLine(fig, ax, center, PC1)
-        addLine(fig, ax, center, PC2)
+        #addLine(fig, ax, center, PC1)
+        #addLine(fig, ax, center, PC2)
         ax.add_patch(Ellipse(center, 2*width, 2*height, np.degrees(angle),fill=False,edgecolor='#FF0000', linestyle='dashed'))
         if filePlot is not None:
             plt.savefig(filePlot)
