@@ -29,7 +29,7 @@ from scipy.ndimage.filters import gaussian_filter1d
 
 #AliGater imports
 import aligater.AGConfig as agconf
-from aligater.AGPlotRoutines import plotHeatmap, plot_gmm, addLine, addAxLine, convertToLogishPlotCoordinates, convertToBiLogPlotCoordinates, logishBin, logishTransform, inverseLogishTransform
+from aligater.AGPlotRoutines import plotHeatmap, plot_gmm, addLine, addAxLine, transformWrapper, convertToLogishPlotCoordinates, convertToBiLogPlotCoordinates, logishBin, logishTransform, bilogTransform, inverseLogishTransform, inverseBilogTransform, inverseTransformWrapper
 from aligater.AGCython import gateEllipsoid
 from aligater.AGClasses import AGgate, AGsample
 from aligater.AGFileSystem import getGatedVector, getGatedVectors, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
@@ -1262,3 +1262,285 @@ def backGate(fcs, xCol, yCol, population, background_population=None, markersize
         plt.savefig(filePlot)
         plt.close()
     return None
+
+def gateTiltedLine(fcs, xCol, yCol, theta, name, parentGate=None, startPoint=(None,None), endLimits=(None,None), population='upper', scale='linear', xscale='linear', yscale='linear', T=1000, filePlot=None):
+    """
+    Gates the population from a line given by an angle (-90 < theta < 90) and optionally a startpoint and/or endlimit(s).
+    
+    **Parameters**
+    
+    fcs : AGClasses.AGSample object
+        Flow data loaded in a sample object.
+    xCol,yCol : str
+        Marker labels.
+    population : AGgate object
+        Population that should be highlighted.
+    theta : float/int
+        The angle in degrees, (-90 < theta < 90)
+    name : str
+        Name of the resulting gated population.
+    parentGate : AGgate object, optional
+        Parent population to apply the gating to. 
+        If no AGgate object is passed gating is applied to the ungated data frame.
+    startPoint : tuple(float/int), optional, default : (None, None)
+        Optional start point where to start the tilted line. 
+    endLimits : tuple(float/int), optional, default : (None, None)
+        Optional end limits, if the tilted line passes through EITHER the x or y limit specified by endLimits it will stop and proceed acoording to endOrientation.   
+    population, str, optional, default: 'upper'
+        This parameter determines which population should be returned.\n
+        'upper' means any events with a value above the tresholds are returned.\n
+        'lower' means any events with a value below the tresholds will be returned.\n
+        The default setting means the population that's considered 'positive' in flow cytometry terms is returned.
+    scale : str, optional, default: 'linear'
+        Which scale to be used on axis.
+    xscale : str, optional, default: 'linear'
+        Which scale to be used on x-axis.
+    yscale : str, optional, default: 'linear'
+        Which scale to be used on y-axis.        
+    T : int, optional, default: 1000
+        If scale is logish, the threshold for linear-loglike transition.
+    filePlot : str, optional, default: None
+        Option to plot the gate to file to specified path. \n
+        Warning: might overwrite stuff.
+
+    **Returns**
+
+    None 
+    
+    **Examples**
+
+    None currently.
+    """
+    
+    if agconf.execMode in ["jupyter","ipython"]:
+        plot=True
+    else:
+        plot=False
+    if parentGate is None:
+        vI=fcs.full_index()
+    elif not isinstance(parentGate,AGgate):
+        raise invalidAGgateParentError("in gateTiltedLine: ")
+    else:
+        vI=parentGate()
+    if not isinstance(fcs, AGsample):
+        raise invalidSampleError("in gateTiltedLine: ")
+    else:
+        fcsDF=fcs()
+    if len(vI)<5:
+        sys.stderr.write("WARNING: in gateTiltedLine: Passed population ("+str(parentGate.name)+") contains <5 events, returning empty gate\n") 
+        return AGgate([],parentGate,xCol,yCol,name)
+    if filePlot is not None:
+        if not isinstance(filePlot,str):
+            raise TypeError("If plotting to file is requested filePlot must be string filename")
+    if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
+        raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels") 
+    if not isinstance(theta, (float, int)):
+        raise AliGaterError("in gateTiltedLine: ","theta had an invalid dtype, expected "+str(type(float))+"/"+str(type(int))+" found: "+str(type(theta)))
+    if not (-90 < theta < 90) or theta == 0:
+        raise AliGaterError("in gateTiltedLine: ","theta must be between -90 and 90 degrees, non inclusive. (-90 < theta < 90) and cannot be zero (0)")
+        
+    if not isinstance(startPoint, tuple):
+        raise AliGaterError("in gateTiltedLine: ","startPoint must be tuple containing any combination of float, int or None")
+    if not isinstance(startPoint[0],(float,int)) and startPoint[0] is not None:
+        raise AliGaterError("in gateTiltedLine: ","startPoint must be tuple containing any combination of float, int or None")
+    if not isinstance(startPoint[1],(float,int)) and startPoint[1] is not None:
+        raise AliGaterError("in gateTiltedLine: ","startPoint must be tuple containing any combination of float, int or None")        
+
+    if not isinstance(endLimits, tuple):
+        raise AliGaterError("in gateTiltedLine: ","endLimits must be tuple of float or int")
+    if not isinstance(endLimits[0],(float,int)) and endLimits[0] is not None:
+        raise AliGaterError("in gateTiltedLine: ","endLimits must be tuple containing any combination of float, int or None")
+    if not isinstance(endLimits[1],(float,int)) and endLimits[1] is not None:
+        raise AliGaterError("in gateTiltedLine: ","endLimits must be tuple containing any combination of float, int or None")        
+        
+    if not all(isinstance(x,str) for x in [scale, xscale, yscale]):
+        raise AliGaterError("in gateTiltedLine: ","scale, xscale and yscale must be str if specified")
+    if not all(x.lower() in ['linear','logish','bilog'] for x in [scale, xscale, yscale]):
+        raise AliGaterError("in gateTiltedLine: ","scale, xscale and yscale must be either of 'linear', 'logish' or 'bilog'")
+    """
+    The gating problem can be divided into three sections. Line is given by y=kx+m.
+    ---A--- ----B---- ----C---
+    Area before the tilted line(A), this exists if any value in startPoint is not None 
+    
+    The tilted line section (B), which is everything between startPoint[0] and endPoint[0]. Exists if startPoint[0] - endPoint[0] > 0
+    
+    Area after the tilted line (C), exists if the tilted line reaches either of the limits in endLim or the max/min values of the input data
+    
+    """
+    if scale.lower() != 'linear':
+        xscale = scale
+        yscale = scale
+    vX = getGatedVector(fcsDF, xCol, vI=vI, return_type="nparray")
+    vY = getGatedVector(fcsDF, yCol, vI=vI, return_type="nparray")    
+    if xscale.lower()=='logish':
+        vX=logishTransform(vX, T)
+    if yscale.lower()=='logish':
+        vY=logishTransform(vY, T) 
+        
+    if xscale.lower()=='bilog':
+        vX=bilogTransform(vX, T)         
+    if yscale.lower()=='bilog':
+        vY=bilogTransform(vY, T) 
+        
+    x_min = min(vX)
+    x_max = max(vX)
+    y_min = min(vY)
+    y_max = max(vY)
+    
+    if startPoint[0] is not None:
+        if xscale != 'linear':
+            B_startx = transformWrapper(startPoint[0], T, xscale)
+        else:
+            B_startx = startPoint[0]
+    else:
+        B_startx = x_min
+
+    #Check sign of k:
+    if theta < 0:
+        negative_k=True
+    else:
+        negative_k=False
+        
+    if endLimits[0] is not None:
+        if endLimits[0] < startPoint[0]:
+            raise AliGaterError("in gateTiltedLine: ","x-endLimit cannot be less than x-startPoint")
+        if xscale != 'linear':
+            B_xlim = transformWrapper(endLimits[0], T, xscale)
+        else:
+            B_xlim = endLimits[0]
+    else: 
+        B_xlim = x_max
+        
+    if endLimits[1] is not None:
+        if yscale != 'linear':
+            B_ylim = transformWrapper(endLimits[1], T, yscale)
+        else:
+            B_ylim = endLimits[1]  
+    else:
+        if not negative_k:
+            B_ylim = y_max
+        else:
+            B_ylim = y_min
+      
+    if startPoint[1] is not None:
+        if yscale != 'linear':
+            B_starty = transformWrapper(startPoint[1], T, yscale)
+        else:
+            B_starty = startPoint[1]   
+    else:
+        B_starty = y_min
+    
+    if B_startx <= x_min:
+        has_a = False
+    else:
+        has_a = True
+    
+    
+
+    #Calculate y=kx+m
+    rad_theta = np.radians(theta)
+    #k = B_startx * np.tan(rad_theta)
+    k = np.tan(rad_theta)
+    m = B_starty - k*B_startx
+    
+    y_at_xlim = k*B_xlim + m
+    #Only way to not have c is if the tilted line intersects x=xmax without hitting ymax or B_ylim
+    #Initial requirement for that is that B_xlim > xmax or B_xlim = None
+    #The y at x_max must then also be less than B_ylim and ymax
+    if B_xlim >= x_max:
+        if (y_at_xlim < B_ylim and y_at_xlim < y_max) and not negative_k:
+            has_c = False
+        elif (y_at_xlim > B_ylim and y_at_xlim > y_min) and negative_k:
+            has_c = False
+        else: 
+            has_c = True
+    else:
+        has_c = True
+    
+
+    #Now we know if there is an A and C section but extent of B section is unknown
+    #CAVE: only positive degrees atm
+    x_at_ylim = (B_ylim - m)/k
+    if not negative_k:
+        if y_at_xlim <= B_ylim:
+            B_endx = B_xlim
+            B_endy = y_at_xlim
+        elif x_at_ylim <= B_xlim:
+            B_endx = (B_ylim - m)/k
+            B_endy = B_ylim
+    else:
+        if y_at_xlim >= B_ylim:
+            B_endx = B_xlim
+            B_endy = y_at_xlim
+        elif x_at_ylim <= B_xlim:
+            B_endx = (B_ylim - m)/k
+            B_endy = B_ylim
+    
+    #DEBUG
+    #reportStr="negative_k: "+str(negative_k)+"\n"
+    #sys.stderr.write(reportStr)
+    #reportStr="y_at_xlim: "+str(inverseTransformWrapper(y_at_xlim, scale=scale, T=T))+"\nB_ylim: "+str(inverseTransformWrapper(B_ylim, scale=scale, T=T))+"\n"
+    #sys.stderr.write(reportStr)
+    #reportStr="B_endx: "+str(inverseTransformWrapper(B_endx, scale=scale, T=T))+"\n"
+    #sys.stderr.write(reportStr)
+    #reportStr="has_a: "+str(has_a)+" has_c: "+str(has_c)+"\n"
+    #sys.stderr.write(reportStr)
+    
+    result_vI = []
+    if population.lower() == 'upper':
+        for index, x, y in zip(vI,vX,vY):
+            if x < B_startx:
+                if y >= B_starty:
+                    result_vI.append(index)
+                    continue
+            elif x >= B_startx and x <= B_endx:
+                if y >= k*x+m:
+                    result_vI.append(index)
+                    continue
+            elif x > B_endx:
+                if (y >= B_ylim or y >= y_at_xlim) and not negative_k:
+                    result_vI.append(index)
+                    continue
+                elif (y >= B_ylim and y >= y_at_xlim) and negative_k:
+                    result_vI.append(index)
+                    continue
+            else:
+                raise AliGaterError("in gateTiltedLine: ","Unhandled coordinate")
+    else:
+        for index, x, y in zip(vI,vX,vY):
+            if x < B_startx:
+                if y <= B_starty:
+                    result_vI.append(index)
+                    continue
+            elif x >= B_startx and x < B_endx:
+                if y <= k*x+m:
+                    result_vI.append(index)
+                    continue
+            elif x >= B_endx:
+                if (y <= B_ylim and y <= y_at_xlim) and not negative_k:
+                    result_vI.append(index)
+                    continue
+                elif (y <= B_ylim or y <= y_at_xlim) and  negative_k:
+                    result_vI.append(index)
+                    continue
+            else:
+                raise AliGaterError("in gateTiltedLine: ","Unhandled coordinate")
+      
+    outputGate = AGgate(result_vI, parentGate, xCol, yCol, name)
+    #plotting section
+    if plot or filePlot is not None:
+        fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
+        addLine(fig,ax, inverseTransformWrapper([x_min,B_starty], scale=scale, T=T), inverseTransformWrapper([B_startx, B_starty], scale=scale, T=T), scale=scale, T=T)
+        addLine(fig,ax, inverseTransformWrapper([B_startx,B_starty], scale=scale, T=T), inverseTransformWrapper([B_endx, B_endy], scale=scale, T=T), scale=scale, T=T)
+        addLine(fig,ax, inverseTransformWrapper([B_endx, B_endy], scale=scale, T=T), inverseTransformWrapper([x_max,B_endy], scale=scale, T=T), scale=scale, T=T)
+        if filePlot is not None:
+            plt.savefig(filePlot)
+            if not plot:
+                plt.close(fig)
+        if plot:
+            plt.show()
+            plt.clf()
+            plotHeatmap(fcsDF, xCol, yCol, result_vI, scale=scale, thresh=T)
+            plt.show()
+            
+    return outputGate
