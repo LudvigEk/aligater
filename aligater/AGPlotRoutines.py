@@ -190,6 +190,47 @@ def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xli
         yBinEdges=bilogBin(vY,bins,T, yRange)
         return np.histogram2d(vX, vY, [bins,yBinEdges])
 
+
+def transformWrapper(vX, T, scale):
+    result=None
+    single_val=False
+    if not isinstance(vX, list):
+        vInput=[vX]
+        single_val=True
+    else:
+        vInput=vX
+    if scale.lower() == 'logish':
+        result = logishTransform(vInput, T)
+    elif scale.lower() == 'bilog':
+        result=bilogTransform(vInput, T)
+    elif scale.lower() == 'linear':
+        result=vX
+    if result is None:
+        raise
+    if single_val:
+        result=result[0]
+    return result
+
+def inverseTransformWrapper(vX, T, scale):
+    result=None
+    single_val=False
+    if not isinstance(vX, list):
+        vInput=[vX]
+        single_val=True
+    else:
+        vInput=vX
+    if scale.lower() == 'logish':
+        result = inverseLogishTransform(vInput, T)
+    elif scale.lower() == 'bilog':
+        result=inverseBilogTransform(vInput, T)
+    elif scale.lower() == 'linear':
+        result=vX
+    if result is None:
+        raise
+    if single_val:
+        result=result[0]
+    return result    
+    
 def bilogBin(vX, bins, T, customRange=None):
     if customRange is not None:
         defaultRange=customRange
@@ -429,7 +470,8 @@ def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
         axes = projection_d_df.plot(kind='scatter', x='PC2', y='PC1', figsize=(16,8))
         axes.set_xlim([projection_d_df['PC2'].min()*1.1, projection_d_df['PC2'].max()*1.1])
         axes.set_ylim([projection_d_df['PC1'].min()*1.1, projection_d_df['PC1'].max()*1.1])
-        plt.show()
+        #TODO: PLOTTING OPTIONS
+        #plt.show()
     projection_d_df['length']=np.sqrt(np.square(projection_d_df).sum(axis=1))
     projection_d_df.sort_values(by='length', inplace=True)
     return projection_d_df
