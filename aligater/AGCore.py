@@ -29,7 +29,7 @@ from scipy.ndimage.filters import gaussian_filter1d
 
 #AliGater imports
 import aligater.AGConfig as agconf
-from aligater.AGPlotRoutines import plotHeatmap, plot_gmm, addLine, addAxLine, transformWrapper, convertToLogishPlotCoordinates, convertToBiLogPlotCoordinates, logishBin, logishTransform, bilogTransform, inverseLogishTransform, inverseBilogTransform, inverseTransformWrapper
+from aligater.AGPlotRoutines import plotHeatmap, plot_gmm, addLine, addAxLine, transformWrapper, convertToLogishPlotCoordinates, convertToBiLogPlotCoordinates, logishBin, logishTransform, bilogBin, bilogTransform, inverseLogishTransform, inverseBilogTransform, inverseTransformWrapper
 from aligater.AGCython import gateEllipsoid
 from aligater.AGClasses import AGgate, AGsample
 from aligater.AGFileSystem import getGatedVector, getGatedVectors, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
@@ -95,7 +95,7 @@ def heatmap(fcs, xmarker, ymarker, population, *args, **kwargs):
     
     return plotHeatmap(fcsDF, xmarker, ymarker, vI, bins, scale, xscale, yscale, thresh, aspect)
 
-def gmm2D(fcs, xCol, yCol, nOfComponents, parentGate=None, *args, **kwargs):
+def gmm2D(fcs, xCol, yCol, nOfComponents, parentGate=None, scale='linear', T=1000, *args, **kwargs):
     """
     Fits a scikit.learn GaussianMixture object to the data and returns the gmm object.
     
@@ -127,7 +127,10 @@ def gmm2D(fcs, xCol, yCol, nOfComponents, parentGate=None, *args, **kwargs):
         raise invalidAGgateParentError("in gmm2D: ")
     else:
         vI=parentGate()
-        
+    if len(vI)<5:
+        sys.stderr.write("WARNING, in gmm2D: Too few events, cannot fit mixture model, returning unfitted GMM object.\n")         
+        return GaussianMixture(n_components=nOfComponents,*args,**kwargs) 
+    
     if not isinstance(fcs, AGsample):
         raise invalidSampleError("in gmm2D: ")
     else:
@@ -135,12 +138,15 @@ def gmm2D(fcs, xCol, yCol, nOfComponents, parentGate=None, *args, **kwargs):
     
     vX = getGatedVector(fcsDF,xCol,vI=vI,return_type="nparray")
     vY = getGatedVector(fcsDF,yCol,vI=vI,return_type="nparray")
+    if scale.lower() != 'linear':
+        vX=transformWrapper(vX, T, scale)
+        vY=transformWrapper(vY, T, scale)
     fcsArray=np.array([vX,vY]).T
     gmm = GaussianMixture(n_components=nOfComponents,*args,**kwargs)
     gmm.fit(fcsArray)
     return gmm
 
-def gateGMM(fcs, name, xCol, yCol, gmm, parentGate=None, sigma=1, update=False, QC=False):
+def gateGMM(fcs, name, xCol, yCol, gmm, parentGate=None, sigma=1, widthScale=1, heightScale=1, update=False, QC=False, scale='linear', T=1000):
     """
     Function that can interpret and gate data based on a GaussianMixture object from sklearn.mixture
     
@@ -198,10 +204,11 @@ def gateGMM(fcs, name, xCol, yCol, gmm, parentGate=None, sigma=1, update=False, 
         return outputGate
     
     if plot:
-        fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, aspect='equal')
+        fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale, thresh=T, aspect='auto')
     else:
         ax=None
     vEllipses = plot_gmm(fcsDF,xCol, yCol, vI, gmm, sigma, ax)
+    
     
     vOutput=[]
     #Gate all overlapping ellipses individually
@@ -210,8 +217,10 @@ def gateGMM(fcs, name, xCol, yCol, gmm, parentGate=None, sigma=1, update=False, 
         yCenter=ellipses[0][1]
         width=ellipses[1]
         height=ellipses[2]
-        angle=ellipses[3]
-        vTmp = gateEllipsoid(fcsDF, xCol, yCol, xCenter, yCenter, width/2, height/2, np.radians(angle), vI, info=False)
+        angle=np.radians(ellipses[3])
+        majorAxis=[width*np.cos(angle), width*np.sin(angle)] / np.linalg.norm([width*np.cos(angle), width*np.sin(angle)])
+        minorAxis = [height*np.cos(angle+np.pi/2), height*np.sin(angle+np.pi/2)] / np.linalg.norm([height*np.cos(angle+np.pi/2), height*np.sin(angle+np.pi/2)])
+        vTmp = gateEllipsoid(fcsDF=fcsDF, xCol=xCol, yCol=yCol, xCenter=xCenter, yCenter=yCenter,majorAxis=majorAxis.tolist(), minorAxis=minorAxis.tolist(), majorRadii= widthScale*(width/2), minorRadii=heightScale*(height/2), vI=vI, info=False, scale=scale, T=T)
         vOutput.extend(vTmp)
     #The result is all unique events that was inside any ellipse
     vResult=list(set(vOutput))
@@ -219,12 +228,12 @@ def gateGMM(fcs, name, xCol, yCol, gmm, parentGate=None, sigma=1, update=False, 
     reportGateResults(vI, vResult)
     outputGate=AGgate(vResult, parentGate, xCol, yCol, name)
     if plot:
-        fig, ax = plotHeatmap(fcsDF, xCol, yCol, vResult)
+        fig, ax = plotHeatmap(fcsDF, xCol, yCol, vResult, scale=scale, thresh=T)
     return outputGate
     
     
 
-def getPCs(fcsDF, xCol, yCol, centerCoord=None, vI=None):
+def getPCs(fcsDF, xCol, yCol, centerCoord=None, vI=None, scale='linear', T=1000):
     #****************INTERNAL*****************
     if not xCol in fcsDF.columns:
         raise NameError("xCol not in passed dataframe's columns")
@@ -245,6 +254,11 @@ def getPCs(fcsDF, xCol, yCol, centerCoord=None, vI=None):
 
     vX=getGatedVector(fcsDF, xCol, vI, "nparray")
     vY=getGatedVector(fcsDF, yCol, vI, "nparray")
+    
+    if scale.lower() != 'linear':
+        vX=transformWrapper(vX, T, scale)
+        vY=transformWrapper(vY, T, scale)
+    
     if not len(vX)==len(vY):
         raise AliGaterError("Unequal amount of data points for "+str(xCol)+" and "+str(yCol),"in getPCs(internal): ")
     
@@ -362,7 +376,7 @@ def calculateNormVector(lStartCoordinate, angle):
     lEndCoordinate=[x1,y1]
     return lEndCoordinate
 
-def getHighestDensityPoint(fcs, xCol, yCol, parentGate=None, bins=300):
+def getHighestDensityPoint(fcs, xCol, yCol, parentGate=None, bins=300, scale='linear', T=1000):
     """
     Returns coordinates for the point in the view with the highest number of events.
     
@@ -399,8 +413,13 @@ def getHighestDensityPoint(fcs, xCol, yCol, parentGate=None, bins=300):
     fcsDF=fcs()
     if (xCol not in fcsDF.columns or yCol not in fcsDF.columns):
         raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
-    vX=getGatedVector(fcsDF, xCol, vI)
-    vY=getGatedVector(fcsDF, yCol, vI)
+    vX=getGatedVector(fcsDF, xCol, vI, return_type="nparray")
+    vY=getGatedVector(fcsDF, yCol, vI, return_type="nparray")
+    
+    if scale.lower() != 'linear':
+        vX=transformWrapper(vX, T, scale)
+        vY=transformWrapper(vY, T, scale)
+    
     heatmap, xedges, yedges = np.histogram2d(vX, vY, bins)
     xmax=np.amax(vX)
     xmin=np.amin(vX)
@@ -410,11 +429,16 @@ def getHighestDensityPoint(fcs, xCol, yCol, parentGate=None, bins=300):
     #Re-estimate original index, note +- range/bins error
     xCoord=highestPoint[0]*(xmax-xmin)/bins + xmin
     yCoord=highestPoint[1]*(ymax-ymin)/bins + ymin
-    return [xCoord, yCoord]
+    
+    outputCoords = [xCoord, yCoord]
+    if scale.lower() != 'linear':
+        outputCoords = inverseTransformWrapper(outputCoords, T, scale)
+        
+    return outputCoords
     
 
 
-def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, center='centroid', customCenter=None, filePlot=None, update=False, QC=False, **kwargs):
+def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, center='centroid', customCenter=None, filePlot=None, scale='linear', T=1000, **kwargs):
     """
     Function that performs a 2D principal component analysis and gates an ellipse based on the results.
     
@@ -439,11 +463,7 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
     filePlot : str, optional, default: None
         Option to plot the gate to file to specified path. \n
         Warning: might overwrite stuff.
-    update : bool, optional, default: False
-        If True will add the resulting gated population(s) to the sample objects gate list in adition to returning the gate object.\n
-        If False (default), returns an AGgate object without adding it to the sample object.
-    QC : bool, optional, default: False
-        If True, adds a downsampled image of the gating view to the gate object. These can be collected by an AGExperiment object if it's QC flag is also True.
+
         
     **Returns**
 
@@ -485,17 +505,20 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
         sys.stderr.write("WARNING, in gatePC: Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
         return AGgate([], parentGate, xCol, yCol, name)
     if center.lower() == 'density':
-        center=getHighestDensityPoint(fcs, xCol, yCol, parentGate)
-
+        center=getHighestDensityPoint(fcs, xCol, yCol, parentGate, scale=scale, T=T)
     elif center.lower() == 'centroid':
         center=None
     else:
-        center=customCenter
+        if scale.lower() != 'linear':
+            center=customCenter
+        else:
+            center=transformWrapper(customCenter, T, scale)
         
     if plot or filePlot is not None:
-        fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
+        fig, ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale, thresh=T)
 
-    center, eigen1, eigen2 = getPCs(fcsDF, xCol, yCol, center, vI)
+    center, eigen1, eigen2 = getPCs(fcsDF, xCol, yCol, center, vI, scale=scale, T=T)
+
     center, PC1, PC2 = getPCSemiAxis(center, eigen1, eigen2, widthScale, heightScale)
     width=getVectorLength(center, PC1)
     height=getVectorLength(center, PC2)
@@ -518,28 +541,26 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
         eigen2[1]=new_eigen2[0]
         eigen2[2]=new_eigen2[1]
        
-
-    result=gateEllipsoid(fcsDF, xCol, yCol,xCenter=center[0],yCenter=center[1], majorAxis=[eigen1[1],eigen1[2]],majorRadii=width ,minorAxis=[eigen2[1],eigen2[2]], minorRadii=height,vI=vI)
+    
+    result=gateEllipsoid(fcsDF, xCol, yCol,xCenter=center[0],yCenter=center[1], majorAxis=[eigen1[1],eigen1[2]],majorRadii=width ,minorAxis=[eigen2[1],eigen2[2]], minorRadii=height,vI=vI, scale=scale, T=T)
 
     if plot or filePlot is not None:
         #addLine(fig, ax, center, PC1)
         #addLine(fig, ax, center, PC2)
-        ax.add_patch(Ellipse(center, 2*width, 2*height, np.degrees(angle),fill=False,edgecolor='#FF0000', linestyle='dashed'))
+        ax.add_patch(Ellipse(center, 2*width, 2*height, np.degrees(angle), fill=False, edgecolor='#FF0000', linestyle='dashed'))
         if filePlot is not None:
             plt.savefig(filePlot)
             if not plot:
                 plt.close(fig)
         if plot:
             plt.show()
-            plotHeatmap(fcsDF, xCol, yCol,result)
+            plotHeatmap(fcsDF, xCol, yCol, result, scale=scale, thresh=T)
             plt.show()
             plt.clf()
     if parentGate is not None:
         outputGate=AGgate(result, parentGate, xCol, yCol, name)
     else:
-        outputGate=AGgate(result, fcs.full_index(), xCol, yCol, name)
-    if update:
-        fcs.update(outputGate, QC=QC)
+        outputGate=AGgate(result, None, xCol, yCol, name)
     return outputGate
 
 def getVectorCoordiantes(length, angle):
@@ -554,8 +575,11 @@ def getDensityFunc(fcsDF, xCol,vI=None, sigma=3, bins=300, scale='linear', T=100
     if vI is None:
         vI=fcsDF.full_index()
     data=getGatedVector(fcsDF, xCol, vI, return_type="nparray")
-    if scale=='logish':
+    if scale.lower()=='logish':
         BinEdges=logishBin(data,bins,T)
+        histo = np.histogram(data, BinEdges)
+    elif scale.lower()=='bilog':
+        BinEdges=bilogBin(data, bins, T)
         histo = np.histogram(data, BinEdges)
     else:    
         histo=np.histogram(data, bins)
@@ -563,7 +587,7 @@ def getDensityFunc(fcsDF, xCol,vI=None, sigma=3, bins=300, scale='linear', T=100
 
     return smoothedHisto, histo[1]
 
-def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bins=300, scale='linear', T= 1000):
+def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bins=300, require_local_min=False, scale='linear', T= 1000):
     """
     Function that finds the least dense point in a given interval by searching a smoothed density function.
     
@@ -626,8 +650,8 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
     if not any(isinstance(i,(float,int, str)) for i in interval):
         raise(AliGaterError("in valleySeek: ","Interval element had an unexpected type"))
     
-    if scale=='logish':
-        smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins, scale='logish',T=T)
+    if scale.lower()!='linear':
+        smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins, scale=scale, T=T)
     else:
         smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins)
     
@@ -657,13 +681,29 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
     if len(vIndicies)<=3:
         sys.stderr.write("WARNING, in valleySeek: Specified interval is too narrow, defaulting to mid-interval\n")
         return (interval[0]+interval[1])/2
-    minVal=np.inf
-    minValIndex=0
-    for index in vIndicies:
-        if smoothedHisto[index] < minVal:
-            minVal=smoothedHisto[index]
-            minValIndex=index
-
+    
+    if not require_local_min:
+        minVal=np.inf
+        minValIndex=0
+        for index in vIndicies:
+            if smoothedHisto[index] < minVal:
+                minVal=smoothedHisto[index]
+                minValIndex=index
+                
+    if require_local_min: 
+        minVal=np.inf
+        minValIndex=0
+        for i in np.arange(1,len(vIndicies)-1,1):
+            value=smoothedHisto[vIndicies[i]]
+            if value < minVal and value > smoothedHisto[vIndicies[i-1]] and value < smoothedHisto[vIndicies[i+1]]:
+                minVal=value
+                minValIndex=vIndicies[i]         
+        if minVal==np.inf:
+            #TODO, maybe raise this, or warning. If warning, reasonable return? 
+            #Let user set return behaviour (raise - min - max - mid or val)?
+            sys.stderr.write("in valleySeek: Local min requested, but none found. Returning infinity.")
+            return np.inf
+    
     result=(binData[minValIndex+1]+binData[minValIndex])/2
     return result
             
