@@ -462,7 +462,7 @@ def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
         columnStr="PC"+str(i)
         columnNames.append(columnStr)
     projection_d_df.columns = columnNames
-    reportStr="PCs explained variance: \n"+str(pca_obj.explained_variance_ratio_)+"\n"
+    reportStr="PCs explained variance: \n"+str(pca_obj.explained_variance_ratio_)+"\nTotal visual variation explained: "+str(sum(pca_obj.explained_variance_ratio_))+"\n"
     sys.stderr.write(reportStr)
     #center the coordinate system on the mean of each PC
     projection_d_df = projection_d_df - projection_d_df.mean()

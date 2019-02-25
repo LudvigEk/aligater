@@ -4,12 +4,12 @@
 #They affect behaviour of several functions.
 
 #If a parent population has less cells than this threshold, the resulting gated population will be considered invalid
-minCells=300
+minCells=200
 
 
 #the cellFilter threshhold is the _initial_ required number of events per sample when it's first loaded
 #If lower than this, the entire sample is skipped and strategy never applied
-cellFilter=100000
+cellFilter=50000
 
 #Truncate values below this treshold i.e. if any measured value is lower than this, the value is piled up on this instead. Set with generous margin but might affect viewability of plots if too generous.
 ag_trimMeasurements = -10000
