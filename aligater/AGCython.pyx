@@ -24,10 +24,14 @@ from cpython cimport bool
 from scipy.ndimage.filters import gaussian_filter
 import matplotlib.pyplot as plt
 
+#for faster sorting with list comprehension
+from operator import itemgetter
+
+
 #AliGater imports
 import aligater.AGConfig as agconf
-from aligater.AGFileSystem import getGatedVector, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
-from aligater.AGPlotRoutines import addLine, addAxLine, getHeatmap, logishTransform, plotHeatmap, plot_densityFunc, convertToLogishPlotCoordinate
+from aligater.AGFileSystem import getGatedVector, getGatedVectors, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
+from aligater.AGPlotRoutines import addLine, addAxLine, getHeatmap, logishTransform, inverseLogishTransform, plotHeatmap, plot_densityFunc, convertToLogishPlotCoordinate, LogishLocator, LogishFormatter, BiLogLocator, BiLogFormatter, transformWrapper
 from aligater.AGClasses import AGsample,AGgate
 
 #For cython optimisations with boundscheck and wraparound
@@ -47,12 +51,14 @@ cdef extern from "AGc.h":
 sentinel=object()
 
 @cython.boundscheck(False)
-def gateEllipsoid(fcsDF, str xCol, str yCol, float xCenter, float yCenter, list majorAxis, float majorRadii, list minorAxis, float minorRadii, vI=sentinel, str population="inner", bool info=True):   
-    #******************Internal*******************
-    #******Should have wrapper********
+def gateEllipsoid(fcsDF, str xCol, str yCol, float xCenter, float yCenter, list majorAxis, float majorRadii, list minorAxis, float minorRadii, vI=sentinel, str population="inner", bool info=True, scale='linear', T=1000):   
+    #*************************************************Internal****************************************
+    #******TODO: Should have wrapper, suggest width, height and angle in degrees with plotting********
     """
     Function that gates an ellipsoid given by direction and length of its axis'.
     Currently internal function, will produce a user friendly(ier) wrapper.
+    
+    Warning, if using a non-linear scale, the input center, axis and radii must be in the correct transformed coordinates.
     
     **Parameters**
     
@@ -93,7 +99,7 @@ def gateEllipsoid(fcsDF, str xCol, str yCol, float xCenter, float yCenter, list 
         raise NameError("xCol not in passed dataframes' columns")
     if not yCol in fcsDF.columns:
         raise NameError("yCol not in passed dataframes' columns")
-    if xCol==yCol:
+    if xCol.lower()==yCol.lower():
         raise NameError("xCol and yCol cannot be the same")
     if vI is sentinel:
         vI=fcsDF.index  
@@ -110,6 +116,11 @@ def gateEllipsoid(fcsDF, str xCol, str yCol, float xCenter, float yCenter, list 
 
     cdef np.ndarray[dtype_t, ndim = 1] vX = getGatedVector(fcsDF, xCol, vI, return_type='nparray',dtype=np.float64)
     cdef np.ndarray[dtype_t, ndim = 1] vY = getGatedVector(fcsDF, yCol, vI, return_type='nparray', dtype=np.float64)
+    
+    if scale.lower() != 'linear':    
+        vX = transformWrapper(vX, T, scale)
+        vY = transformWrapper(vY, T, scale)
+    
     cdef float Ux=majorAxis[0]*1/majorRadii
     cdef float Uy=majorAxis[1]*1/majorRadii
     cdef float Vx=minorAxis[0]*1/minorRadii
@@ -141,16 +152,16 @@ def gateEllipsoid(fcsDF, str xCol, str yCol, float xCenter, float yCenter, list 
             
     vOutput=vOutTmp[0:nOfResults].tolist()
     if (len(vOutput) == 0 and population.lower() == "inner"):
-        sys.stderr.write("No events inside ellipsoid\n")
+        sys.stderr.write("WARNING, No events inside ellipsoid\n")
     if (len(vOutput) == 0 and population.lower() == "outer"):
-        sys.stderr.write("No events outside ellipsoid\n")
+        sys.stderr.write("WARNING, No events outside ellipsoid\n")
     if info:
         reportGateResults(vI, vOutput)
     return vOutput
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', T=1000, update=False,filePlot=None, QC=False, *args, **kwargs):
+def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', T=1000, filePlot=None, QC=False, *args, **kwargs):
     """
     Threshold gating function. Can be called with one or two markers which affects plotting.\n
     Call with two markers to get a two dimensional view or with one col which will instead show a density plot.
@@ -181,9 +192,6 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
         If plotting enabled, which scale to be used on both axis.
     T : int, optional, default: 1000
         If plotting enabled and scale is logish, the threshold for linear-loglike transition
-    update : bool, optional, default: False
-        If True will add the resulting gated population(s) to the sample objects gate list in adition to returning the gate object.\n
-        If False (default), returns an AGgate object without adding it to the sample object.
     filePlot : str, optional, default: None
         Option to plot the gate to file to specified path. \n
         Warning: might overwrite stuff.    
@@ -228,9 +236,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
         raise AliGaterError("Specify desired population, 'upper' or 'lower' in regard to set threshold","in gateThreshold: ") 
     if len(vI)<5:
         sys.stderr.write("WARNING, in gateThreshold: Passed parent population to "+str(name)+" contains too few events, returning empty gate.\n") 
-        outputGate=AGgate([],parentGate,xCol,yCol,name)
-        if update:
-            fcs.update(outputGate, QC=QC)         
+        outputGate=AGgate([],parentGate,xCol,yCol,name)       
         return outputGate
 
     if yCol is None:
@@ -302,14 +308,12 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
 
     outputGate=AGgate(vOutput, parentGate, xCol, yCol, name)
     
-    if update:
-        fcs.update(outputGate, QC=QC)
     return outputGate
 
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def shortestPathMatrix(fcs, str name, str xCol, str yCol, list boundaries, parentGate=None, float sigma=3, int maxStep=20, str scale='linear', str xscale='linear', str yscale='linear', int bins=300, float T=1000, update=True, QC=False):
+def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list yboundaries, parentGate=None, float sigma=3, int maxStep=20, str scale='linear', str xscale='linear', str yscale='linear', str startingCorner='bottomleft', str population='lower', int bins=300, float T=1000, QC=False):
     if agconf.execMode in ["jupyter","ipython"]:
         plot=True
     else:
@@ -319,23 +323,59 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list boundaries, paren
         raise TypeError("invalid AGsample object")
     if parentGate is None:
         vI=fcs.full_index()
+        startingGate=None
     elif not parentGate.__class__.__name__ == "AGgate":
         raise TypeError("Parent population in "+name+" is an invalid AGgate object.")
     else:
         vI=parentGate()
+        startingGate=parentGate
     if len(vI)<5:
         sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
         outputGate=AGgate([],parentGate,xCol,yCol,name)
-        if update:
-            fcs.update(outputGate, QC=QC)         
+        
         return outputGate
+    
+    cdef bool has_xbound, has_ybound
+    has_xbound = has_ybound = False
+    
+    if len(xboundaries) ==0:
+        pass
+    elif len(xboundaries) !=2:
+        reportStr="in shortestPathMatrix: xboundaries must be list of two, found: "+str(len(xboundaries))+" entries."
+        raise ValueError(reportStr)
+    else:
+        has_xbound=True
+        
+    if len(yboundaries) ==0:
+        pass
+    elif len(yboundaries) !=2:
+        reportStr="in shortestPathMatrix: yboundaries must be list of two, found: "+str(len(yboundaries))+" entries."
+        raise ValueError(reportStr)
+    else:
+        has_ybound=True
         
     originalvI=vI
     fcsDF=fcs()
-    tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=boundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=parentGate,info=False, update=False)
-    vI=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=boundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False,update=False)()
+    if has_ybound and not has_xbound:
+        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=startingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
+    if has_xbound and not has_ybound:
+        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=tmpvI, info=False)
+    if has_xbound and has_ybound:
+        xtmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
+        xstartingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=xtmpvI, info=False)
+        ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
+    #Switch from AGgate obj -> list from here
+    vI=startingGate()
     cdef np.ndarray vX=getGatedVector(fcsDF, xCol, vI, return_type="nparray")
     cdef np.ndarray vY=getGatedVector(fcsDF, yCol, vI, return_type="nparray")
+    
+    if len(vX)<5 or len(vY)<5:
+        sys.stderr.write("in shortestPathMatrix: For population "+name+". Too few events in specified window, returning empty gate.\n") 
+        outputGate=AGgate([],parentGate,xCol,yCol,name)       
+        return outputGate
     xscale = yscale = scale
     heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
     cdef np.ndarray[dtype_t, ndim=2] smoothedHeatmap = gaussian_filter(heatmap.astype(float),sigma=sigma)
@@ -343,9 +383,11 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list boundaries, paren
     cdef np.ndarray[dtype_t, ndim=2] leftBin = np.empty_like(smoothedHeatmap, dtype=np.float_)
     cost.fill(np.inf)
     leftBin.fill(0)
-    cost[0][0]=smoothedHeatmap[0][0]
-    cost[bins-1][bins-1]=smoothedHeatmap[bins-1][bins-1]
-        
+
+
+
+
+    
     cdef int y, x
     cdef int previousX, adjustedMaxStep, dist, stepIndex
     cdef float stepCost, penalty
@@ -353,17 +395,35 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list boundaries, paren
     cdef np.ndarray[dtype_t, ndim=1] stepCosts = np.zeros([maxStep],dtype=np.float_)
     cdef int costIdx, tmpIdx, minCostIdx
     cdef float minCost
+    cdef int startY, endY
+    #Force going from bottom left to top right
+    if startingCorner.lower() == 'bottomleft':
+        startX=0
+        endX=bins
+        xStep=1
+        cost[0][0]=smoothedHeatmap[0][0]
+        cost[bins-1][bins-1]=smoothedHeatmap[bins-1][bins-1]
+    elif startingCorner.lower() == 'bottomright':
+        startX=bins-1
+        endX=-1
+        xStep=-1
+        maxStep=-maxStep
+        cost[0][bins-1]=smoothedHeatmap[0][bins-1]
+        cost[bins-1][0]=smoothedHeatmap[bins-1][0]
+
     for y in range(1,bins,1):
-        for x in range(0,bins,1): 
-            for tmpIdx in range(0,maxStep,1):
+        for x in range(startX,endX,xStep): 
+            for tmpIdx in range(0,abs(maxStep),1):
                 stepCosts[tmpIdx]=10000000000000000.0
             if x-maxStep<0:
                 adjustedMaxStep=x
+            elif x-maxStep>bins-1:
+                adjustedMaxStep=-(bins-1-x)
             else:
-                adjustedMaxStep=maxStep-1
+                adjustedMaxStep=maxStep-xStep
             costIdx=0
 
-            for previousX in range(x-adjustedMaxStep,x+1,1):
+            for previousX in range(x-adjustedMaxStep,x+xStep,xStep):
                 dist=x-previousX
                 penalty=dist*dist
                 stepCost = cost[y-1,previousX]+smoothedHeatmap[y,x]+penalty
@@ -372,25 +432,29 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list boundaries, paren
 
             minCost=10000000000000000.0
 
-            for tmpIdx in range(0,maxStep,1):
+            for tmpIdx in range(0,abs(maxStep),1):
                 if stepCosts[tmpIdx]<minCost:
                     minCost=stepCosts[tmpIdx]
-                    minCostIdx=tmpIdx
+                    minCostIdx=tmpIdx*xStep #addition
+                    
             cost[y,x]=minCost
-            leftBinIndex=minCostIdx+x-adjustedMaxStep
+            leftBinIndex=minCostIdx+x-adjustedMaxStep #why subtract adjustedMaxstep here??
             leftBin[y,x]=leftBinIndex
-
+            
+    if startingCorner.lower() == 'bottomright':
+        leftBinIndex=0
     #traverse cost matrix, /w monothony
-    leftBinIndex=bins-1
+    if leftBinIndex < 0:
+        leftBinIndex = 0
     if leftBinIndex > bins-1:
-        leftBinIndex=bins-1
-
+        leftBinIndex = bins-1
+    
     cdef list path=[]
     for x in range(bins-1,-1,-1):
         path.append([xedges[x],yedges[leftBinIndex]])
         leftBinIndex=int(leftBin[x][leftBinIndex])
     
-    path=path[::-1]
+    path=path[::-1]   
 
     cdef int count=0
     cdef list coord
@@ -404,35 +468,671 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list boundaries, paren
         plt.ylabel(yCol)
         cmap=plt.get_cmap()
         cmap.set_bad(color='white')
-    
+        if scale.lower()=='logish':
+            ax=plt.gca()
+            ax.xaxis.set_major_locator(LogishLocator(linCutOff=T))
+            ax.xaxis.set_major_formatter(LogishFormatter(linCutOff=T))
+            ax.yaxis.set_major_locator(LogishLocator(linCutOff=T))
+            ax.yaxis.set_major_formatter(LogishFormatter(linCutOff=T))
+        elif scale.lower()=='bilog':
+            ax=plt.gca()
+            ax.xaxis.set_major_locator(BiLogLocator(linCutOff=T))
+            ax.xaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
+            ax.yaxis.set_major_locator(BiLogLocator(linCutOff=T))
+            ax.yaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
+        else:
+            sys.stdout.write("No scale setting detected\n")
+             
         #draw line of shortest path
         for coord in path:
             if count==0:
                 previousCoord=coord
                 count+=1
                 continue 
-            fig,ax = addLine(fig,ax,previousCoord,coord)
+            fig,ax = addLine(fig,ax,previousCoord,coord,scale=scale,T=T)
             previousCoord=coord
             count+=1
         plt.show()
-    vOut=gatePointList(fcsDF,xCol,yCol,path, vI=originalvI)
+    #print(path)
+    vOut=gatePointList(fcsDF,xCol,yCol,path, population=population, vI=originalvI)
     reportGateResults(originalvI,vOut)
     
     if plot:
         plt.clf()
         plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
         plt.show()
-    if parentGate is not sentinel:
+    if parentGate is not None:
         outputGate=AGgate(vOut, parentGate, xCol, yCol, name)
     else:
-        outputGate=AGgate(vOut, fcs.full_index(), xCol, yCol, name)
-    if update:
-        fcs.update(outputGate, QC=True)
+        outputGate=AGgate(vOut, None, xCol, yCol, name)
         
     return outputGate
 
 
-def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, scale='linear', T=1000):
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def shortestPathMatrix_V2(fcs, str name, str xCol, str yCol, list xboundaries, list yboundaries, parentGate=None, float sigma=3, int maxStep=20, str scale='linear', str xscale='linear', str yscale='linear', str startingCorner='bottomleft', str population='lower', int bins=300, float T=1000, QC=False):
+    if agconf.execMode in ["jupyter","ipython"]:
+        plot=True
+    else:
+        plot=False
+    cdef list vI, originalvI
+    if not fcs.__class__.__name__=="AGsample":
+        raise TypeError("invalid AGsample object")
+    if parentGate is None:
+        vI=fcs.full_index()
+        startingGate=None
+    elif not parentGate.__class__.__name__ == "AGgate":
+        raise TypeError("Parent population in "+name+" is an invalid AGgate object.")
+    else:
+        vI=parentGate()
+        startingGate=parentGate
+    if len(vI)<5:
+        sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
+        outputGate=AGgate([],parentGate,xCol,yCol,name)     
+        return outputGate
+    
+    cdef bool has_xbound, has_ybound
+    has_xbound = has_ybound = False
+    
+    if len(xboundaries) ==0:
+        pass
+    elif len(xboundaries) !=2:
+        reportStr="in shortestPathMatrix: xboundaries must be list of two, found: "+str(len(xboundaries))+" entries."
+        raise ValueError(reportStr)
+    else:
+        has_xbound=True
+        
+    if len(yboundaries) ==0:
+        pass
+    elif len(yboundaries) !=2:
+        reportStr="in shortestPathMatrix: yboundaries must be list of two, found: "+str(len(yboundaries))+" entries."
+        raise ValueError(reportStr)
+    else:
+        has_ybound=True
+        
+    originalvI=vI
+    fcsDF=fcs()
+    if has_ybound and not has_xbound:
+        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=startingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
+    if has_xbound and not has_ybound:
+        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=tmpvI, info=False)
+    if has_xbound and has_ybound:
+        xtmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
+        xstartingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=xtmpvI, info=False)
+        ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
+    #Switch from AGgate obj -> list from here
+    vI=startingGate()
+    cdef np.ndarray vX=getGatedVector(fcsDF, xCol, vI, return_type="nparray")
+    cdef np.ndarray vY=getGatedVector(fcsDF, yCol, vI, return_type="nparray")
+    
+    if len(vX)<5 or len(vY)<5:
+        sys.stderr.write("in shortestPathMatrix: For population "+name+". Too few events in specified window, returning empty gate.\n") 
+        outputGate=AGgate([],parentGate,xCol,yCol,name)       
+        return outputGate
+    xscale = yscale = scale
+    heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
+    cdef np.ndarray[dtype_t, ndim=2] smoothedHeatmap = gaussian_filter(heatmap.astype(float),sigma=sigma)
+    cdef np.ndarray[dtype_t, ndim=2] cost = np.empty_like(smoothedHeatmap, dtype=np.float_)
+    cdef np.ndarray[dtype_t, ndim=2] leftBin = np.empty_like(smoothedHeatmap, dtype=np.float_)
+    cost.fill(np.inf)
+    leftBin.fill(0)
+
+
+
+
+    
+    cdef int y, x
+    cdef int previousX, adjustedMaxStep, dist, stepIndex
+    cdef float stepCost, penalty
+    cdef int leftBinIndex
+    cdef np.ndarray[dtype_t, ndim=1] stepCosts = np.zeros([maxStep],dtype=np.float_)
+    cdef int costIdx, tmpIdx, minCostIdx
+    cdef float minCost
+    cdef int startY, endY
+    #Force going from bottom left to top right
+    if startingCorner.lower() == 'bottomleft':
+        startX=0
+        endX=bins
+        xStep=1
+        cost[0][0]=smoothedHeatmap[0][0]
+        cost[bins-1][bins-1]=smoothedHeatmap[bins-1][bins-1]
+    elif startingCorner.lower() == 'bottomright':
+        startX=bins-1
+        endX=-1
+        xStep=-1
+        maxStep=-maxStep
+        cost[0][bins-1]=smoothedHeatmap[0][bins-1]
+        cost[bins-1][0]=smoothedHeatmap[bins-1][0]
+
+
+
+    for y in range(1,bins,1):
+        for x in range(startX,endX,xStep): 
+            for tmpIdx in range(0,abs(maxStep),1):
+                stepCosts[tmpIdx]=10000000000000000.0
+            if x-maxStep<0:
+                adjustedMaxStep=x
+            elif x-maxStep>bins-1:
+                adjustedMaxStep=-(bins-1-x)
+            else:
+                adjustedMaxStep=maxStep-xStep
+            costIdx=0
+
+            for previousX in range(x-adjustedMaxStep,x+xStep,xStep):
+                dist=x-previousX
+                penalty=dist*dist
+                stepCost = cost[y-1,previousX]+smoothedHeatmap[y,x]+penalty
+                stepCosts[costIdx]=stepCost
+                costIdx+=1
+
+            minCost=10000000000000000.0
+
+            for tmpIdx in range(0,abs(maxStep),1):
+                if stepCosts[tmpIdx]<minCost:
+                    minCost=stepCosts[tmpIdx]
+                    minCostIdx=tmpIdx*xStep #addition
+                    
+            cost[y,x]=minCost
+            leftBinIndex=minCostIdx+x-adjustedMaxStep #why subtract adjustedMaxstep here??
+            leftBin[y,x]=leftBinIndex
+            
+    if startingCorner.lower() == 'bottomright':
+        leftBinIndex=0
+    #traverse cost matrix, /w monothony
+    if leftBinIndex < 0:
+        leftBinIndex = 0
+    if leftBinIndex > bins-1:
+        leftBinIndex = bins-1
+    
+    #leftBinIndex = bins-1 - maxStep
+    cdef list path=[]
+    for x in range(bins-1,-1,-1):
+        path.append([xedges[x],yedges[leftBinIndex]])
+        leftBinIndex=int(leftBin[x][leftBinIndex])
+    
+    path=path[::-1]   
+
+    print(leftBin)
+    cdef int count=0
+    cdef list coord
+    if plot:
+        heatmap=np.ma.masked_where(smoothedHeatmap == 0, smoothedHeatmap)
+        plt.clf()
+        fig, ax = plt.subplots()
+        extent = [xedges[0], xedges[bins], yedges[0], yedges[bins]]
+        plt.imshow(heatmap.T, extent=extent, origin='lower',aspect='auto')
+        plt.xlabel(xCol)
+        plt.ylabel(yCol)
+        cmap=plt.get_cmap()
+        cmap.set_bad(color='white')
+        if scale.lower()=='logish':
+            ax=plt.gca()
+            ax.xaxis.set_major_locator(LogishLocator(linCutOff=T))
+            ax.xaxis.set_major_formatter(LogishFormatter(linCutOff=T))
+            ax.yaxis.set_major_locator(LogishLocator(linCutOff=T))
+            ax.yaxis.set_major_formatter(LogishFormatter(linCutOff=T))
+        elif scale.lower()=='bilog':
+            ax=plt.gca()
+            ax.xaxis.set_major_locator(BiLogLocator(linCutOff=T))
+            ax.xaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
+            ax.yaxis.set_major_locator(BiLogLocator(linCutOff=T))
+            ax.yaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
+        else:
+            sys.stdout.write("No scale setting detected\n")
+             
+        #draw line of shortest path
+        for coord in path:
+            if count==0:
+                previousCoord=coord
+                count+=1
+                continue 
+            fig,ax = addLine(fig,ax,previousCoord,coord,scale=scale,T=T)
+            previousCoord=coord
+            count+=1
+        plt.show()
+    #print(path)
+    vOut=gatePointList(fcsDF,xCol,yCol,path, population=population, vI=originalvI)
+    reportGateResults(originalvI,vOut)
+    
+    if plot:
+        plt.clf()
+        plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
+        plt.show()
+    if parentGate is not None:
+        outputGate=AGgate(vOut, parentGate, xCol, yCol, name)
+    else:
+        outputGate=AGgate(vOut, fcs.full_index(), xCol, yCol, name)
+        
+    return outputGate
+
+def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='negative',
+                 startY=None, list xboundaries=None, list yboundaries=None, bool leftRight=True , str direction='up', maxStep=5, phi=0,
+                 int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True):
+    if agconf.execMode in ["jupyter","ipython"]:
+        plot=True
+    else:
+        plot=False
+    cdef list vI, originalvI
+    if not fcs.__class__.__name__=="AGsample":
+        raise TypeError("invalid AGsample object")
+    if parentGate is None:
+        vI=fcs.full_index()
+    elif not parentGate.__class__.__name__ == "AGgate":
+        raise TypeError("Parent population in "+name+" is an invalid AGgate object.")
+    else:
+        vI=parentGate()
+        startingGate=parentGate
+    if len(vI)<5:
+        sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
+        outputGate=AGgate([],parentGate,xCol,yCol,name)
+    cdef int startbin
+
+    vX,vY = getGatedVectors(fcsDF=fcs(), gate1=xCol, gate2=yCol, vI=vI)
+    #Note on the heatmap, from numpy docs, np.histogram2d
+    #Please note that the histogram does not follow the Cartesian convention where x values are on the abscissa and y values on the ordinate axis. 
+    #Rather, x is histogrammed along the first dimension of the array (vertical), and y along the second dimension of the array (horisontal).
+    heatmap, xedges, yedges = getHeatmap(vX=vX, vY=vY, scale=scale, xscale=scale, yscale=scale, T=T, bins=bins)
+    #I.e. note here, in contrast to verticalPath the cost heatmap from np.histogram2d is NOT transposed!
+    cdef np.ndarray[dtype_t, ndim=2] cost = gaussian_filter(heatmap.astype(float),sigma=sigma)
+
+    if direction.lower() == 'up':
+        minCostPathDir = 'right'
+    elif direction.lower() == 'down':
+        minCostPathDir = 'left'
+    elif direction.lower() == 'both':
+        minCostPathDir = direction
+    else: 
+        raise
+
+    if not leftRight:
+        #To be able go top-down and not just bottom-up there's an option to reverse the rows order and keep internal functions
+        #cost = cost[::-1]
+        #yedges also needs to be reversed in that case
+        #xedges=xedges[::-1]
+        reverse = True
+    else:
+        reverse = False
+
+    pathMatrix = _minCostPath(cost, nCols=bins, nRows=bins, maxStep=maxStep, reverse=reverse, direction=minCostPathDir, phi=phi)
+    
+    
+    for i in np.arange(0, len(yedges)-2, 1):
+        if startY >= yedges[i] and startY < yedges[i+1]:
+            startBin = i
+            break
+    else:
+        raise AliGaterError("in horisontalPath","startY out of bounds")
+        
+    cdef int curBin
+    cdef int nextBin
+    path=[]
+    curBin=startBin
+    row_order = np.arange(0, bins, 1)
+    if not leftRight:
+        row_order = row_order[::-1]
+    for rowIdx in row_order:
+        nextBin = pathMatrix[rowIdx][curBin]
+        path.append( [ xedges[rowIdx], yedges[curBin]] )
+        curBin=nextBin
+    if leftRight:
+        path.append( [xedges[-1], yedges[curBin]])
+    else:
+        path.append( [xedges[0], yedges[curBin]])
+    
+    vOut=gatePointList(fcs(),xCol,yCol,path, population=population, vI=vI)
+    reportGateResults(vI,vOut)
+    
+
+    if parentGate is not None:
+        outputGate=AGgate(vOut, parentGate, xCol, yCol, name)
+    else:
+        outputGate=AGgate(vOut, None, xCol, yCol, name)
+        
+    if plot:
+        plt.clf()
+        fig, ax = plt.subplots()
+        extent = [min(xedges), max(xedges), min(yedges), max(yedges)]
+        plt.imshow(cost.T, extent=extent, origin='lower',aspect='auto')
+        plt.xlabel(xCol)
+        plt.ylabel(yCol)
+        cmap=plt.get_cmap()
+        cmap.set_bad(color='white')
+        count=0
+        for coord in path:
+            if count==0:
+                previousCoord=coord
+                count+=1
+                continue 
+            fig,ax = addLine(fig,ax,previousCoord,coord,scale=scale,T=T)
+            previousCoord=coord
+            count+=1
+        plt.show()
+        plt.clf()
+        plotHeatmap(fcs(), xCol, yCol, outputGate(), scale=scale,thresh=T)
+        plt.show()
+        
+    return outputGate
+
+def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='lower',
+                 startX=None, bool bottomUp=True, list xboundaries=None, list yboundaries=None, str direction='right', maxStep=5, phi=0.0,
+                 int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True):
+    if agconf.execMode in ["jupyter","ipython"]:
+        plot=True
+    else:
+        plot=False
+    cdef list vI, originalvI
+    if not fcs.__class__.__name__=="AGsample":
+        raise TypeError("invalid AGsample object")
+    if parentGate is None:
+        vI=fcs.full_index()
+        startingGate = None
+    elif not parentGate.__class__.__name__ == "AGgate":
+        raise TypeError("Parent population in "+name+" is an invalid AGgate object.")
+    else:
+        vI=parentGate()
+        startingGate=parentGate
+    if len(vI)<5:
+        sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
+        outputGate=AGgate([],parentGate,xCol,yCol,name)
+    cdef int startbin
+ 
+    cdef bool has_xbound, has_ybound
+    has_xbound = has_ybound = False
+    
+    if xboundaries is not None:
+        if isinstance(xboundaries, list):
+            if len(xboundaries) ==0:
+                pass
+            elif len(xboundaries) !=2:
+                reportStr="in verticalPath: xboundaries must be list of two, found: "+str(len(xboundaries))+" entries."
+                raise ValueError(reportStr)
+            else:
+                has_xbound=True
+        else:
+            raise AliGaterError("in verticalPath: ","is xboundaries is passed it must be list.")
+
+    if yboundaries is not None:
+        if isinstance(yboundaries, list):
+            if len(yboundaries) ==0:
+                pass
+            elif len(yboundaries) !=2:
+                reportStr="in verticalPath: yboundaries must be list of two, found: "+str(len(yboundaries))+" entries."
+                raise ValueError(reportStr)
+            else:
+                has_ybound=True    
+        else:
+            raise AliGaterError("in verticalPath: ","is yBoundaries is passed it must be list.")
+    
+    originalvI=vI
+    if has_ybound and not has_xbound:
+        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=startingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
+    if has_xbound and not has_ybound:
+        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=tmpvI, info=False)
+    if has_xbound and has_ybound:
+        xtmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
+        xstartingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=xtmpvI, info=False)
+        ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
+    #Switch from AGgate obj -> list from here
+    vI=startingGate()
+    
+    vX,vY = getGatedVectors(fcsDF=fcs(), gate1=xCol, gate2=yCol, vI=vI)
+    
+    heatmap, xedges, yedges = getHeatmap(vX=vX, vY=vY, scale=scale, normalize=True, xscale=scale, yscale=scale, T=T, bins=bins)
+    #Note on heatmap, from numpy docs, np.histogram2d
+    #Please note that the histogram does not follow the Cartesian convention where x values are on the abscissa and y values on the ordinate axis. 
+    #Rather, x is histogrammed along the first dimension of the array (vertical), and y along the second dimension of the array (horizontal). 
+    #Therefore, we transpose to get x on cols and y on rows
+    cdef np.ndarray[dtype_t, ndim=2] cost = gaussian_filter(heatmap.astype(float),sigma=sigma).T
+    
+    cdef np.ndarray[dtype_t, ndim=2] plot_heatmap = np.copy(cost)
+    
+    for i in np.arange(0, len(xedges)-2, 1):
+        if startX >= xedges[i] and startX < xedges[i+1]:
+            startBin = i
+            break
+    else:
+        raise AliGaterError("in verticalPath","startX out of bounds")    
+
+    cdef int endBin
+    endBin = startBin
+    
+    cdef float LARGE_NUMBER = 10000000000000000.0
+    
+    # cdef float blockRatio
+    # cdef int blockedBins
+    # if horisontalBlock!=0:
+    #     blockRatio = float(horisontalBlock)/100.0
+    #     blockedBins = int(blockRatio * bins + 0.5)
+    #     if startBin <= blockedBins:
+    #         blockedBins = startBin - 1
+    #         sys.stderr.write("Block includes startX, adjusting block width.")
+    #     if startBin >= bins-blockedBins:
+    #         blockedBins = bins-1 - startBin-1
+    #         sys.stderr.write("Block includes startX, adjusting block width.")
+    #     print("blocked bins: "+str(blockedBins))
+    #     for i in np.arange(0,blockedBins,1):
+    #         for y in np.arange(0, bins,1):
+    #             cost[y][i] = LARGE_NUMBER
+    #     for i in np.arange(bins-blockedBins,bins,1):
+    #         for y in np.arange(0, bins,1):
+    #             cost[y][i] = LARGE_NUMBER
+                
+    if bottomUp:        
+        reverse=True
+        for i in np.arange(0, len(cost[-1]),1):
+            if not i == endBin:
+                cost[-1][i]=LARGE_NUMBER
+            else:
+                cost[-1][i]=0
+    else:
+        for i in np.arange(0, len(cost[0]),1):
+            if not i == endBin:
+                cost[0][i]=LARGE_NUMBER
+            else:
+                cost[0][i]=0
+        reverse=False
+
+    
+    pathMatrix = _minCostPath(cost, nCols=bins, nRows=bins, maxStep=maxStep, reverse=reverse, direction=direction, phi=phi)
+    
+    
+    cdef int curBin
+    cdef int nextBin
+    path=[]
+    curBin=startBin
+
+    row_order = np.arange(0, bins, 1)
+    if not bottomUp: 
+        row_order = row_order[::-1]
+    for rowIdx in row_order:
+        nextBin = pathMatrix[rowIdx][curBin]
+        path.append( [ xedges[curBin], yedges[rowIdx]] )
+        curBin=nextBin
+    if bottomUp: 
+        path.append( [xedges[curBin], yedges[-1]])
+    else:
+        path.append( [xedges[curBin], yedges[0]])
+    
+    vOut=gatePointList(fcs(),xCol,yCol,path, population=population, vI=originalvI, bHorisontal=False)
+    reportGateResults(vI,vOut)
+    
+
+    if parentGate is not None:
+        outputGate=AGgate(vOut, parentGate, xCol, yCol, name)
+    else:
+        outputGate=AGgate(vOut, None, xCol, yCol, name)
+        
+    if plot:
+        plt.clf()
+        fig, ax = plt.subplots()
+        extent = [min(xedges), max(xedges), min(yedges), max(yedges)]
+        plt.imshow(plot_heatmap, extent=extent, origin='lower',aspect='auto')
+        plt.xlabel(xCol)
+        plt.ylabel(yCol)
+        cmap=plt.get_cmap()
+        cmap.set_bad(color='white')
+        count=0
+        for coord in path:
+            if count==0:
+                previousCoord=coord
+                count+=1
+                continue 
+            fig,ax = addLine(fig,ax,previousCoord,coord,scale=scale,T=T)
+            previousCoord=coord
+            count+=1
+        plt.show()
+        plt.clf()
+        plotHeatmap(fcs(), xCol, yCol, outputGate(), scale=scale,thresh=T)
+        plt.show()
+        
+    return outputGate
+
+def _minCostPath(np.ndarray[dtype_t, ndim=2] cost, int nCols, int nRows, int maxStep=5, bool reverse = False, float phi=0.0, str direction='right') :
+#A type of gradient descent to find the best next step from every cell of a matrix, given a direction
+#Requirements on monothony and always progress (i.e only one + maxStep possible steps from any cell, straight down and up to maxStep sideways)
+#pathMatrix is a matrix with the same dimensions as cost, with each cell containing the index of the element in the next row which is the cheapest to jump to
+#Todo: Bellmans optimality principle(?)
+    
+    pathMatrix = np.empty_like(cost, dtype=np.float64)
+    dirArr = np.empty_like(cost, dtype=np.float32)
+    pathMatrix[0][0] = 0#cost[0][0]; 
+  
+    # Construct tc array 
+    cdef list row_order 
+    if reverse:
+        #row_order = row_order[::-1]
+        row_order = list(range(nRows-1, -1, -1))
+        rowStep=-1
+    else:
+        row_order = list(range(0, nRows, 1))
+        rowStep=1
+
+    cdef float score=0
+    for row_idx in row_order:         #(i = 1; i <= m; i++):
+        for col_idx in range(0, nCols, 1):      #(j = 1; j <= n; j++):
+            if row_idx != nRows-1 and row_idx != 0:
+                #If not last row
+                #score, pathMatrix[row_idx][col_idx] = _minCostPath_nextStep(curRow=cost[row_idx], nextRow=cost[row_idx+rowStep], curPos=col_idx, maxStep=maxStep, phi=phi, direction=direction)       #old
+                cost[row_idx][col_idx], pathMatrix[row_idx][col_idx] = _minCostPath_nextStep(curRow=cost[row_idx], nextRow=cost[row_idx-rowStep], curPos=col_idx, maxStep=maxStep, phi=phi, direction=direction)       #[1]
+            else:
+                pathMatrix[row_idx][col_idx] = col_idx
+
+
+    return pathMatrix
+ 
+def _minCostPath_nextStep(curRow, nextRow, int curPos, int maxStep, float phi=0, str direction='right'):
+    #TODO: Possibly introduce way to estimate phi by looking at medium density of hisotgram density
+    
+    #Takes a current row in a cost matrix and the next row, and calculates the cheapest step possible
+    #Accepts direction left or right relative to the current position, but always take one step down in the cost matrix (y-axis)
+    #Returns the position of the best step in the next row
+    #
+    #i.e you are at X
+    #********X***********
+    #********|-----|*****
+    #Theres a range of allowed steps
+    #Find the best and return the position in that row
+    #Theres a penalty for taking larger steps, 
+    #But that can be accepted if the cost at that position is much lower
+    #Because of the monotonous requirement, a step may never go past the end point (m)    
+    
+    if direction.lower() not in ['right', 'left', 'both']:
+        raise AliGaterError("in minCostPath_nextStep", "direction must be either of 'right', 'left' or 'both'. Default: 'right'")
+        
+    #if m < 0 or m >= len(nextRow):
+    #     print(m)
+    #     print(len(nextRow))
+    #     raise AliGaterError("in minCostPath_nextStep", "specified end position (m) is out of bounds")
+    #Boundscheck for maxStep, is it even allowed to take a max step?
+    #NOTE: maxStep is changed from being 'the maximum allowed distance' to...
+    #the index of the maximum allowed step on the next row (makes easier to read for loops later)
+    maxStepLeft = None
+    maxStepRight = None
+    
+    if (curPos + maxStep) >= (len(curRow)-1) and direction.lower() == 'right':
+        maxStep = curPos + (len(curRow) - 1 - curPos)
+    elif direction.lower() == 'right':
+        maxStep = curPos + maxStep
+  
+    if (curPos - maxStep) < 0 and direction.lower() == 'left':
+        maxStep = 0
+    elif direction.lower() == 'left':
+        maxStep = curPos - maxStep
+    
+    if direction.lower() == 'both':
+        maxStepLeft = curPos - maxStep
+        maxStepRight = curPos + maxStep
+        if (maxStepRight) >= (len(curRow)-1):
+            maxStepRight = curPos + (len(curRow) - 1 - curPos)
+        if (maxStepLeft) < 0:
+            maxStepLeft = 0     
+        
+    #We save the possible steps in a list of tuple (index of that step, and the cost)
+    #Then sort that list by the 2nd var and pick the top (cheapest) step
+    cdef list stepCosts = []
+    cdef int bestStepIndex
+    cdef float bestStepCost
+    
+    if direction.lower() == 'right':
+        for i in range(curPos, maxStep+1, 1):
+            stepCosts.append( (i, curRow[curPos] + nextRow[i] + phi*((i-curPos)**2)) ) 
+        bestStepTuple = sorted(stepCosts, key=itemgetter(1))
+        bestStepCost = bestStepTuple[0][1]
+        bestStepIdx=bestStepTuple[0][0]
+    elif direction.lower() == 'left':
+        for i in range(curPos, maxStep-1, -1):
+            stepCosts.append( (i,curRow[curPos] + nextRow[i] + phi*((curPos-i)**2)) ) 
+        bestStepTuple = sorted(stepCosts, key=itemgetter(1))
+        bestStepIdx=bestStepTuple[0][0]
+        bestStepCost = bestStepTuple[0][1]
+    else: #i.e direction = both        
+        for i in range(maxStepLeft, maxStepRight+1, 1):
+            stepCosts.append( (i, curRow[curPos] + nextRow[i] + phi*((curPos - i)**2)) )
+        bestStepTuple = sorted(stepCosts, key=itemgetter(1))
+        bestStepIdx=bestStepTuple[0][0]
+        bestStepCost = bestStepTuple[0][1]
+        
+    return bestStepCost, bestStepIdx
+
+
+def test_minCost(cost, m, n, nRrow, nCol): 
+  
+    # Instead of following line, we can use int tc[m+1][n+1] or 
+    # dynamically allocate memoery to save space. The following 
+    # line is used to keep te program simple and make it working 
+    # on all compilers. 
+    tc = [[0 for x in range(nCol)] for x in range(nRrow)] 
+  
+    tc[0][0] = cost[0][0] 
+  
+    # Initialize first column of total cost(tc) array 
+    for i in range(1, m+1): 
+        tc[i][0] = tc[i-1][0] + cost[i][0] 
+  
+    # Initialize first row of tc array 
+    for j in range(1, n+1): 
+        tc[0][j] = tc[0][j-1] + cost[0][j] 
+  
+    # Construct rest of the tc array 
+    for i in range(1, m+1): 
+        for j in range(1, n+1): 
+            tc[i][j] = min(tc[i-1][j-1], tc[i-1][j], tc[i][j-1]) + cost[i][j] 
+  
+    return tc[m][n] 
+
+
+
+
+#@cython.boundscheck(False)
+#@cython.wraparound(False)
+def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, bHorisontal=True, scale='linear', T=1000):
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
@@ -451,30 +1151,109 @@ def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, scale=
     vOut=[]
     vX=getGatedVector(fcsDF, xCol, vI,return_type='nparray')
     vY=getGatedVector(fcsDF, yCol, vI,return_type='nparray')
-    if scale.lower()=="logish":
-        vX = logishTransform(vX,T)
-
+    assert len(vX) == len(vY) == len(vI)
+    
     cdef float x0=min(vX)
     cdef float x1=max(vX)
     cdef int nOfBins=len(vPL)
-    cdef float x, y, ylim
+    cdef float lim_coord, lim #lim, lim_coord will be x or y depending on axis of interest
     cdef int index
+    cdef int i, dist
+    cdef bool bUnhandled = False
     
-    for x, y, index in zip(vX, vY, vI):
-        dist = round( (x-x0)/(x1-x0) * nOfBins)
-        if dist>=nOfBins:
-            dist=nOfBins-1
+    cdef int targetAxis = 1 #1 = y-sep, 0 = x-sep
+    cdef int binAxis = 0 #0 = y-sep, 1 = x-sep
+    
+    if bHorisontal:
+        targetAxis = 1
+        binAxis = 0
+    else:
+        targetAxis = 0
+        binAxis = 1
 
-        ylim=vPL[int(dist)][1]
+    #Create construct of [[x, y, index], [x,y,index], ...]
+    events = np.dstack([vX, vY, vI])[0]
+    #sort events by separating coordinate (by x if separated by y (horisontal line))
+    sorted_events = sorted(events, key=itemgetter(binAxis))
+    #Sort limit construct by non-separating coordinate (by y if separated by x (vertical line))
+    sorted_vPL = sorted(vPL, key=itemgetter(binAxis))
+    
+    #Note on bUnhandled, if a give line does not span the full gating view... 
+    #then before/after the first/last point in that line, extented its limits in the correct direction (horisontally for horisontal lines, vis a vis vertical)
 
-        if y<ylim:
-            if lower:
-                vOut.append(index)
-        if y>=ylim:
-            if not lower:
-                vOut.append(index)
+    i=0
+    cdef int idx_vPL=0
+    while i<len(sorted_events):
+        if idx_vPL == len(vPL):
+            bUnhandled=True
+            break
+        lim = sorted_vPL[idx_vPL][targetAxis]
+        bin_i = sorted_vPL[idx_vPL][binAxis]
+        while sorted_events[i][binAxis] < bin_i:
+            lim_coord=sorted_events[i][targetAxis]
+            index=sorted_events[i][2]
+            if lim_coord < lim:
+                if lower:
+                    vOut.append(index)
+            if lim_coord >= lim:
+                if not lower:
+                    vOut.append(index)
 
-    return vOut
+            i+=1
+            #Since inner while loop is based on the bin limits its possible for it to go out of bounds in some cases
+            #Below if statement safeguards against that
+            if i >= len(sorted_events):
+                break
+        idx_vPL+=1
+
+    if bUnhandled:
+        lim = sorted_vPL[len(vPL)-1][targetAxis]
+        while i < len(sorted_events):
+            lim = sorted_events[i][targetAxis]
+            index=sorted_events[i][2]
+            if lim_coord < lim:
+                if lower:
+                    vOut.append(index)
+            if lim_coord >= lim:
+                if not lower:
+                    vOut.append(index)
+            i+=1
+            
+    return vOut        
+    #OLD SOUTION BELOW
+    # for event in np.arange(0,len(vX),1):
+        
+    #     x = vX[event]
+    #     y = vY[event]
+    #     index = vI[event]
+    #     #dist = round( (x-x0)/(x1-x0) * nOfBins)
+    #     #*********************rework to deal with non-linear bins, as is case with transformed scales***************************
+    #     dist = np.searchsorted(xBinLims,x)
+    #     # for i in np.arange(0,nOfBins-2,1):
+    #     #     if x < vPL[0][0]:
+    #     #         dist=0
+    #     #         break
+    #     #     elif x >= vPL[i][0] and x <= vPL[i+1][0]:
+    #     #         dist=i
+    #     #         break
+    #     #     elif x > vPL[nOfBins-1][0]:
+    #     #         dist=nOfBins-1
+    #     #         break
+    #     # else:
+    #     #     raise
+    #     #***********************************************************************************************************************
+    #     if dist > nOfBins-1:
+    #         dist=nOfBins-1
+    #     ylim=vPL[dist][1]
+
+    #     if y<ylim:
+    #         if lower:
+    #             vOut.append(index)
+    #     if y>=ylim:
+    #         if not lower:
+    #             vOut.append(index)
+
+    # return vOut
 
 def gateTwoPointList(fcsDF, xCol, yCol, vPL, vPL2, vI=sentinel, scale='linear', T=1000):
     if vI is sentinel:
@@ -599,7 +1378,7 @@ def cythonGateTwoPointList(list vI, np.ndarray[dtype_t, ndim=1] vX, np.ndarray[d
                 bottom.append(index)
             elif iterY>=ylimUpper:
                 top.append(index)
-                
+
     return top, bottom, right
 
 

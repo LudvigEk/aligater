@@ -349,7 +349,8 @@ def penaltyValleySeek(fcs, xCol, x0, xEnd=None, parentGate=None, direction='up',
         smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins, scale='logish',T=T)
         searchSpace=logishTransform(binData,T)
         x0=logishTransform([x0], T)[0]
-        xEnd=logishTransform([xEnd], T)[0]
+        if xEnd is not None:
+            xEnd=logishTransform([xEnd], T)[0]
     else:
         smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins)
         searchSpace=binData

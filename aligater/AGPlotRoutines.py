@@ -194,7 +194,9 @@ def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xli
 def transformWrapper(vX, T, scale):
     result=None
     single_val=False
-    if not isinstance(vX, list):
+    if isinstance(vX, pd.Series):
+        raise AliGaterError("in transformWrapper: ","transformWrapper does not accept pandas Series input, use list or numpy array")
+    if not isinstance(vX, (list, np.ndarray)):
         vInput=[vX]
         single_val=True
     else:
