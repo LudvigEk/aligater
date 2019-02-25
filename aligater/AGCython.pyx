@@ -721,7 +721,6 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
         raise TypeError("invalid AGsample object")
     if parentGate is None:
         vI=fcs.full_index()
-        startingGate=None
     elif not parentGate.__class__.__name__ == "AGgate":
         raise TypeError("Parent population in "+name+" is an invalid AGgate object.")
     else:
@@ -819,7 +818,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     return outputGate
 
 def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='lower',
-                 startX=None, list xboundaries=None, list yboundaries=None, bool bottomUp=True , str direction='right', maxStep=5, phi=0.0,
+                 startX=None, bool bottomUp=True, list xboundaries=None, list yboundaries=None, str direction='right', maxStep=5, phi=0.0,
                  int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True):
     if agconf.execMode in ["jupyter","ipython"]:
         plot=True
@@ -830,7 +829,7 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
         raise TypeError("invalid AGsample object")
     if parentGate is None:
         vI=fcs.full_index()
-        startingGate=None
+        startingGate = None
     elif not parentGate.__class__.__name__ == "AGgate":
         raise TypeError("Parent population in "+name+" is an invalid AGgate object.")
     else:
@@ -840,16 +839,60 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
         sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
         outputGate=AGgate([],parentGate,xCol,yCol,name)
     cdef int startbin
+ 
+    cdef bool has_xbound, has_ybound
+    has_xbound = has_ybound = False
+    
+    if xboundaries is not None:
+        if isinstance(xboundaries, list):
+            if len(xboundaries) ==0:
+                pass
+            elif len(xboundaries) !=2:
+                reportStr="in verticalPath: xboundaries must be list of two, found: "+str(len(xboundaries))+" entries."
+                raise ValueError(reportStr)
+            else:
+                has_xbound=True
+        else:
+            raise AliGaterError("in verticalPath: ","is xboundaries is passed it must be list.")
+
+    if yboundaries is not None:
+        if isinstance(yboundaries, list):
+            if len(yboundaries) ==0:
+                pass
+            elif len(yboundaries) !=2:
+                reportStr="in verticalPath: yboundaries must be list of two, found: "+str(len(yboundaries))+" entries."
+                raise ValueError(reportStr)
+            else:
+                has_ybound=True    
+        else:
+            raise AliGaterError("in verticalPath: ","is yBoundaries is passed it must be list.")
+    
+    originalvI=vI
+    if has_ybound and not has_xbound:
+        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=startingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
+    if has_xbound and not has_ybound:
+        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=tmpvI, info=False)
+    if has_xbound and has_ybound:
+        xtmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
+        xstartingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=xtmpvI, info=False)
+        ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
+    #Switch from AGgate obj -> list from here
+    vI=startingGate()
     
     vX,vY = getGatedVectors(fcsDF=fcs(), gate1=xCol, gate2=yCol, vI=vI)
     
-    heatmap, xedges, yedges = getHeatmap(vX=vX, vY=vY, scale=scale, xscale=scale, yscale=scale, T=T, bins=bins)
+    heatmap, xedges, yedges = getHeatmap(vX=vX, vY=vY, scale=scale, normalize=True, xscale=scale, yscale=scale, T=T, bins=bins)
     #Note on heatmap, from numpy docs, np.histogram2d
     #Please note that the histogram does not follow the Cartesian convention where x values are on the abscissa and y values on the ordinate axis. 
     #Rather, x is histogrammed along the first dimension of the array (vertical), and y along the second dimension of the array (horizontal). 
     #Therefore, we transpose to get x on cols and y on rows
     cdef np.ndarray[dtype_t, ndim=2] cost = gaussian_filter(heatmap.astype(float),sigma=sigma).T
-
+    
+    cdef np.ndarray[dtype_t, ndim=2] plot_heatmap = np.copy(cost)
+    
     for i in np.arange(0, len(xedges)-2, 1):
         if startX >= xedges[i] and startX < xedges[i+1]:
             startBin = i
@@ -857,31 +900,48 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
     else:
         raise AliGaterError("in verticalPath","startX out of bounds")    
 
-#    cdef int endBin
-#    endBin = startBin
+    cdef int endBin
+    endBin = startBin
     
-    if not bottomUp:        
+    cdef float LARGE_NUMBER = 10000000000000000.0
+    
+    # cdef float blockRatio
+    # cdef int blockedBins
+    # if horisontalBlock!=0:
+    #     blockRatio = float(horisontalBlock)/100.0
+    #     blockedBins = int(blockRatio * bins + 0.5)
+    #     if startBin <= blockedBins:
+    #         blockedBins = startBin - 1
+    #         sys.stderr.write("Block includes startX, adjusting block width.")
+    #     if startBin >= bins-blockedBins:
+    #         blockedBins = bins-1 - startBin-1
+    #         sys.stderr.write("Block includes startX, adjusting block width.")
+    #     print("blocked bins: "+str(blockedBins))
+    #     for i in np.arange(0,blockedBins,1):
+    #         for y in np.arange(0, bins,1):
+    #             cost[y][i] = LARGE_NUMBER
+    #     for i in np.arange(bins-blockedBins,bins,1):
+    #         for y in np.arange(0, bins,1):
+    #             cost[y][i] = LARGE_NUMBER
+                
+    if bottomUp:        
         reverse=True
-        #Experimental
-#        for i in np.arange(0, len(cost[-1]),1):
-#            if not i == endBin:
-#                cost[0][i]=np.inf
-#            else:
-#                cost[0][i]=0
+        for i in np.arange(0, len(cost[-1]),1):
+            if not i == endBin:
+                cost[-1][i]=LARGE_NUMBER
+            else:
+                cost[-1][i]=0
     else:
-        #Experimental
-#        for i in np.arange(0, len(cost[0]),1):
-#            if not i == endBin:
-#                cost[-1][i]=np.inf
-#            else:
-#                cost[-1][i]=0
+        for i in np.arange(0, len(cost[0]),1):
+            if not i == endBin:
+                cost[0][i]=LARGE_NUMBER
+            else:
+                cost[0][i]=0
         reverse=False
-    
-    pathMatrix = _minCostPath(cost, nCols=bins, nRows=bins, maxStep=maxStep, reverse=reverse, direction=direction, phi=phi)
 
     
-#    print(pathMatrix)
-        
+    pathMatrix = _minCostPath(cost, nCols=bins, nRows=bins, maxStep=maxStep, reverse=reverse, direction=direction, phi=phi)
+    
     
     cdef int curBin
     cdef int nextBin
@@ -900,7 +960,7 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
     else:
         path.append( [xedges[curBin], yedges[0]])
     
-    vOut=gatePointList(fcs(),xCol,yCol,path, population=population, vI=vI, bHorisontal=False)
+    vOut=gatePointList(fcs(),xCol,yCol,path, population=population, vI=originalvI, bHorisontal=False)
     reportGateResults(vI,vOut)
     
 
@@ -913,7 +973,7 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
         plt.clf()
         fig, ax = plt.subplots()
         extent = [min(xedges), max(xedges), min(yedges), max(yedges)]
-        plt.imshow(cost, extent=extent, origin='lower',aspect='auto')
+        plt.imshow(plot_heatmap, extent=extent, origin='lower',aspect='auto')
         plt.xlabel(xCol)
         plt.ylabel(yCol)
         cmap=plt.get_cmap()
@@ -942,22 +1002,25 @@ def _minCostPath(np.ndarray[dtype_t, ndim=2] cost, int nCols, int nRows, int max
     
     pathMatrix = np.empty_like(cost, dtype=np.float64)
     dirArr = np.empty_like(cost, dtype=np.float32)
-    pathMatrix[0][0] = cost[0][0]; 
+    pathMatrix[0][0] = 0#cost[0][0]; 
   
     # Construct tc array 
-    cdef list row_order = list(range(0, nRows, 1))
+    cdef list row_order 
     if reverse:
-        row_order = row_order[::-1]
+        #row_order = row_order[::-1]
+        row_order = list(range(nRows-1, -1, -1))
         rowStep=-1
     else:
+        row_order = list(range(0, nRows, 1))
         rowStep=1
 
     cdef float score=0
     for row_idx in row_order:         #(i = 1; i <= m; i++):
         for col_idx in range(0, nCols, 1):      #(j = 1; j <= n; j++):
-            if not (row_idx == nRows-1):
+            if row_idx != nRows-1 and row_idx != 0:
                 #If not last row
-                score, pathMatrix[row_idx][col_idx] = _minCostPath_nextStep(curRow=cost[row_idx], nextRow=cost[row_idx+rowStep], curPos=col_idx, maxStep=maxStep, phi=phi, direction=direction)       #[1]
+                #score, pathMatrix[row_idx][col_idx] = _minCostPath_nextStep(curRow=cost[row_idx], nextRow=cost[row_idx+rowStep], curPos=col_idx, maxStep=maxStep, phi=phi, direction=direction)       #old
+                cost[row_idx][col_idx], pathMatrix[row_idx][col_idx] = _minCostPath_nextStep(curRow=cost[row_idx], nextRow=cost[row_idx-rowStep], curPos=col_idx, maxStep=maxStep, phi=phi, direction=direction)       #[1]
             else:
                 pathMatrix[row_idx][col_idx] = col_idx
 
@@ -1019,19 +1082,19 @@ def _minCostPath_nextStep(curRow, nextRow, int curPos, int maxStep, float phi=0,
     
     if direction.lower() == 'right':
         for i in range(curPos, maxStep+1, 1):
-            stepCosts.append( (i, curRow[curPos] + nextRow[i] + phi*(i-curPos)) ) 
+            stepCosts.append( (i, curRow[curPos] + nextRow[i] + phi*((i-curPos)**2)) ) 
         bestStepTuple = sorted(stepCosts, key=itemgetter(1))
         bestStepCost = bestStepTuple[0][1]
         bestStepIdx=bestStepTuple[0][0]
     elif direction.lower() == 'left':
         for i in range(curPos, maxStep-1, -1):
-            stepCosts.append( (i,curRow[curPos] + nextRow[i] + phi*(curPos-i)) ) 
+            stepCosts.append( (i,curRow[curPos] + nextRow[i] + phi*((curPos-i)**2)) ) 
         bestStepTuple = sorted(stepCosts, key=itemgetter(1))
         bestStepIdx=bestStepTuple[0][0]
         bestStepCost = bestStepTuple[0][1]
     else: #i.e direction = both        
         for i in range(maxStepLeft, maxStepRight+1, 1):
-            stepCosts.append( (i, curRow[curPos] + nextRow[i] + phi*abs(curPos - i)) )
+            stepCosts.append( (i, curRow[curPos] + nextRow[i] + phi*((curPos - i)**2)) )
         bestStepTuple = sorted(stepCosts, key=itemgetter(1))
         bestStepIdx=bestStepTuple[0][0]
         bestStepCost = bestStepTuple[0][1]

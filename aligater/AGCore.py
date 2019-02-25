@@ -563,7 +563,7 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
         outputGate=AGgate(result, None, xCol, yCol, name)
     return outputGate
 
-def getVectorCoordiantes(length, angle):
+def getVectorCoordinates(length, angle):
     #*********Internal****************
     theta=math.degrees(angle)
     y = length*math.asin(theta)
@@ -649,23 +649,31 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
         raise AliGaterError("in valleySeek: ","Interval must be specified as list of two: [x,y].\nInterval can be half open to either side, i.e. ['start',y] or [x,'end'].")
     if not any(isinstance(i,(float,int, str)) for i in interval):
         raise(AliGaterError("in valleySeek: ","Interval element had an unexpected type"))
-    
+
+
+    vX = getGatedVector(fcsDF, gate=xCol, vI=vI,return_type="nparray")
     if scale.lower()!='linear':
-        smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins, scale=scale, T=T)
-    else:
-        smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins)
-    
+        vX = transformWrapper(vX, scale=scale, T=T)
+    histo, binData = np.histogram(vX,bins)
+    smoothedHisto=gaussian_filter1d(histo.astype(float),sigma)
     
     if type(interval[0]) is str:
         if interval[0].lower() in ['start', 'first']:
             interval[0]=min(binData) 
         else:
             raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'first' or 'start', found "+interval[0].lower())
+    else:
+        if scale.lower!='linear':
+            interval[0]=transformWrapper([interval[0]],scale=scale, T=T)[0]
     if type(interval[1]) is str:
         if interval[1].lower() in ['end', 'last']:
             interval[1]=max(binData) 
         else:
             raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'last' or 'end', found "+interval[1].lower())
+    else:
+        if scale.lower!='linear':
+            interval[1]=transformWrapper([interval[1]],scale=scale, T=T)[0]
+    
     if interval[1] > max(binData):
         interval[1] = max(binData)
 
@@ -680,7 +688,10 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
 
     if len(vIndicies)<=3:
         sys.stderr.write("WARNING, in valleySeek: Specified interval is too narrow, defaulting to mid-interval\n")
-        return (interval[0]+interval[1])/2
+        result = (interval[0]+interval[1])/2
+        if scale.lower()!='linear':
+            result = inverseTransformWrapper([result],scale=scale, T=T)[0]
+        return result
     
     if not require_local_min:
         minVal=np.inf
@@ -695,7 +706,7 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
         minValIndex=0
         for i in np.arange(1,len(vIndicies)-1,1):
             value=smoothedHisto[vIndicies[i]]
-            if value < minVal and value > smoothedHisto[vIndicies[i-1]] and value < smoothedHisto[vIndicies[i+1]]:
+            if value < minVal and value < smoothedHisto[vIndicies[i-1]] and value < smoothedHisto[vIndicies[i+1]]:
                 minVal=value
                 minValIndex=vIndicies[i]         
         if minVal==np.inf:
@@ -705,6 +716,8 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
             return np.inf
     
     result=(binData[minValIndex+1]+binData[minValIndex])/2
+    if scale.lower()!='linear':
+            result = inverseTransformWrapper([result],scale=scale, T=T)[0]
     return result
             
 def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='linear',T=1000, update=False, QC=False):
@@ -824,11 +837,12 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
         addAxLine(fig,ax,xThresh,'vertical',scale=scale, T=T)
         addAxLine(fig,ax,yThresh,'horisontal',scale=scale, T=T)
         plt.show()    
-        
+    
     TopLeft=AGgate(vTopLeft, parentGate, xCol, yCol, names[0])
     TopRight=AGgate(vTopRight, parentGate, xCol, yCol, names[1])
     BottomRight=AGgate(vBottomRight, parentGate, xCol, yCol, names[2])
     BottomLeft=AGgate(vBottomLeft, parentGate, xCol, yCol, names[3])
+    
     if agconf.ag_verbose:
         reportStr="quadGate results in clockwise order from top-left: "+str(len(vTopLeft))+", "+str(len(vTopRight))+", "+str(len(vBottomRight))+", "+str(len(vBottomLeft))+"\n"
         sys.stderr.write(reportStr)
