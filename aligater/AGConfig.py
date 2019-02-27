@@ -4,11 +4,11 @@
 #They affect behaviour of several functions.
 
 #If a parent population has less cells than this threshold, the resulting gated population will be considered invalid
-minCells=300
+minCells=200
 
 #the cellFilter threshhold is the _initial_ required number of events per sample when it's first loaded
 #If lower than this, the entire sample is skipped and strategy never applied
-cellFilter=100000
+cellFilter=50000
 
 #Truncate values below this treshold i.e. if any measured value is lower than this, the value is piled up on this instead. Set with generous margin but might affect viewability of plots if too generous.
 ag_trimMeasurements = -10000
@@ -17,13 +17,13 @@ ag_trimMeasurements = -10000
 ag_verbose=False
 
 #AliGater output dir
-ag_out="/home/hematogenomics/Ludvig/AliGater_runs/output/"
+ag_out="/media/ludvig/Project_Storage/BloodVariome/aligater_output/"
 
 #AliGater tempdir (intermediate images and downsampled images)
-ag_tmp="/home/hematogenomics/Ludvig/ag_tmp/"
+ag_tmp="/media/ludvig/Project_Storage/aligater_temp/"
 
 #AliGater home
-ag_home="/home/hematogenomics/Programs/aligater/"
+ag_home="/media/ludvig/Project_Storage/BloodVariome/aligater/"
 
 #Check ag dirs are valid
 from aligater.check_exec_mode import check_ag_dirs

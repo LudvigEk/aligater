@@ -716,7 +716,7 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
             result = inverseTransformWrapper([result],scale=scale, T=T)[0]
     return result
             
-def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='linear',T=1000, update=False, QC=False):
+def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='linear',T=1000, filePlot=None, QC=False):
     """
     Function that gates four populations from one view by drawing a cross.
     
@@ -747,10 +747,10 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
         
     T : int, optional, default: 1000
         If plotting enabled and scale is logish, the threshold for linear-loglike transition
-    
-    update : bool, optional, default: False
-        If True will add the resulting gated population(s) to the sample objects gate list in adition to returning the gate object.\n
-        If False (default), returns an AGgate object without adding it to the sample object.
+
+    filePlot : str, optional, default: None
+        Option to plot the gate to file to specified path.\n
+        Warning: might overwrite stuff.    
         
     QC : bool, optional, default: False
         If True, adds a downsampled image of the gating view to the gate object. These can be collected by an AGExperiment object if it's QC flag is also True.
@@ -776,6 +776,9 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
         plot=False
     if not isinstance(fcs,AGsample):
         raise invalidSampleError("in quadGate:")
+    if filePlot is not None:
+        if not isinstance(filePlot,str):
+            raise TypeError("If plotting to file is requested filePlot must be string filename")
     if parentGate is None:
         vI=fcs.full_index()
     elif not isinstance(parentGate,AGgate):
@@ -825,14 +828,21 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
         sys.stderr.write("WARNING: in quadGate, with parent population "+str(parentGate.name)+":  No quadrant contains events\n")
         return AGgate([],parentGate,xCol,yCol,names[0]), AGgate([],parentGate,xCol,yCol,names[1]), AGgate([],parentGate,xCol,yCol,names[2]), AGgate([],parentGate,xCol,yCol,names[3])
     
-    if plot:
+    if plot or filePlot is not None:
         if scale=='logish':
             fig,ax=plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)    
         else:
             fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
         addAxLine(fig,ax,xThresh,'vertical',scale=scale, T=T)
         addAxLine(fig,ax,yThresh,'horisontal',scale=scale, T=T)
-        plt.show()    
+
+        if plot:
+            plt.show()    
+        if filePlot is not None:
+            plt.savefig(filePlot)
+            if not plot:
+                plt.close(fig)
+        plt.close(fig)  
     
     TopLeft=AGgate(vTopLeft, parentGate, xCol, yCol, names[0])
     TopRight=AGgate(vTopRight, parentGate, xCol, yCol, names[1])
@@ -842,14 +852,7 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
     if agconf.ag_verbose:
         reportStr="quadGate results in clockwise order from top-left: "+str(len(vTopLeft))+", "+str(len(vTopRight))+", "+str(len(vBottomRight))+", "+str(len(vBottomLeft))+"\n"
         sys.stderr.write(reportStr)
-    if update:
-        if QC:
-            if agconf.ag_verbose:
-                sys.stderr.write("QC requested on quadgate. Only saving image for: "+str(names[0]))+"\n"
-        fcs.update(TopLeft, QC=QC)
-        fcs.update(TopRight, QC=False)
-        fcs.update(BottomRight, QC=False)
-        fcs.update(BottomLeft, QC=False)
+        
     return TopLeft, TopRight, BottomRight, BottomLeft
 
 def axisStats(fcsDF, xCol, vI=None,bins=300, scale='linear',T=1000):
@@ -1043,7 +1046,7 @@ def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yO
     return outputGate
 
 
-def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='linear',T=1000, filePlot=None, update=False, QC=False):
+def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='linear',T=1000, filePlot=None):
     """
     A quadgate function with one axis fix and the other variable. The threshList argument decides which axis is fix and which can vary.
     
@@ -1067,11 +1070,6 @@ def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='li
     filePlot : str, optional, default: None
         Option to plot the gate to file to specified path. \n
         Warning: might overwrite stuff.
-    update : bool, optional, default: False
-        If True will add the resulting gated population(s) to the sample objects gate list in adition to returning the gate object.\n
-        If False (default), returns an AGgate object without adding it to the sample object.  
-    QC : bool, optional, default: False
-        If True, adds a downsampled image of the gating view to the gate object. These can be collected by an AGExperiment object if it's QC flag is also True.
     
     **Returns**
 
@@ -1194,14 +1192,7 @@ def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='li
     if agconf.ag_verbose:
         reportStr="customQuadGate results in clockwise order from top-left: "+str(len(vTopLeft))+", "+str(len(vTopRight))+", "+str(len(vBottomRight))+", "+str(len(vBottomLeft))+"\n"
         sys.stderr.write(reportStr)
-    if update:
-        if QC:
-            if agconf.ag_verbose:
-                sys.stderr.write("QC requested on customQuadGate. Only saving image for: "+str(names[0]))+"\n"
-        fcs.update(TopLeft, QC=QC)
-        fcs.update(TopRight, QC=False)
-        fcs.update(BottomRight, QC=False)
-        fcs.update(BottomLeft, QC=False)
+
     return TopLeft, TopRight, BottomRight, BottomLeft
 
 def backGate(fcs, xCol, yCol, population, background_population=None, markersize=2, scale='linear',xscale='linear',yscale='linear',T=1000, filePlot=None, color='#f10c45'):
