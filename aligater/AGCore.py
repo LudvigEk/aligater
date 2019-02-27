@@ -839,19 +839,15 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
             fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
         addAxLine(fig,ax,xThresh,'vertical',scale=scale, T=T)
         addAxLine(fig,ax,yThresh,'horisontal',scale=scale, T=T)
-<<<<<<< HEAD
+
         if plot:
             plt.show()    
         if filePlot is not None:
             plt.savefig(filePlot)
             if not plot:
                 plt.close(fig)
-        plt.close(fig)
-        
-=======
-        plt.show()    
+        plt.close(fig)  
     
->>>>>>> bc648c3f966fe82c92a67b232f5f6f46ee33222f
     TopLeft=AGgate(vTopLeft, parentGate, xCol, yCol, names[0])
     TopRight=AGgate(vTopRight, parentGate, xCol, yCol, names[1])
     BottomRight=AGgate(vBottomRight, parentGate, xCol, yCol, names[2])
@@ -1054,7 +1050,7 @@ def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yO
     return outputGate
 
 
-def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='linear',T=1000, filePlot=None, update=False, QC=False):
+def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='linear',T=1000, filePlot=None):
     """
     A quadgate function with one axis fix and the other variable. The threshList argument decides which axis is fix and which can vary.
     
@@ -1078,11 +1074,6 @@ def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='li
     filePlot : str, optional, default: None
         Option to plot the gate to file to specified path. \n
         Warning: might overwrite stuff.
-    update : bool, optional, default: False
-        If True will add the resulting gated population(s) to the sample objects gate list in adition to returning the gate object.\n
-        If False (default), returns an AGgate object without adding it to the sample object.  
-    QC : bool, optional, default: False
-        If True, adds a downsampled image of the gating view to the gate object. These can be collected by an AGExperiment object if it's QC flag is also True.
     
     **Returns**
 
@@ -1205,14 +1196,7 @@ def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='li
     if agconf.ag_verbose:
         reportStr="customQuadGate results in clockwise order from top-left: "+str(len(vTopLeft))+", "+str(len(vTopRight))+", "+str(len(vBottomRight))+", "+str(len(vBottomLeft))+"\n"
         sys.stderr.write(reportStr)
-    if update:
-        if QC:
-            if agconf.ag_verbose:
-                sys.stderr.write("QC requested on customQuadGate. Only saving image for: "+str(names[0]))+"\n"
-        fcs.update(TopLeft, QC=QC)
-        fcs.update(TopRight, QC=False)
-        fcs.update(BottomRight, QC=False)
-        fcs.update(BottomLeft, QC=False)
+
     return TopLeft, TopRight, BottomRight, BottomLeft
 
 def backGate(fcs, xCol, yCol, population, background_population=None, markersize=2, scale='linear',xscale='linear',yscale='linear',T=1000, filePlot=None, color='#f10c45'):

@@ -17,13 +17,13 @@ ag_trimMeasurements = -10000
 ag_verbose=False
 
 #AliGater output dir
-ag_out="/home/hematogenomics/Ludvig/AliGater_runs/output/"
+ag_out="/media/ludvig/Project_Storage/BloodVariome/aligater_output/"
 
 #AliGater tempdir (intermediate images and downsampled images)
-ag_tmp="/home/hematogenomics/Ludvig/ag_tmp/"
+ag_tmp="/media/ludvig/Project_Storage/aligater_temp/"
 
 #AliGater home
-ag_home="/home/hematogenomics/Programs/aligater/"
+ag_home="/media/ludvig/Project_Storage/BloodVariome/aligater/"
 
 #Check ag dirs are valid
 from aligater.check_exec_mode import check_ag_dirs
