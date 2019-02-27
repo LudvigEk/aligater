@@ -464,14 +464,10 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
         Option to plot the gate to file to specified path. \n
         Warning: might overwrite stuff.
 
-        
     **Returns**
-
-    AGClasses.AGsample object    
-        if update is True (default) 
+    
     AGClasses.AGgate object
-        if update is False
-
+        
     **Examples**
 
     None currently.

@@ -48,9 +48,22 @@ filePlotError=AliGaterError("If plotting to file is requested filePlot must be s
 markerError=AliGaterError("not present in sample, check spelling or control your dataframe.columns labels")
 
 
-def compensateDF(fcsDF, metaDict):
-
-    spill_matrix=metaDict['SPILL'].split(',')
+def compensateDF(fcsDF, metaDict, *args, **kwargs):
+    #TODO spill_col_name in agconfig?
+    if 'spill_col_name' in kwargs:
+        spill_keyword = kwargs['spill_col_name']
+    elif 'SPILL' in metaDict.keys():
+        spill_keyword='SPILL'
+    elif '$SPILL' in metaDict.keys():
+        spill_keyword='$SPILL'
+    elif 'SPILLOVER' in metaDict.keys():
+        spill_keyword='SPILLOVER'
+    elif '$SPILLOVER' in metaDict.keys():
+        spill_keyword='$SPILLOVER'
+    else:
+        raise ValueError("Unknown label of spillover in metadata, pass correct alias with spill_col_name\nYou can load the fcs using ag.loadFCS with compensate=False, metadata=True and inspect the metadata for corect label.")
+    
+    spill_matrix=metaDict[spill_keyword].split(',')
     n = int(spill_matrix[0]) #number of colors
     
     colNames=fcsDF.columns[4:(n+4)]
@@ -238,10 +251,10 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     cols=fcsDF.columns[4:-1]
     
     #SANITY CHECK: first four columns are some combination of foward and side scatters
-    scatter_cols=fcsDF.columns[0:4]
-    if not all([scatter in ['FSC-A', 'FSC-H', 'SSC-A', 'SSC-H'] for scatter in scatter_cols]):
-        sys.stderr.write("First four columns of fcs file are not foward and side scatters, skippping\n")
-        return None
+    #scatter_cols=fcsDF.columns[0:4]
+    #if not all([scatter in ['FSC-A', 'FSC-H', 'SSC-A', 'SSC-H'] for scatter in scatter_cols]):
+    #    sys.stderr.write("First four columns of fcs file are not foward and side scatters, skippping\n")
+    #    return None
     
     if not isinstance(agconf.ag_trimMeasurements, (float, int)):
         raise AliGaterError('in loadFCS: ','ag_trimMeasurements must be float or int, found: '+str(type(agconf.ag_trimMeasurements)))
