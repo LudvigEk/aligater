@@ -269,7 +269,7 @@ def getPCs(fcsDF, xCol, yCol, centerCoord=None, vI=None, scale='linear', T=1000)
         meanX=np.mean(vX)
         meanY=np.mean(vY)
     
-    #Center dataset around the centroid or a custom center    
+    #Center dataset around the centroid, or use a custom center    
     vX=np.subtract(vX, meanX)
     vY=np.subtract(vY, meanY)
     
@@ -293,7 +293,7 @@ def getPCs(fcsDF, xCol, yCol, centerCoord=None, vI=None, scale='linear', T=1000)
     discriminant = diffvar*diffvar + 4*covXY*covXY
     sqrtdiscr = np.sqrt(discriminant)
     
-    #Eigenvalues; n this setting it represents the variance explained by the component and thus its square root represent the std. deviation
+    #eigenvalues
     lambdaplus = (sumvar + sqrtdiscr)/2
     lambdaminus = (sumvar - sqrtdiscr)/2
 

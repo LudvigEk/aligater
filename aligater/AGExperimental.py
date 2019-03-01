@@ -486,14 +486,7 @@ def halfNormalDistribution(fcs, xCol, mean, direction, parentGate=None, bins=300
         sigma=np.sqrt(sumVar/n)
     else:
         sigma=0
-    
-    #if scale=='bilog':
-    #    mean=inverseBilogTransform([mean],T)[0]
-    #    sigma=inverseBilogTransform([sigma],T)[0]
-    
-    #if scale=='logish':
-    #    mean=inverseLogishTransform([mean],T)[0]
-    #    sigma=inverseLogishTransform([sigma],T)[0]
+
         
     return mean, sigma
 

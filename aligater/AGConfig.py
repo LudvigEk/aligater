@@ -10,20 +10,20 @@ minCells=200
 #If lower than this, the entire sample is skipped and strategy never applied
 cellFilter=50000
 
-#Truncate values below this treshold i.e. if any measured value is lower than this, the value is piled up on this instead. Set with generous margin but might affect viewability of plots if too generous.
+#Truncate values below this treshold i.e. if any measured value is lower than this, the value is piled up at this level instead. Set with generous margin but might affect viewability of plots if too generous.
 ag_trimMeasurements = -10000
 
 #Sets verbosity level, if False only minor information and warnings are printed. Does not affect plotting behaviour.
 ag_verbose=False
 
 #AliGater output dir
-ag_out="/media/ludvig/Project_Storage/BloodVariome/aligater_output/"
+ag_out="/home/hematogenomics/Ludvig/AliGater_output/"
 
-#AliGater tempdir (intermediate images and downsampled images)
-ag_tmp="/media/ludvig/Project_Storage/aligater_temp/"
+#AliGater tempdir (intermediate files such as downsampled images)
+ag_tmp="/home/hematogenomics/Ludvig/ag_tmp/"
 
 #AliGater home
-ag_home="/media/ludvig/Project_Storage/BloodVariome/aligater/"
+ag_home="/home/hematogenomics/Programs/aligater/"
 
 #Check ag dirs are valid
 from aligater.check_exec_mode import check_ag_dirs
@@ -35,3 +35,7 @@ from aligater.check_exec_mode import type_of_script
 execMode = type_of_script()
 #Uncomment below line to force behaviour
 #execMode = 'terminal'  #Options are 'terminal', 'ipython', 'jupyter'
+
+#Below filters out FutureWarnings that tend to pop up now and then, usually from numpy, pandas or h5py
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
