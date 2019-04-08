@@ -313,7 +313,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list yboundaries, parentGate=None, float sigma=3, int maxStep=20, str scale='linear', str xscale='linear', str yscale='linear', str startingCorner='bottomleft', str population='lower', int bins=300, float T=1000, QC=False):
+def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list yboundaries, parentGate=None, float sigma=3, int maxStep=20, str scale='linear', str xscale='linear', str yscale='linear', str startingCorner='bottomleft', str population='lower', int bins=300, float T=1000, QC=False, filePlot=None):
     if agconf.execMode in ["jupyter","ipython"]:
         plot=True
     else:
@@ -458,7 +458,7 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
 
     cdef int count=0
     cdef list coord
-    if plot:
+    if plot or filePlot is not None:
         heatmap=np.ma.masked_where(smoothedHeatmap == 0, smoothedHeatmap)
         plt.clf()
         fig, ax = plt.subplots()
@@ -481,7 +481,7 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
             ax.yaxis.set_major_locator(BiLogLocator(linCutOff=T))
             ax.yaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
         else:
-            sys.stdout.write("No scale setting detected\n")
+            pass
              
         #draw line of shortest path
         for coord in path:
@@ -492,7 +492,11 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
             fig,ax = addLine(fig,ax,previousCoord,coord,scale=scale,T=T)
             previousCoord=coord
             count+=1
-        plt.show()
+        if filePlot is not None:
+            plt.savefig(filePlot)
+        if plot:
+            plt.show()
+        plt.close(fig)
     #print(path)
     vOut=gatePointList(fcsDF,xCol,yCol,path, population=population, vI=originalvI)
     reportGateResults(originalvI,vOut)
@@ -574,6 +578,128 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     #Switch from AGgate obj -> list from here
     vI=startingGate()
 
+<<<<<<< HEAD
+    for y in range(1,bins,1):
+        for x in range(startX,endX,xStep): 
+            for tmpIdx in range(0,abs(maxStep),1):
+                stepCosts[tmpIdx]=10000000000000000.0
+            if x-maxStep<0:
+                adjustedMaxStep=x
+            elif x-maxStep>bins-1:
+                adjustedMaxStep=-(bins-1-x)
+            else:
+                adjustedMaxStep=maxStep-xStep
+            costIdx=0
+
+            for previousX in range(x-adjustedMaxStep,x+xStep,xStep):
+                dist=x-previousX
+                penalty=dist*dist
+                stepCost = cost[y-1,previousX]+smoothedHeatmap[y,x]+penalty
+                stepCosts[costIdx]=stepCost
+                costIdx+=1
+
+            minCost=10000000000000000.0
+
+            for tmpIdx in range(0,abs(maxStep),1):
+                if stepCosts[tmpIdx]<minCost:
+                    minCost=stepCosts[tmpIdx]
+                    minCostIdx=tmpIdx*xStep #addition
+                    
+            cost[y,x]=minCost
+            leftBinIndex=minCostIdx+x-adjustedMaxStep #why subtract adjustedMaxstep here??
+            leftBin[y,x]=leftBinIndex
+            
+    if startingCorner.lower() == 'bottomright':
+        leftBinIndex=0
+    #traverse cost matrix, /w monothony
+    if leftBinIndex < 0:
+        leftBinIndex = 0
+    if leftBinIndex > bins-1:
+        leftBinIndex = bins-1
+    
+    #leftBinIndex = bins-1 - maxStep
+    cdef list path=[]
+    for x in range(bins-1,-1,-1):
+        path.append([xedges[x],yedges[leftBinIndex]])
+        leftBinIndex=int(leftBin[x][leftBinIndex])
+    
+    path=path[::-1]   
+
+    print(leftBin)
+    cdef int count=0
+    cdef list coord
+    if plot:
+        heatmap=np.ma.masked_where(smoothedHeatmap == 0, smoothedHeatmap)
+        plt.clf()
+        fig, ax = plt.subplots()
+        extent = [xedges[0], xedges[bins], yedges[0], yedges[bins]]
+        plt.imshow(heatmap.T, extent=extent, origin='lower',aspect='auto')
+        plt.xlabel(xCol)
+        plt.ylabel(yCol)
+        cmap=plt.get_cmap()
+        cmap.set_bad(color='white')
+        if scale.lower()=='logish':
+            ax=plt.gca()
+            ax.xaxis.set_major_locator(LogishLocator(linCutOff=T))
+            ax.xaxis.set_major_formatter(LogishFormatter(linCutOff=T))
+            ax.yaxis.set_major_locator(LogishLocator(linCutOff=T))
+            ax.yaxis.set_major_formatter(LogishFormatter(linCutOff=T))
+        elif scale.lower()=='bilog':
+            ax=plt.gca()
+            ax.xaxis.set_major_locator(BiLogLocator(linCutOff=T))
+            ax.xaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
+            ax.yaxis.set_major_locator(BiLogLocator(linCutOff=T))
+            ax.yaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
+        
+             
+        #draw line of shortest path
+        for coord in path:
+            if count==0:
+                previousCoord=coord
+                count+=1
+                continue 
+            fig,ax = addLine(fig,ax,previousCoord,coord,scale=scale,T=T)
+            previousCoord=coord
+            count+=1
+        plt.show()
+    #print(path)
+    vOut=gatePointList(fcsDF,xCol,yCol,path, population=population, vI=originalvI)
+    reportGateResults(originalvI,vOut)
+    
+    if plot:
+        plt.clf()
+        plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
+        plt.show()
+    if parentGate is not None:
+        outputGate=AGgate(vOut, parentGate, xCol, yCol, name)
+    else:
+        outputGate=AGgate(vOut, fcs.full_index(), xCol, yCol, name)
+        
+    return outputGate
+
+def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='negative',
+                 startY=None, list xboundaries=None, list yboundaries=None, bool leftRight=True , str direction='up', maxStep=5, phi=0,
+                 int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True):
+    if agconf.execMode in ["jupyter","ipython"]:
+        plot=True
+    else:
+        plot=False
+    cdef list vI, originalvI
+    if not fcs.__class__.__name__=="AGsample":
+        raise TypeError("invalid AGsample object")
+    if parentGate is None:
+        vI=fcs.full_index()
+    elif not parentGate.__class__.__name__ == "AGgate":
+        raise TypeError("Parent population in "+name+" is an invalid AGgate object.")
+    else:
+        vI=parentGate()
+        startingGate=parentGate
+    if len(vI)<5:
+        sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
+        outputGate=AGgate([],parentGate,xCol,yCol,name)
+    cdef int startbin
+=======
+>>>>>>> 4f8a3a7d805f49ba9094d115640f31f360ed9ee6
 
     vX,vY = getGatedVectors(fcsDF=fcs(), gate1=xCol, gate2=yCol, vI=vI)
     #Note on the heatmap, from numpy docs, np.histogram2d
