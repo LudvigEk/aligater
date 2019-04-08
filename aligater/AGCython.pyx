@@ -313,7 +313,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list yboundaries, parentGate=None, float sigma=3, int maxStep=20, str scale='linear', str xscale='linear', str yscale='linear', str startingCorner='bottomleft', str population='lower', int bins=300, float T=1000, QC=False):
+def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list yboundaries, parentGate=None, float sigma=3, int maxStep=20, str scale='linear', str xscale='linear', str yscale='linear', str startingCorner='bottomleft', str population='lower', int bins=300, float T=1000, QC=False, filePlot=None):
     if agconf.execMode in ["jupyter","ipython"]:
         plot=True
     else:
@@ -458,7 +458,7 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
 
     cdef int count=0
     cdef list coord
-    if plot:
+    if plot or filePlot is not None:
         heatmap=np.ma.masked_where(smoothedHeatmap == 0, smoothedHeatmap)
         plt.clf()
         fig, ax = plt.subplots()
@@ -481,7 +481,7 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
             ax.yaxis.set_major_locator(BiLogLocator(linCutOff=T))
             ax.yaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
         else:
-            sys.stdout.write("No scale setting detected\n")
+            pass
              
         #draw line of shortest path
         for coord in path:
@@ -492,7 +492,11 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
             fig,ax = addLine(fig,ax,previousCoord,coord,scale=scale,T=T)
             previousCoord=coord
             count+=1
-        plt.show()
+        if filePlot is not None:
+            plt.savefig(filePlot)
+        if plot:
+            plt.show()
+        plt.close(fig)
     #print(path)
     vOut=gatePointList(fcsDF,xCol,yCol,path, population=population, vI=originalvI)
     reportGateResults(originalvI,vOut)
@@ -681,8 +685,7 @@ def shortestPathMatrix_V2(fcs, str name, str xCol, str yCol, list xboundaries, l
             ax.xaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
             ax.yaxis.set_major_locator(BiLogLocator(linCutOff=T))
             ax.yaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
-        else:
-            sys.stdout.write("No scale setting detected\n")
+        
              
         #draw line of shortest path
         for coord in path:

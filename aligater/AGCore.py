@@ -859,7 +859,7 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
         
     return TopLeft, TopRight, BottomRight, BottomLeft
 
-def axisStats(fcsDF, xCol, vI=None,bins=300, scale='linear',T=1000):
+def axisStats(fcsDF, xCol, vI=None,bins=300, sigma=3, scale='linear',T=1000):
     """
     Report mean, standard deviation and maximum value on axis.
     
@@ -884,7 +884,7 @@ def axisStats(fcsDF, xCol, vI=None,bins=300, scale='linear',T=1000):
     **Returns**
 
     float, float, float
-        mean, standard deviation, maximum value
+        mean, median, standard deviation, maximum value
 
     **Examples**
 
@@ -899,28 +899,45 @@ def axisStats(fcsDF, xCol, vI=None,bins=300, scale='linear',T=1000):
         raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
     if scale.lower()=='linear':
         x=getGatedVector(fcsDF,xCol, vI, return_type="nparray")
-    elif scale.lower()=='logish':
+    else:
         x=getGatedVector(fcsDF,xCol, vI, return_type="nparray")
-        x=logishTransform(x,T)
+        x=transformWrapper(x, scale=scale, T=T)
+    
+    #*****fr plotroutines densityfunc
+    if scale == 'logish':
+        BinEdges=logishBin(x,bins,T)
+        histo = np.histogram(x, BinEdges)
+    elif scale == 'bilog':
+        BinEdges=bilogBin(x,bins,T)
+        histo = np.histogram(x, BinEdges)
+    else:
+        histo=np.histogram(x, bins)
+    vHisto=np.linspace(min(histo[1]),max(histo[1]),bins)
+    smoothedHisto=gaussian_filter1d(histo[0].astype(float),sigma)
+    #print(np.argmax(smoothedHisto))
+    #*****
+    
     
     histo=np.histogram(x, bins)
         
     mean=np.mean(x)
+    median = np.median(x)
     sigma=np.std(x)
-    maxIndex=np.argmax(histo[0])
+    maxIndex=np.argmax(smoothedHisto)
+    #maxIndex=np.argmax(histo[0])
     
     if isinstance(maxIndex, np.ndarray):
-        maxVal=(histo[1][maxIndex[0]]+histo[1][maxIndex[0]+1])/2
+        maxVal=(vHisto[1][maxIndex[0]]+vHisto[1][maxIndex[0]+1])/2
     else:
-        maxVal=(histo[1][maxIndex]+histo[1][maxIndex+1])/2
+        maxVal=(vHisto[maxIndex]+vHisto[maxIndex+1])/2
     
-    if scale.lower()=='logish':
-        result=inverseLogishTransform([mean, sigma, maxVal],T)
-        mean=result[0]
-        sigma=abs(result[1])
-        maxVal=result[2]
+    #if scale.lower()=='logish':
+    #    result=inverseLogishTransform([mean, sigma, maxVal],T)
+    #    mean=result[0]
+    #    sigma=abs(result[1])
+    #    maxVal=result[2]
         
-    return mean, sigma, maxVal
+    return mean, median, sigma, maxVal
 
 def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrientation='upper', Outer=False, parentGate=None, bins=300, scale='linear', T=1000, update=False, filePlot=None, QC=False):
     """
