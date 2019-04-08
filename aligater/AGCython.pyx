@@ -514,168 +514,167 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
 
 
 
-def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='negative',
-                 startY=None, list xboundaries=None, list yboundaries=None, bool leftRight=True , str direction='up', maxStep=5, phi=0,
-                 int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True):
-    if agconf.execMode in ["jupyter","ipython"]:
-        plot=True
-    else:
-        plot=False
-    cdef list vI, originalvI
-    if not fcs.__class__.__name__=="AGsample":
-        raise TypeError("invalid AGsample object")
-    if parentGate is None:
-        vI=fcs.full_index()
-        startingGate=None
-    elif not parentGate.__class__.__name__ == "AGgate":
-        raise TypeError("Parent population in "+name+" is an invalid AGgate object.")
-    else:
-        vI=parentGate()
-        startingGate=parentGate
-    if len(vI)<5:
-        sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
-        outputGate=AGgate([],parentGate,xCol,yCol,name)
-    cdef int startbin
-    cdef bool has_xbound, has_ybound
-    has_xbound = has_ybound = False
+# def ___OLD___horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='negative',
+#                  startY=None, list xboundaries=None, list yboundaries=None, bool leftRight=True , str direction='up', maxStep=5, phi=0,
+#                  int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True):
+#     if agconf.execMode in ["jupyter","ipython"]:
+#         plot=True
+#     else:
+#         plot=False
+#     cdef list vI, originalvI
+#     if not fcs.__class__.__name__=="AGsample":
+#         raise TypeError("invalid AGsample object")
+#     if parentGate is None:
+#         vI=fcs.full_index()
+#         startingGate=None
+#     elif not parentGate.__class__.__name__ == "AGgate":
+#         raise TypeError("Parent population in "+name+" is an invalid AGgate object.")
+#     else:
+#         vI=parentGate()
+#         startingGate=parentGate
+#     if len(vI)<5:
+#         sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
+#         outputGate=AGgate([],parentGate,xCol,yCol,name)
+#     cdef int startbin
+#     cdef bool has_xbound, has_ybound
+#     has_xbound = has_ybound = False
     
-    if xboundaries is not None:
-        if isinstance(xboundaries, list):
-            if len(xboundaries) ==0:
-                pass
-            elif len(xboundaries) !=2:
-                reportStr="in horisontalPath: xboundaries must be list of two, found: "+str(len(xboundaries))+" entries."
-                raise ValueError(reportStr)
-            else:
-                has_xbound=True
-        else:
-            raise AliGaterError("in horisontalPath: ","is xboundaries is passed it must be list.")
+#     if xboundaries is not None:
+#         if isinstance(xboundaries, list):
+#             if len(xboundaries) ==0:
+#                 pass
+#             elif len(xboundaries) !=2:
+#                 reportStr="in horisontalPath: xboundaries must be list of two, found: "+str(len(xboundaries))+" entries."
+#                 raise ValueError(reportStr)
+#             else:
+#                 has_xbound=True
+#         else:
+#             raise AliGaterError("in horisontalPath: ","is xboundaries is passed it must be list.")
 
-    if yboundaries is not None:
-        if isinstance(yboundaries, list):
-            if len(yboundaries) ==0:
-                pass
-            elif len(yboundaries) !=2:
-                reportStr="in horisontalPath: yboundaries must be list of two, found: "+str(len(yboundaries))+" entries."
-                raise ValueError(reportStr)
-            else:
-                has_ybound=True    
-        else:
-            raise AliGaterError("in horisontalPath: ","is yBoundaries is passed it must be list.")
+#     if yboundaries is not None:
+#         if isinstance(yboundaries, list):
+#             if len(yboundaries) ==0:
+#                 pass
+#             elif len(yboundaries) !=2:
+#                 reportStr="in horisontalPath: yboundaries must be list of two, found: "+str(len(yboundaries))+" entries."
+#                 raise ValueError(reportStr)
+#             else:
+#                 has_ybound=True    
+#         else:
+#             raise AliGaterError("in horisontalPath: ","is yBoundaries is passed it must be list.")
     
-    originalvI=vI
-    if has_ybound and not has_xbound:
-        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=startingGate,info=False)
-        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
-    if has_xbound and not has_ybound:
-        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
-        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=tmpvI, info=False)
-    if has_xbound and has_ybound:
-        xtmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
-        xstartingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=xtmpvI, info=False)
-        ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
-        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
-    #Switch from AGgate obj -> list from here
-    vI=startingGate()
+#     originalvI=vI
+#     if has_ybound and not has_xbound:
+#         tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=startingGate,info=False)
+#         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
+#     if has_xbound and not has_ybound:
+#         tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
+#         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=tmpvI, info=False)
+#     if has_xbound and has_ybound:
+#         xtmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
+#         xstartingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=xtmpvI, info=False)
+#         ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
+#         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
+#     #Switch from AGgate obj -> list from here
+#     vI=startingGate()
 
-<<<<<<< HEAD
-    for y in range(1,bins,1):
-        for x in range(startX,endX,xStep): 
-            for tmpIdx in range(0,abs(maxStep),1):
-                stepCosts[tmpIdx]=10000000000000000.0
-            if x-maxStep<0:
-                adjustedMaxStep=x
-            elif x-maxStep>bins-1:
-                adjustedMaxStep=-(bins-1-x)
-            else:
-                adjustedMaxStep=maxStep-xStep
-            costIdx=0
+#     for y in range(1,bins,1):
+#         for x in range(startX,endX,xStep): 
+#             for tmpIdx in range(0,abs(maxStep),1):
+#                 stepCosts[tmpIdx]=10000000000000000.0
+#             if x-maxStep<0:
+#                 adjustedMaxStep=x
+#             elif x-maxStep>bins-1:
+#                 adjustedMaxStep=-(bins-1-x)
+#             else:
+#                 adjustedMaxStep=maxStep-xStep
+#             costIdx=0
 
-            for previousX in range(x-adjustedMaxStep,x+xStep,xStep):
-                dist=x-previousX
-                penalty=dist*dist
-                stepCost = cost[y-1,previousX]+smoothedHeatmap[y,x]+penalty
-                stepCosts[costIdx]=stepCost
-                costIdx+=1
+#             for previousX in range(x-adjustedMaxStep,x+xStep,xStep):
+#                 dist=x-previousX
+#                 penalty=dist*dist
+#                 stepCost = cost[y-1,previousX]+smoothedHeatmap[y,x]+penalty
+#                 stepCosts[costIdx]=stepCost
+#                 costIdx+=1
 
-            minCost=10000000000000000.0
+#             minCost=10000000000000000.0
 
-            for tmpIdx in range(0,abs(maxStep),1):
-                if stepCosts[tmpIdx]<minCost:
-                    minCost=stepCosts[tmpIdx]
-                    minCostIdx=tmpIdx*xStep #addition
+#             for tmpIdx in range(0,abs(maxStep),1):
+#                 if stepCosts[tmpIdx]<minCost:
+#                     minCost=stepCosts[tmpIdx]
+#                     minCostIdx=tmpIdx*xStep #addition
                     
-            cost[y,x]=minCost
-            leftBinIndex=minCostIdx+x-adjustedMaxStep #why subtract adjustedMaxstep here??
-            leftBin[y,x]=leftBinIndex
+#             cost[y,x]=minCost
+#             leftBinIndex=minCostIdx+x-adjustedMaxStep #why subtract adjustedMaxstep here??
+#             leftBin[y,x]=leftBinIndex
             
-    if startingCorner.lower() == 'bottomright':
-        leftBinIndex=0
-    #traverse cost matrix, /w monothony
-    if leftBinIndex < 0:
-        leftBinIndex = 0
-    if leftBinIndex > bins-1:
-        leftBinIndex = bins-1
+#     if startingCorner.lower() == 'bottomright':
+#         leftBinIndex=0
+#     #traverse cost matrix, /w monothony
+#     if leftBinIndex < 0:
+#         leftBinIndex = 0
+#     if leftBinIndex > bins-1:
+#         leftBinIndex = bins-1
     
-    #leftBinIndex = bins-1 - maxStep
-    cdef list path=[]
-    for x in range(bins-1,-1,-1):
-        path.append([xedges[x],yedges[leftBinIndex]])
-        leftBinIndex=int(leftBin[x][leftBinIndex])
+#     #leftBinIndex = bins-1 - maxStep
+#     cdef list path=[]
+#     for x in range(bins-1,-1,-1):
+#         path.append([xedges[x],yedges[leftBinIndex]])
+#         leftBinIndex=int(leftBin[x][leftBinIndex])
     
-    path=path[::-1]   
+#     path=path[::-1]   
 
-    print(leftBin)
-    cdef int count=0
-    cdef list coord
-    if plot:
-        heatmap=np.ma.masked_where(smoothedHeatmap == 0, smoothedHeatmap)
-        plt.clf()
-        fig, ax = plt.subplots()
-        extent = [xedges[0], xedges[bins], yedges[0], yedges[bins]]
-        plt.imshow(heatmap.T, extent=extent, origin='lower',aspect='auto')
-        plt.xlabel(xCol)
-        plt.ylabel(yCol)
-        cmap=plt.get_cmap()
-        cmap.set_bad(color='white')
-        if scale.lower()=='logish':
-            ax=plt.gca()
-            ax.xaxis.set_major_locator(LogishLocator(linCutOff=T))
-            ax.xaxis.set_major_formatter(LogishFormatter(linCutOff=T))
-            ax.yaxis.set_major_locator(LogishLocator(linCutOff=T))
-            ax.yaxis.set_major_formatter(LogishFormatter(linCutOff=T))
-        elif scale.lower()=='bilog':
-            ax=plt.gca()
-            ax.xaxis.set_major_locator(BiLogLocator(linCutOff=T))
-            ax.xaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
-            ax.yaxis.set_major_locator(BiLogLocator(linCutOff=T))
-            ax.yaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
+#     print(leftBin)
+#     cdef int count=0
+#     cdef list coord
+#     if plot:
+#         heatmap=np.ma.masked_where(smoothedHeatmap == 0, smoothedHeatmap)
+#         plt.clf()
+#         fig, ax = plt.subplots()
+#         extent = [xedges[0], xedges[bins], yedges[0], yedges[bins]]
+#         plt.imshow(heatmap.T, extent=extent, origin='lower',aspect='auto')
+#         plt.xlabel(xCol)
+#         plt.ylabel(yCol)
+#         cmap=plt.get_cmap()
+#         cmap.set_bad(color='white')
+#         if scale.lower()=='logish':
+#             ax=plt.gca()
+#             ax.xaxis.set_major_locator(LogishLocator(linCutOff=T))
+#             ax.xaxis.set_major_formatter(LogishFormatter(linCutOff=T))
+#             ax.yaxis.set_major_locator(LogishLocator(linCutOff=T))
+#             ax.yaxis.set_major_formatter(LogishFormatter(linCutOff=T))
+#         elif scale.lower()=='bilog':
+#             ax=plt.gca()
+#             ax.xaxis.set_major_locator(BiLogLocator(linCutOff=T))
+#             ax.xaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
+#             ax.yaxis.set_major_locator(BiLogLocator(linCutOff=T))
+#             ax.yaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
         
              
-        #draw line of shortest path
-        for coord in path:
-            if count==0:
-                previousCoord=coord
-                count+=1
-                continue 
-            fig,ax = addLine(fig,ax,previousCoord,coord,scale=scale,T=T)
-            previousCoord=coord
-            count+=1
-        plt.show()
-    #print(path)
-    vOut=gatePointList(fcsDF,xCol,yCol,path, population=population, vI=originalvI)
-    reportGateResults(originalvI,vOut)
+#         #draw line of shortest path
+#         for coord in path:
+#             if count==0:
+#                 previousCoord=coord
+#                 count+=1
+#                 continue 
+#             fig,ax = addLine(fig,ax,previousCoord,coord,scale=scale,T=T)
+#             previousCoord=coord
+#             count+=1
+#         plt.show()
+#     #print(path)
+#     vOut=gatePointList(fcsDF,xCol,yCol,path, population=population, vI=originalvI)
+#     reportGateResults(originalvI,vOut)
     
-    if plot:
-        plt.clf()
-        plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
-        plt.show()
-    if parentGate is not None:
-        outputGate=AGgate(vOut, parentGate, xCol, yCol, name)
-    else:
-        outputGate=AGgate(vOut, fcs.full_index(), xCol, yCol, name)
+#     if plot:
+#         plt.clf()
+#         plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
+#         plt.show()
+#     if parentGate is not None:
+#         outputGate=AGgate(vOut, parentGate, xCol, yCol, name)
+#     else:
+#         outputGate=AGgate(vOut, fcs.full_index(), xCol, yCol, name)
         
-    return outputGate
+#     return outputGate
 
 def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='negative',
                  startY=None, list xboundaries=None, list yboundaries=None, bool leftRight=True , str direction='up', maxStep=5, phi=0,
@@ -698,8 +697,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
         sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
         outputGate=AGgate([],parentGate,xCol,yCol,name)
     cdef int startbin
-=======
->>>>>>> 4f8a3a7d805f49ba9094d115640f31f360ed9ee6
+    originalvI=vI
 
     vX,vY = getGatedVectors(fcsDF=fcs(), gate1=xCol, gate2=yCol, vI=vI)
     #Note on the heatmap, from numpy docs, np.histogram2d

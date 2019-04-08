@@ -78,14 +78,20 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
                 if yscale.lower()=='logish':
                     yscale_limits=logishTransform(yscale_limits,thresh)
                     bYlim=True
-                    
+    
+    if 'mask_where' in kwargs:
+        mask_value = kwargs['mask_where']
+        assert isinstance(mask_value,(float,int))
+    else:
+        mask_value=0
+    
     vX=getGatedVector(fcsDF, x, vI)
     vY=getGatedVector(fcsDF, y, vI)
     plt.clf()
     matplotlib.rcParams['image.cmap'] = 'jet'
     heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, thresh)
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
-    heatmap=np.ma.masked_where(heatmap == 0, heatmap)
+    heatmap=np.ma.masked_where(heatmap <= mask_value, heatmap)
     plt.clf()
     fig, ax = plt.subplots()
     plt.imshow(heatmap.T, extent=extent, origin='lower',aspect=aspect)
@@ -167,13 +173,13 @@ def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xli
     if scale=='logish' or (xscale == 'logish' and yscale == 'logish'):
         xBinEdges=logishBin(vX,bins,T, xRange)
         yBinEdges=logishBin(vY,bins,T, yRange)
-        return np.histogram2d(vX, vY, [xBinEdges,yBinEdges])
+        return np.histogram2d(vX, vY, [xBinEdges,yBinEdges], normed=normalize)
     if xscale=='logish':
         xBinEdges=logishBin(vX,bins,T, xRange)
-        return np.histogram2d(vX, vY, [xBinEdges,bins])
+        return np.histogram2d(vX, vY, [xBinEdges,bins], normed=normalize)
     if yscale=='logish':
         yBinEdges=logishBin(vY,bins,T, yRange)
-        return np.histogram2d(vX, vY, [bins,yBinEdges])
+        return np.histogram2d(vX, vY, [bins,yBinEdges], normed=normalize)
     if scale=='bilog' or (xscale == 'bilog' and yscale == 'bilog'):
         xBinEdges=bilogBin(vX,bins,T, xRange)
         yBinEdges=bilogBin(vY,bins,T, yRange)
@@ -182,13 +188,13 @@ def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xli
         #print("\n\n")
         #print("yBinEdges: ")
         #print(yBinEdges)        
-        return np.histogram2d(vX, vY, [xBinEdges,yBinEdges])
+        return np.histogram2d(vX, vY, [xBinEdges,yBinEdges], normed=normalize)
     if xscale=='bilog':
         xBinEdges=bilogBin(vX,bins,T, xRange)
-        return np.histogram2d(vX, vY, [xBinEdges,bins])
+        return np.histogram2d(vX, vY, [xBinEdges,bins], normed=normalize)
     if yscale=='bilog':
         yBinEdges=bilogBin(vY,bins,T, yRange)
-        return np.histogram2d(vX, vY, [bins,yBinEdges])
+        return np.histogram2d(vX, vY, [bins,yBinEdges], normed=normalize)
 
 def plot_flattened_heatmap(heatmap_array, nOfBins, mask=True):
     
@@ -200,7 +206,7 @@ def plot_flattened_heatmap(heatmap_array, nOfBins, mask=True):
         cmap.set_bad(color='white')
     else:
         heatmap=reshaped_array
-    plt.imshow(heatmap)
+    plt.imshow(heatmap.T[::-1])
     plt.show()
     plt.clf()
     
@@ -212,9 +218,12 @@ def transformWrapper(vX, T, scale):
     single_val=False
     if isinstance(vX, pd.Series):
         raise AliGaterError("in transformWrapper: ","transformWrapper does not accept pandas Series input, use list or numpy array")
-    if not isinstance(vX, (list, np.ndarray)):
-        vInput=[vX]
-        single_val=True
+    if not isinstance(vX, (list, np.ndarray, tuple)):
+        if isinstance(vX, (float, int)):
+            vInput=[vX]
+            single_val=True
+        else:
+            raise AliGaterError("in transformWrapper","invalid dType of passed vX, must be either a single float/int value or list/np.ndarray/tuple of float/int values")
     else:
         vInput=vX
     if scale.lower() == 'logish':
@@ -232,7 +241,7 @@ def transformWrapper(vX, T, scale):
 def inverseTransformWrapper(vX, T, scale):
     result=None
     single_val=False
-    if not isinstance(vX, list):
+    if not isinstance(vX, (list, np.ndarray)):
         vInput=[vX]
         single_val=True
     else:
