@@ -674,7 +674,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     return outputGate
 
 def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='lower',
-                 startX=None, bool bottomUp=True, list xboundaries=None, list yboundaries=None, str direction='right', maxStep=5, phi=0.0,
+                 startX=None, endX=None, bool bottomUp=True, list xboundaries=None, list yboundaries=None, str direction='right', bool openEnded=False, maxStep=5, phi=0.0,
                  int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True):
     if agconf.execMode in ["jupyter","ipython"]:
         plot=True
@@ -683,6 +683,7 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
     cdef list vI, originalvI
     if not fcs.__class__.__name__=="AGsample":
         raise TypeError("invalid AGsample object")
+    #TODO HANDLE START/END X TYPES
     if parentGate is None:
         vI=fcs.full_index()
         startingGate = None
@@ -746,9 +747,15 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
     #Rather, x is histogrammed along the first dimension of the array (vertical), and y along the second dimension of the array (horizontal). 
     #Therefore, we transpose to get x on cols and y on rows
     cdef np.ndarray[dtype_t, ndim=2] cost = gaussian_filter(heatmap.astype(float),sigma=sigma).T
-    
     cdef np.ndarray[dtype_t, ndim=2] plot_heatmap = np.copy(cost)
     
+    #Adjust phi based on avg val in cost
+    cdef float mean_heatmap_val
+    mean_heatmap_val = np.mean(cost)
+    cdef corrected_phi = phi * mean_heatmap_val
+
+
+    #find start/endbin
     for i in np.arange(0, len(xedges)-2, 1):
         if startX >= xedges[i] and startX < xedges[i+1]:
             startBin = i
@@ -757,28 +764,35 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
         raise AliGaterError("in verticalPath","startX out of bounds")    
 
     cdef int endBin
-    endBin = startBin
-    
+    if endX is None:
+        endBin = startBin
+    else:
+        for i in np.arange(0, len(xedges)-2, 1):
+            if endX >= xedges[i] and endX < xedges[i+1]:
+                endBin = i
+                break
+        else:
+            raise AliGaterError("in verticalPath","endX out of bounds")
+            
     cdef float LARGE_NUMBER = 10000000000000000.0
     
                 
     if bottomUp:        
         reverse=True
         for i in np.arange(0, len(cost[-1]),1):
-            if not i == endBin:
+            if not i == endBin and not openEnded:
                 cost[-1][i]=LARGE_NUMBER
             else:
                 cost[-1][i]=0
     else:
         for i in np.arange(0, len(cost[0]),1):
-            if not i == endBin:
+            if not i == endBin and not openEnded:
                 cost[0][i]=LARGE_NUMBER
             else:
                 cost[0][i]=0
         reverse=False
-
     
-    pathMatrix = _minCostPath(cost, nCols=bins, nRows=bins, maxStep=maxStep, reverse=reverse, direction=direction, phi=phi)
+    pathMatrix = _minCostPath(cost, nCols=bins, nRows=bins, maxStep=maxStep, reverse=reverse, direction=direction, phi=corrected_phi)
     
     
     cdef int curBin
@@ -984,11 +998,19 @@ def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, bHoris
         lower=False
     else:
         raise("specify population as 'lower' or 'upper'\n")
-    if scale.lower() not in ['linear', 'logish']:
-        raise("specify scale as 'logish' or 'linear'\n")
+    if scale.lower() not in ['linear', 'logish', 'bilog']:
+        raise("specify scale as either 'linear', 'logish' or 'bilog'\n")
     vOut=[]
     vX=getGatedVector(fcsDF, xCol, vI,return_type='nparray')
     vY=getGatedVector(fcsDF, yCol, vI,return_type='nparray')
+    
+    cdef int i
+    if scale.lower() != 'linear':
+        vX=transformWrapper(vX, scale=scale, T=T)
+        vY=transformWrapper(vY, scale=scale, T=T)
+        for i in np.arange(0, len(vPL), 1):
+            vPL[i]=transformWrapper(vPL[i], scale=scale, T=T)
+        
     assert len(vX) == len(vY) == len(vI)
     
     cdef float x0=min(vX)
@@ -996,7 +1018,7 @@ def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, bHoris
     cdef int nOfBins=len(vPL)
     cdef float lim_coord, lim #lim, lim_coord will be x or y depending on axis of interest
     cdef int index
-    cdef int i, dist
+    cdef int dist
     cdef bool bUnhandled = False
     
     cdef int targetAxis = 1 #1 = y-sep, 0 = x-sep
