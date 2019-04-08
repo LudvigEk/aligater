@@ -855,6 +855,9 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
         
     return TopLeft, TopRight, BottomRight, BottomLeft
 
+
+
+
 def axisStats(fcsDF, xCol, vI=None,bins=300, scale='linear',T=1000):
     """
     Report mean, standard deviation and maximum value on axis.
@@ -890,33 +893,94 @@ def axisStats(fcsDF, xCol, vI=None,bins=300, scale='linear',T=1000):
         vI=fcsDF.index
     elif len(vI)<5:
         sys.stderr.write("WARNING, in AxisStats: Passed parent population contains too few events, returning Zero (0).\n") 
-        return 0,0,0
+        return 0,0,0,0
     if xCol not in fcsDF.columns:
         raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
     if scale.lower()=='linear':
         x=getGatedVector(fcsDF,xCol, vI, return_type="nparray")
-    elif scale.lower()=='logish':
+    else:
         x=getGatedVector(fcsDF,xCol, vI, return_type="nparray")
-        x=logishTransform(x,T)
-    
+        x=transformWrapper(x,scale=scale, T=T)
+
     histo=np.histogram(x, bins)
-        
+
     mean=np.mean(x)
     sigma=np.std(x)
+    median = np.median(x)
     maxIndex=np.argmax(histo[0])
-    
+
     if isinstance(maxIndex, np.ndarray):
         maxVal=(histo[1][maxIndex[0]]+histo[1][maxIndex[0]+1])/2
     else:
         maxVal=(histo[1][maxIndex]+histo[1][maxIndex+1])/2
-    
-    if scale.lower()=='logish':
-        result=inverseLogishTransform([mean, sigma, maxVal],T)
-        mean=result[0]
-        sigma=abs(result[1])
-        maxVal=result[2]
+
+    #if scale.lower()=='logish':
+    #    result=inverseLogishTransform([mean, sigma, maxVal],T)
+    #    mean=result[0]
+    #    sigma=abs(result[1])
+    #    maxVal=result[2]
+
+    return mean, median, sigma, maxVal
+
+def EllipseGate(fcs, name, xCol, yCol, center, width, parentGate=None, height=None, angle=0, scale='linear', T=1000, filePlot=None):
+    #TODO: NOT WORKING WITH SCALES!
+    if agconf.execMode in ["jupyter","ipython"]:
+        plot=True
+    else:
+        plot=False    
+    if not isinstance(fcs,AGsample):
+        raise invalidSampleError("in EllipseGate:")
+    if parentGate is None:
+        vI=fcs.full_index()
+    elif not isinstance(parentGate,AGgate):
+        raise invalidAGgateParentError('in EllipseGate:')
+    else:
+        vI=parentGate()
+    fcsDF=fcs()
+    if filePlot is not None:
+        if not isinstance(filePlot,str):
+            raise TypeError("If plotting to file is requested filePlot must be string filename")
+    if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
+        raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
+    if not isinstance(center,(list, np.ndarray)):
+        raise AliGaterError("in EllipseGate","center must be python list or numpy array")
+    elif not len(center) == 2:
+        raise AliGaterError("in EllipseGate","invalid center dim (must be length of two list-like)")       
+    if height is None:
+        height=width
+    if width <= 0 or height <=0:
+        raise AliGaterError("in EllipseGate","height/width cant be negative")       
         
-    return mean, sigma, maxVal
+    #fcsDF, str xCol, str yCol, float xCenter, float yCenter, list majorAxis, float majorRadii, list minorAxis, float minorRadii    
+    
+    if angle == 0: #To avoid weird rounding when angle is zero
+        majorAxis = [1,0]
+        minorAxis = [0,1]
+    else:
+        majorAxis = [width*np.cos(angle), width*np.sin(angle)] / np.linalg.norm([width*np.cos(angle), width*np.sin(angle)])
+        minorAxis = [height*np.cos(angle+np.pi/2), height*np.sin(angle+np.pi/2)] / np.linalg.norm([height*np.cos(angle+np.pi/2), height*np.sin(angle+np.pi/2)])
+
+    if scale.lower() != 'linear':
+        if center[0] != 0:
+            width = transformWrapper(width+center[0], scale=scale, T=T) - transformWrapper(width, scale=scale, T=T)
+        else:
+            width = transformWrapper(width, scale=scale, T=T)
+        if center[1] != 0:
+            height = transformWrapper(height+center[1], scale=scale, T=T) - transformWrapper(height, scale=scale, T=T)
+        else:
+            height = transformWrapper(height, scale=scale, T=T)
+        center = transformWrapper(center, scale=scale, T=T)
+        #majorAxis = transformWrapper(majorAxis, scale=scale, T=T)
+        #minorAxis = transformWrapper(minorAxis, scale=scale, T=T)
+
+    majorAxis=list(majorAxis)
+    minorAxis=list(minorAxis)
+
+    #if using a non-linear scale, the input center, axis and radii must be in the correct transformed coordinates.
+    
+    vOut = gateEllipsoid(fcsDF=fcs(), xCol=xCol, yCol=yCol, xCenter=center[0], yCenter=center[1], majorAxis = majorAxis, majorRadii = width, minorAxis = minorAxis, minorRadii=height, vI=vI, population="inner", info=False, scale=scale, T=T)
+    output_gate = AGgate(vOut, parentGate, xCol, yCol, name)
+    return output_gate
 
 def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrientation='upper', Outer=False, parentGate=None, bins=300, scale='linear', T=1000, update=False, filePlot=None, QC=False):
     """
@@ -1302,6 +1366,8 @@ def backGate(fcs, xCol, yCol, population, background_population=None, markersize
     if filePlot is not None:
         plt.savefig(filePlot)
         plt.close()
+    else:
+        plt.show()
     return None
 
 def gateTiltedLine(fcs, xCol, yCol, theta, name, parentGate=None, startPoint=(None,None), endLimits=(None,None), population='upper', scale='linear', xscale='linear', yscale='linear', T=1000, filePlot=None):
@@ -1500,7 +1566,6 @@ def gateTiltedLine(fcs, xCol, yCol, theta, name, parentGate=None, startPoint=(No
     
 
     #Now we know if there is an A and C section but extent of B section is unknown
-    #CAVE: only positive degrees atm
     x_at_ylim = (B_ylim - m)/k
     if not negative_k:
         if y_at_xlim <= B_ylim:
@@ -1517,15 +1582,6 @@ def gateTiltedLine(fcs, xCol, yCol, theta, name, parentGate=None, startPoint=(No
             B_endx = (B_ylim - m)/k
             B_endy = B_ylim
     
-    #DEBUG
-    #reportStr="negative_k: "+str(negative_k)+"\n"
-    #sys.stderr.write(reportStr)
-    #reportStr="y_at_xlim: "+str(inverseTransformWrapper(y_at_xlim, scale=scale, T=T))+"\nB_ylim: "+str(inverseTransformWrapper(B_ylim, scale=scale, T=T))+"\n"
-    #sys.stderr.write(reportStr)
-    #reportStr="B_endx: "+str(inverseTransformWrapper(B_endx, scale=scale, T=T))+"\n"
-    #sys.stderr.write(reportStr)
-    #reportStr="has_a: "+str(has_a)+" has_c: "+str(has_c)+"\n"
-    #sys.stderr.write(reportStr)
     
     result_vI = []
     if population.lower() == 'upper':

@@ -242,7 +242,7 @@ class AGgate:
             raise ValueError(reportStr) 
         return self.parent
     
-    def downSample(self, fcsDF, bins, xlim, ylim, scale='linear', xscale='linear', yscale='linear'):
+    def downSample(self, fcsDF, bins, xlim, ylim, scale='linear', xscale='linear', yscale='linear', T=1000):
         vX, vY = getGatedVectors(fcsDF, self.xCol, self.yCol, vI=self.parent, return_type="nparray")
         #flaggedIndicies=[]
         for i in np.arange(0,len(vX),1):
@@ -257,7 +257,7 @@ class AGgate:
         heatmapRange=[xlim, ylim]
         #vX=np.delete(vX, flaggedIndicies)
         #vY=np.delete(vY, flaggedIndicies)
-        self.m_downSample = getHeatmap(vX, vY, bins, scale, xscale, yscale, normalize=True, range=heatmapRange)[0]
+        self.m_downSample = getHeatmap(vX, vY, bins, scale, xscale, yscale, T=T, normalize=True, range=heatmapRange)[0]
         self.bQC=True
         
     def setInvalid(self):
@@ -415,7 +415,7 @@ class AGsample:
                 sys.stderr.write(reportStr)
                 return None
         
-    def update(self, gate, downSamplingBins=32, xlim=[0,500000], ylim=[0,500000], QC=False, scale='linear', xscale='linear', yscale='linear'):
+    def update(self, gate, downSamplingBins=32, xlim=[0,500000], ylim=[0,500000], QC=False, scale='linear', xscale='linear', yscale='linear', T=1000):
         if not isinstance(gate,AGgate):
             raise invalidAGgateError("in AGsample.update: ")
         if gate.xCol not in self.fcsDF.columns:
@@ -425,7 +425,7 @@ class AGsample:
         self.vGates.append(gate)
         if QC:
             if not gate.bInvalid:
-                gate.downSample(self.fcsDF, downSamplingBins, xlim, ylim, scale, xscale, yscale)
+                gate.downSample(self.fcsDF, downSamplingBins, xlim, ylim, scale, xscale, yscale, T=T)
         
     def full_index(self):
         return list(self.fcsDF.index.values)
@@ -740,7 +740,66 @@ class AGQC:
             self.image_list = image_data
             return [sample_data, image_data]
 
-    
+    def select_images(self, imlist):
+        if self.sample_list is None:
+            reportStr="No population is selected!\nRun select_population first\n"
+            sys.stderr.write(reportStr)
+            return None
+        if not isinstance(imlist, (list, np.ndarray)):
+            raise AliGaterError("in AGQC::select_images","passed imlist must be list of str sample names")
+            if not all(isinstance(x, str) for x in imlist):
+                raise AliGaterError("in AGQC::select_images","passed imlist must be list of str sample names")
+        output_images=[]
+        output_samples=[]
+        not_found=[]
+        nFound=0
+        for i in np.arange(0,len(imlist),1):
+            for ix in np.arange(0,len(self.sample_list),1):
+                if imlist[i].lower() == self.sample_list[ix].lower():
+                    output_images.append(self.image_list[ix])
+                    output_samples.append(self.sample_list[ix])
+                    nFound+=1
+                    break
+            else:
+                not_found.append(imlist[i])
+        if len(not_found) > 0 and len(not_found) != len(imlist):
+            reportStr=str(len(not_found))+" image(s) not found in currently loaded population:\n"
+            sys.stderr.write(reportStr)
+            for missing_samp in not_found:
+                sys.stderr.write(missing_samp)
+                sys.stderr.write("\n")
+        if len(not_found) == len(imlist):
+            sys.stderr.write("No images found\n")
+        return output_samples, output_images
+        
+    def define_training_sets(self, lSamplelists, shuffle=True):
+        if self.sample_list is None:
+            reportStr="No population is selected!\nRun select_population first\n"
+            sys.stderr.write(reportStr)
+            return None
+        if not isinstance(lSamplelists,(list, np.ndarray)):
+            raise AliGaterError("in AGQC::define_training_sets","passed lSamplelists must be list/numpy array")
+        if not all(isinstance(x,(list,np.ndarray)) for x in lSamplelists):
+            raise AliGaterError("in AGQC::define_training_sets","lSamplelists must contain >2 lists/numpy arrays with sample names")
+        
+        curClass = 0
+        full_train_array=[]
+        for training_set in lSamplelists:
+            current_set_samples = self.select_images(training_set)
+            current_train_array=[]
+            for i in np.arange(0, len(current_set_samples[0]), 1):
+                current_train_array.append([curClass,current_set_samples[0][i],current_set_samples[1][i]])
+            full_train_array = full_train_array + current_train_array
+            curClass+=1
+        
+        if shuffle:
+            np.random.shuffle(full_train_array)
+        target_array = [x[0] for x in full_train_array]
+        name_array = [x[1] for x in full_train_array]
+        im_array = [x[2] for x in full_train_array]
+        
+        return name_array, target_array, im_array
+        
     def loadDownSampleNumpyArr(self,file):
         #Create/reset list to contain images and sample names
         imlist=[]
@@ -1161,7 +1220,9 @@ class AGExperiment:
         if bFlagged:
             self.flaggedSamples.append(fcs.sample)
     
-    def printExperiment(self, file):
+    def printExperiment(self, file=None):
+        if file is None:
+            file=self.output_folder+self.exp_name+".results.txt"
         assert isinstance(file, str)
         assert all(isinstance(i, list) for i in [self.resultHeader, self.resultMatrix])
         fhandle = open(file, 'w')
