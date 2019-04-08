@@ -190,6 +190,22 @@ def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xli
         yBinEdges=bilogBin(vY,bins,T, yRange)
         return np.histogram2d(vX, vY, [bins,yBinEdges])
 
+def plot_flattened_heatmap(heatmap_array, nOfBins, mask=True):
+    
+    reshaped_array = heatmap_array.reshape(nOfBins, nOfBins)
+    fig, ax = plt.subplots()
+    if mask:
+        heatmap=np.ma.masked_where(reshaped_array == 0, reshaped_array)
+        cmap=plt.get_cmap()
+        cmap.set_bad(color='white')
+    else:
+        heatmap=reshaped_array
+    plt.imshow(heatmap)
+    plt.show()
+    plt.clf()
+    
+    return None
+
 
 def transformWrapper(vX, T, scale):
     result=None

@@ -513,9 +513,10 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
     return outputGate
 
 
-@cython.boundscheck(False)
-@cython.wraparound(False)
-def shortestPathMatrix_V2(fcs, str name, str xCol, str yCol, list xboundaries, list yboundaries, parentGate=None, float sigma=3, int maxStep=20, str scale='linear', str xscale='linear', str yscale='linear', str startingCorner='bottomleft', str population='lower', int bins=300, float T=1000, QC=False):
+
+def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='negative',
+                 startY=None, list xboundaries=None, list yboundaries=None, bool leftRight=True , str direction='up', maxStep=5, phi=0,
+                 int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True):
     if agconf.execMode in ["jupyter","ipython"]:
         plot=True
     else:
@@ -533,30 +534,36 @@ def shortestPathMatrix_V2(fcs, str name, str xCol, str yCol, list xboundaries, l
         startingGate=parentGate
     if len(vI)<5:
         sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
-        outputGate=AGgate([],parentGate,xCol,yCol,name)     
-        return outputGate
-    
+        outputGate=AGgate([],parentGate,xCol,yCol,name)
+    cdef int startbin
     cdef bool has_xbound, has_ybound
     has_xbound = has_ybound = False
     
-    if len(xboundaries) ==0:
-        pass
-    elif len(xboundaries) !=2:
-        reportStr="in shortestPathMatrix: xboundaries must be list of two, found: "+str(len(xboundaries))+" entries."
-        raise ValueError(reportStr)
-    else:
-        has_xbound=True
-        
-    if len(yboundaries) ==0:
-        pass
-    elif len(yboundaries) !=2:
-        reportStr="in shortestPathMatrix: yboundaries must be list of two, found: "+str(len(yboundaries))+" entries."
-        raise ValueError(reportStr)
-    else:
-        has_ybound=True
-        
+    if xboundaries is not None:
+        if isinstance(xboundaries, list):
+            if len(xboundaries) ==0:
+                pass
+            elif len(xboundaries) !=2:
+                reportStr="in horisontalPath: xboundaries must be list of two, found: "+str(len(xboundaries))+" entries."
+                raise ValueError(reportStr)
+            else:
+                has_xbound=True
+        else:
+            raise AliGaterError("in horisontalPath: ","is xboundaries is passed it must be list.")
+
+    if yboundaries is not None:
+        if isinstance(yboundaries, list):
+            if len(yboundaries) ==0:
+                pass
+            elif len(yboundaries) !=2:
+                reportStr="in horisontalPath: yboundaries must be list of two, found: "+str(len(yboundaries))+" entries."
+                raise ValueError(reportStr)
+            else:
+                has_ybound=True    
+        else:
+            raise AliGaterError("in horisontalPath: ","is yBoundaries is passed it must be list.")
+    
     originalvI=vI
-    fcsDF=fcs()
     if has_ybound and not has_xbound:
         tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=startingGate,info=False)
         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
@@ -570,50 +577,8 @@ def shortestPathMatrix_V2(fcs, str name, str xCol, str yCol, list xboundaries, l
         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
     #Switch from AGgate obj -> list from here
     vI=startingGate()
-    cdef np.ndarray vX=getGatedVector(fcsDF, xCol, vI, return_type="nparray")
-    cdef np.ndarray vY=getGatedVector(fcsDF, yCol, vI, return_type="nparray")
-    
-    if len(vX)<5 or len(vY)<5:
-        sys.stderr.write("in shortestPathMatrix: For population "+name+". Too few events in specified window, returning empty gate.\n") 
-        outputGate=AGgate([],parentGate,xCol,yCol,name)       
-        return outputGate
-    xscale = yscale = scale
-    heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, T)
-    cdef np.ndarray[dtype_t, ndim=2] smoothedHeatmap = gaussian_filter(heatmap.astype(float),sigma=sigma)
-    cdef np.ndarray[dtype_t, ndim=2] cost = np.empty_like(smoothedHeatmap, dtype=np.float_)
-    cdef np.ndarray[dtype_t, ndim=2] leftBin = np.empty_like(smoothedHeatmap, dtype=np.float_)
-    cost.fill(np.inf)
-    leftBin.fill(0)
 
-
-
-
-    
-    cdef int y, x
-    cdef int previousX, adjustedMaxStep, dist, stepIndex
-    cdef float stepCost, penalty
-    cdef int leftBinIndex
-    cdef np.ndarray[dtype_t, ndim=1] stepCosts = np.zeros([maxStep],dtype=np.float_)
-    cdef int costIdx, tmpIdx, minCostIdx
-    cdef float minCost
-    cdef int startY, endY
-    #Force going from bottom left to top right
-    if startingCorner.lower() == 'bottomleft':
-        startX=0
-        endX=bins
-        xStep=1
-        cost[0][0]=smoothedHeatmap[0][0]
-        cost[bins-1][bins-1]=smoothedHeatmap[bins-1][bins-1]
-    elif startingCorner.lower() == 'bottomright':
-        startX=bins-1
-        endX=-1
-        xStep=-1
-        maxStep=-maxStep
-        cost[0][bins-1]=smoothedHeatmap[0][bins-1]
-        cost[bins-1][0]=smoothedHeatmap[bins-1][0]
-
-
-
+<<<<<<< HEAD
     for y in range(1,bins,1):
         for x in range(startX,endX,xStep): 
             for tmpIdx in range(0,abs(maxStep),1):
@@ -733,6 +698,8 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
         sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
         outputGate=AGgate([],parentGate,xCol,yCol,name)
     cdef int startbin
+=======
+>>>>>>> 4f8a3a7d805f49ba9094d115640f31f360ed9ee6
 
     vX,vY = getGatedVectors(fcsDF=fcs(), gate1=xCol, gate2=yCol, vI=vI)
     #Note on the heatmap, from numpy docs, np.histogram2d
@@ -741,7 +708,9 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     heatmap, xedges, yedges = getHeatmap(vX=vX, vY=vY, scale=scale, xscale=scale, yscale=scale, T=T, bins=bins)
     #I.e. note here, in contrast to verticalPath the cost heatmap from np.histogram2d is NOT transposed!
     cdef np.ndarray[dtype_t, ndim=2] cost = gaussian_filter(heatmap.astype(float),sigma=sigma)
-
+    
+    cdef np.ndarray[dtype_t, ndim=2] plot_heatmap = np.copy(cost)
+        
     if direction.lower() == 'up':
         minCostPathDir = 'right'
     elif direction.lower() == 'down':
@@ -751,25 +720,35 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     else: 
         raise
 
-    if not leftRight:
-        #To be able go top-down and not just bottom-up there's an option to reverse the rows order and keep internal functions
-        #cost = cost[::-1]
-        #yedges also needs to be reversed in that case
-        #xedges=xedges[::-1]
-        reverse = True
-    else:
-        reverse = False
-
-    pathMatrix = _minCostPath(cost, nCols=bins, nRows=bins, maxStep=maxStep, reverse=reverse, direction=minCostPathDir, phi=phi)
-    
-    
     for i in np.arange(0, len(yedges)-2, 1):
         if startY >= yedges[i] and startY < yedges[i+1]:
             startBin = i
             break
     else:
         raise AliGaterError("in horisontalPath","startY out of bounds")
-        
+
+    cdef int endBin
+    endBin = startBin
+    cdef float LARGE_NUMBER = 10000000000000000.0
+    
+    if not leftRight:
+        #To be able go right-left and not just left-right there's an option to reverse the rows order and keep internal functions
+        reverse = True
+        for i in np.arange(0, len(cost[-1]),1):
+            if not i == endBin:
+                cost[-1][i]=LARGE_NUMBER
+            else:
+                cost[-1][i]=0        
+    else:
+        for i in np.arange(0, len(cost[0]),1):
+            if not i == endBin:
+                cost[0][i]=LARGE_NUMBER
+            else:
+                cost[0][i]=0
+        reverse=False
+
+    pathMatrix = _minCostPath(cost, nCols=bins, nRows=bins, maxStep=maxStep, reverse=reverse, direction=minCostPathDir, phi=phi)
+          
     cdef int curBin
     cdef int nextBin
     path=[]
@@ -786,7 +765,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     else:
         path.append( [xedges[0], yedges[curBin]])
     
-    vOut=gatePointList(fcs(),xCol,yCol,path, population=population, vI=vI)
+    vOut=gatePointList(fcs(),xCol,yCol,path, population=population, vI=originalvI)
     reportGateResults(vI,vOut)
     
 
@@ -799,7 +778,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
         plt.clf()
         fig, ax = plt.subplots()
         extent = [min(xedges), max(xedges), min(yedges), max(yedges)]
-        plt.imshow(cost.T, extent=extent, origin='lower',aspect='auto')
+        plt.imshow(plot_heatmap.T, extent=extent, origin='lower',aspect='auto')
         plt.xlabel(xCol)
         plt.ylabel(yCol)
         cmap=plt.get_cmap()
@@ -908,24 +887,6 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
     
     cdef float LARGE_NUMBER = 10000000000000000.0
     
-    # cdef float blockRatio
-    # cdef int blockedBins
-    # if horisontalBlock!=0:
-    #     blockRatio = float(horisontalBlock)/100.0
-    #     blockedBins = int(blockRatio * bins + 0.5)
-    #     if startBin <= blockedBins:
-    #         blockedBins = startBin - 1
-    #         sys.stderr.write("Block includes startX, adjusting block width.")
-    #     if startBin >= bins-blockedBins:
-    #         blockedBins = bins-1 - startBin-1
-    #         sys.stderr.write("Block includes startX, adjusting block width.")
-    #     print("blocked bins: "+str(blockedBins))
-    #     for i in np.arange(0,blockedBins,1):
-    #         for y in np.arange(0, bins,1):
-    #             cost[y][i] = LARGE_NUMBER
-    #     for i in np.arange(bins-blockedBins,bins,1):
-    #         for y in np.arange(0, bins,1):
-    #             cost[y][i] = LARGE_NUMBER
                 
     if bottomUp:        
         reverse=True

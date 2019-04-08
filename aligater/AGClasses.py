@@ -21,15 +21,18 @@ import numpy as np
 import pandas as pd
 import sys, os, errno
 import gc   #for manually calling garbage collection during large iterations
+import datetime #For creating output folder names
 
-#These are used by the QC object to store downsampled images in tempfiles and then move them once the batch analysis is complete
+#These are for i/o operations used by the AGQC object to store downsampled images
 import tempfile
 from shutil import copyfile
+import h5py
 
 #AliGater imports
 import aligater.AGConfig as agconf
-from aligater.AGPlotRoutines import getHeatmap, imagePCA_cluster
+from aligater.AGPlotRoutines import getHeatmap, imagePCA_cluster, plot_flattened_heatmap
 from aligater.AGFileSystem import getGatedVectors, getFileName, getParent, collectFiles, listDir, loadFCS, getCompensationMatrix, AliGaterError, invalidAGgateError, check_exists, applyFilter
+#API to the FlowCytometryTools parser
 from aligater.fscparser_api import parse
 
 sentinel=object()   
@@ -522,8 +525,10 @@ class AGsample:
 class AGQC:
     """
     **Overview**
-
-    TODO
+    Object that manages downsampled images while AliGater is running. It can also be used to load previously saved downsampled images to do quality control.
+    
+    While an AGExperiment is running with active QC the downsampled images are saved in temporary files as np arrays.
+    After a run is completed they are reloaded, and stored as one bigger HDF5 object with metadata about the for simpler loading at a later time.
     
     **Members**
     
@@ -547,6 +552,11 @@ class AGQC:
     """
     tmpFiles=[]
     downSamplingBins=32
+    lGate_names=[]
+    sourceFilePath=None
+    h5py_filehandle=None
+    image_list=[]
+    sample_list=[]
     
     def __init__(self, downSamplingBins=32, *args, **kwargs):
         self.nOfBins=downSamplingBins
@@ -555,8 +565,9 @@ class AGQC:
         if len(self.tmpFiles)==0:
             sys.stderr.write("Initiating QC files\n")
         for gate in fcs.vGates:
-            tf = self.returnTempFile(gate)
-            self.printDownSample(tf, gate, fcs.sample)
+            if gate.bQC:
+                tf = self.returnTempFile(gate)
+                self.printDownSample(tf, gate, fcs.sample)
     
     #Files are opened in r+w mode as per default. Call seek(0) to access for read when complete
     #Creates a tempfile for the gate if it doesn't already exists
@@ -589,9 +600,10 @@ class AGQC:
     
     def reportPCs(self,folder):
         for elem in self.tmpFiles:    
-            #TODO; ALIGATER_HOME/ALIGATER_OUTPUT path variables
-            destStr=str(agconf.ag_out)+"tests/"+str(folder)+"-"+str(elem[2])+".txt"
+            destStr=str(folder)+str(elem[2])+".AGQC.txt"
             copyfile(elem[1], destStr)
+        reportStr= "Copied all downsampled files to: "+folder+"\n"
+        sys.stderr.write(reportStr)
             
         for file in self.tmpFiles:
             #Create/reset list to contain images and sample names
@@ -604,15 +616,150 @@ class AGQC:
             while True:
                 try:
                     image=np.load(fhandle)
-                except OSError as err:
+                except OSError:
                     break
                 arr=image[2:].astype(float)
                 sampleName=image[0]
+                downSambleBins=image[1]
                 imlist.append(arr)
                 samplelist.append(sampleName)
-            reportStr="Calculating PC and clustering for "+file[2]+"\n"
+    
+    def saveHDF5_QC_obj(self, destFilePath, experiment_name):
+        sys.stderr.write("Creating HDF5 QC object\n")
+
+        #has_truncated_sample_names = False
+        with h5py.File(destFilePath, 'w') as h5pyfile:
+        
+            for file in self.tmpFiles:
+                population_name = file[2]
+                population_sample_names = population_name+"_samples"
+                #Create/reset list to contain images and sample names
+                population_array=[]
+                sample_names=[]
+                #Reset file to read from beginning
+                fhandle=open(file[1],"rb")
+                fhandle.seek(0)
+                #Read all images in the file
+                while True:
+                    try:
+                        image=np.load(fhandle)
+                    except OSError:
+                        break
+                    #Image data is from third element and onwards
+                    arr=image[2:].astype(float)
+                    population_array.append(arr)
+                    #Resolution (int) is at position 2
+                    downSamplingBins=image[1].astype(int)
+                    #Sample name is at position 0, we recode to UTF-8 for H5py compatibility
+                    sample_name=image[0].encode('UTF-8')
+                    sample_names.append(sample_name)
+
+                dataset = h5pyfile.create_dataset(population_name, data=population_array)
+                dataset.attrs['resolution']=downSamplingBins
+                dt = h5py.special_dtype(vlen=str)
+                dataset = h5pyfile.create_dataset(population_sample_names, data=sample_names, dtype=dt)
+                
+        reportStr="Saved QC data to: "+str(destFilePath)+"\n"
+        sys.stderr.write(reportStr)
+    
+    def load_QC_file(self, sourceFilePath):
+        self.sourceFilePath = sourceFilePath
+        with h5py.File(sourceFilePath, 'r') as h5pyfile:
+            all_keys = list(h5pyfile.keys())
+            for key in all_keys:
+                if not key[-8:] == '_samples':
+                    self.lGate_names.append(key)
+            reportStr="Loaded metadata for QC file with "+str(len(self.lGate_names))+" gates:\n"
             sys.stderr.write(reportStr)
-            PC_DF=imagePCA_cluster(imlist, samplelist,nOfComponents=10)
+            for gate_name in self.lGate_names:
+                sys.stderr.write(gate_name)
+                sys.stderr.write("\n")
+            sys.stderr.write("Load a specific population for QC with select_population\n")
+            self.h5py_filehandle = h5pyfile
+    
+    def image_viewer(self, sample_data=None, image_data=None, name=None, rand_select=None, mask_zero=False):
+        if sample_data is None:
+            sample_data = self.sample_list
+        if image_data is None:
+            image_data = self.image_list
+        assert len(sample_data) == len(image_data)
+        #Check if a name is given first
+        if name is not None:
+            if not isinstance(name,str):
+                raise AliGaterError("in AGQC.image_viewer", "name must be str")
+            for i in np.arange(0,len(sample_data),1):
+                if name.lower() == sample_data[i].lower():
+                    index=i
+                    break
+            else:
+                reportStr="sample "+str(name)+" not found in passed arrays."
+                sys.stderr.write(reportStr)
+                return None
+            plot_flattened_heatmap(image_data[index], self.nOfBins, mask=mask_zero)
+        elif rand_select is not None:
+            if not isinstance(rand_select,int):
+                raise AliGaterError("in AGQC.image_viewer", "rand_select must be int")
+            if rand_select >= len(image_data):
+                sys.stderr.write("WARNING: random selection larger than there is available images")
+                rand_select = len(image_data)
+            random_selection = np.random.randint(len(image_data), size=rand_select)
+            for i in random_selection:
+                print(sample_data[i])
+                plot_flattened_heatmap(image_data[i], self.nOfBins, mask=mask_zero)
+            return None
+        else:
+            for index in np.arange(0,len(image_data),1):
+                print(sample_data[index])
+                plot_flattened_heatmap(image_data[index], self.nOfBins, mask=mask_zero)   
+        return None
+    
+    def select_population(self, population):
+        if self.sourceFilePath is None:
+            reportStr="No QC object is loaded!\nRun load_QC_file first\n"
+            sys.stderr.write(reportStr)
+            return None
+        with h5py.File(self.sourceFilePath, 'r') as h5pyfile:
+            all_keys = list(h5pyfile.keys())
+            for key in all_keys:
+                if key.lower() == population.lower():
+                    match = key
+                    match_samples = match+"_samples"
+                    break
+            else:
+                reportStr="population not found in QC obj: "+str(population)+"\nYou can view available gates in currently loaded QC obj with <QCOBJ>.lGate_names\n"
+                sys.stderr.write(reportStr)
+                return None
+            image_data = h5pyfile[match][:]
+            sample_data = h5pyfile[match_samples][:]
+            self.downSamplingBins = h5pyfile[match].attrs['resolution']
+            if not len(image_data)==len(sample_data):
+                raise AliGaterError("invalid AGQC file"," not equal number of sample names and sample images")
+            reportStr="Loaded data for "+str(population)+" containing "+str(len(sample_data))+" ("+str(self.downSamplingBins)+","+str(self.downSamplingBins)+") images\n"
+            sys.stderr.write(reportStr)
+            self.sample_list = sample_data
+            self.image_list = image_data
+            return [sample_data, image_data]
+
+    
+    def loadDownSampleNumpyArr(self,file):
+        #Create/reset list to contain images and sample names
+        imlist=[]
+        samplelist=[]
+        #Reset file to read from beginning
+        fhandle=open(file[1],"rb")
+        fhandle.seek(0)
+        #Read all images in the file
+        while True:
+            try:
+                image=np.load(fhandle)
+            except OSError:
+                break
+            arr=image[2:].astype(float)
+            sampleName=image[0]
+            imlist.append(arr)
+            samplelist.append(sampleName)
+        return [samplelist, imlist]
+            
 
             
 class AGExperiment:
@@ -728,6 +875,8 @@ class AGExperiment:
     flaggedSamples=[]       #List of tuple (path, flagged pop)
     resultHeader=None
     resultMatrix=None
+    output_folder=None
+    exp_name=None
     bQC=False
     QCbins=32
     
@@ -797,7 +946,7 @@ class AGExperiment:
             
         if 'QC' in kwargs:
             if not isinstance(kwargs['QC'],bool):
-                raise (TypeError("QC must be bool"))
+                raise (TypeError("QC must be bool (True/False)"))
             self.bQC=kwargs['QC']
             if self.bQC:
                 reportStr="QC requested\n"
@@ -829,7 +978,43 @@ class AGExperiment:
             if self.man_comp:
                 raise ValueError("Cannot both give compensation exception list and provide manual compensation matrix")
             self.compensation_exceptions=kwargs['compList']
-
+        
+        if 'experiment_name' in kwargs:
+            if not isinstance(kwargs['experiment_name'],str):
+                raise (TypeError("experiment_name must be specified as string"))
+            try:
+                self.exp_name = kwargs['experiment_name']
+                if agconf.ag_out[-1]=="/":
+                    self.output_folder=str(agconf.ag_out)+self.exp_name
+                else:
+                    self.output_folder=str(agconf.ag_out)+"/"+self.exp_name
+                os.makedirs(self.output_folder)
+            except FileExistsError:
+                reportStr="WARNING: specified output directory ("+str(agconf.ag_out)+str(kwargs['experiment_name'])+") already exists, content in folder might be overwritten without warning\n"
+                sys.stderr.write(reportStr)
+                pass
+            
+        
+        if self.output_folder is None:
+            self.exp_name = 'AGexperiment_'+str(datetime.datetime.now().date()) + '_' + str(datetime.datetime.now().time()).replace(':', '_')
+            if agconf.ag_out[-1]=="/":
+                self.output_folder=str(agconf.ag_out)+self.exp_name
+            else:
+                self.output_folder=str(agconf.ag_out)+"/"+self.exp_name
+            reportStr="No experiment name specified, generated name: "+self.exp_name+"\n"
+            sys.stderr.write(reportStr)
+            if agconf.execMode == 'terminal':
+                #TODO, when to create output folder - likely first time something has to be written? Only in batch/terminal mode?
+                os.makedirs(self.output_folder)
+        
+        #Check that output folder path variable ends with a slash, no matter if its generated or manually specified
+        #And save it as a class member
+        if self.output_folder[-1] != "/":
+            self.output_folder = self.output_folder+"/"
+        else:
+            self.output_folder = self.output_folder
+        
+        
         if not isinstance(experimentRoot,str):
             if not isinstance(experimentRoot, list):
                 raise AliGaterError("in AGExperiment initialisation: ","ExperimentRoot must be str filepath or list of str filepaths")
@@ -866,7 +1051,7 @@ class AGExperiment:
             filesInFolder=next(os.walk(folder))[2]
             if not filesInFolder:
                 lFlaggedFolders.append(index)
-        #To not get issues with cascading indicies while deleting go from the last element->first
+        #To avoid cascading indicies while deleting go from last element->first
         lFlaggedFolders=np.sort(lFlaggedFolders)[::-1]
         for index in lFlaggedFolders:
             del self.plateList[index]
@@ -907,7 +1092,8 @@ class AGExperiment:
             sys.stderr.flush()
                     
         nOfFlagged=len(self.flaggedSamples)
-        fhandle=open("testRun.log.txt",'w')
+        log_file_name = self.output_folder+"/"+self.exp_name+".log.txt"
+        fhandle=open(log_file_name,'w')
         reportStr="Complete, "
         if nOfFlagged>0:
             reportStr=reportStr+str(nOfFlagged)+" samples had at least one gate with an invalid flag set"
@@ -921,10 +1107,12 @@ class AGExperiment:
             sys.stderr.write(reportStr)
             fhandle.write(reportStr)
         if self.bQC:
-            if 'folder' in kwargs:
-                folder=kwargs['folder']
+            #if 'folder' in kwargs:
+            #    folder=kwargs['folder']
             #TODO: default folder
-            QCObj.reportPCs(folder)
+            #QCObj.reportPCs(self.output_folder)
+            QC_file_name=self.output_folder+self.exp_name+".QC.HDF5"
+            QCObj.saveHDF5_QC_obj(destFilePath=QC_file_name, experiment_name=self.exp_name)
 
     
     def initResultMatrix(self, fcs):
