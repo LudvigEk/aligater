@@ -8,10 +8,10 @@ minCells=200
 
 #the cellFilter threshhold is the _initial_ required number of events per sample when it's first loaded
 #If lower than this, the entire sample is skipped and strategy never applied
-cellFilter=50000
+cellFilter=100000
 
 #Truncate values below this treshold i.e. if any measured value is lower than this, the value is piled up at this level instead. Set with generous margin but might affect viewability of plots if too generous.
-ag_trimMeasurements = -10000
+ag_trimMeasurements = -5000
 
 #Sets verbosity level, if False only minor information and warnings are printed. Does not affect plotting behaviour.
 ag_verbose=False

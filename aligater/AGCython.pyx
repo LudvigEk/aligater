@@ -111,7 +111,11 @@ def gateEllipsoid(fcsDF, str xCol, str yCol, float xCenter, float yCenter, list 
     elif population.lower()=="outer":
         lower=False
     else:
-        raise TypeError("Specify desired population, 'outer' or 'inner' in regard to ellipsoid")    
+        raise TypeError("Specify desired population, 'outer' or 'inner' in regard to ellipsoid")   
+    if majorRadii <= 0 or minorRadii <= 0:
+        sys.stderr.write("in gateEllipsoid: Either minor or major Radii specified as zero/less than zero. Returning empty index.")
+        return []
+        
     vOutput=[]
 
     cdef np.ndarray[dtype_t, ndim = 1] vX = getGatedVector(fcsDF, xCol, vI, return_type='nparray',dtype=np.float64)
@@ -799,7 +803,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
 
 def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='lower',
                  startX=None, endX=None, bool bottomUp=True, list xboundaries=None, list yboundaries=None, str direction='right', bool openEnded=False, maxStep=5, phi=0.0,
-                 int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True):
+                 int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True, filePlot=None):
     if agconf.execMode in ["jupyter","ipython"]:
         plot=True
     else:
@@ -819,6 +823,8 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
     if len(vI)<5:
         sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
         outputGate=AGgate([],parentGate,xCol,yCol,name)
+        return outputGate
+
     cdef int startbin
  
     cdef bool has_xbound, has_ybound
@@ -945,7 +951,7 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
     else:
         outputGate=AGgate(vOut, None, xCol, yCol, name)
         
-    if plot:
+    if plot or filePlot is not None:
         plt.clf()
         fig, ax = plt.subplots()
         extent = [min(xedges), max(xedges), min(yedges), max(yedges)]
@@ -963,10 +969,17 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
             fig,ax = addLine(fig,ax,previousCoord,coord,scale=scale,T=T)
             previousCoord=coord
             count+=1
-        plt.show()
+        if filePlot is not None:
+            plt.savefig(filePlot)
+            
+        if plot:
+            plt.show()
+            
         plt.clf()
-        plotHeatmap(fcs(), xCol, yCol, outputGate(), scale=scale,thresh=T)
-        plt.show()
+        
+        if plot:
+            plotHeatmap(fcs(), xCol, yCol, outputGate(), scale=scale,thresh=T)
+            plt.show()
         
     return outputGate
 

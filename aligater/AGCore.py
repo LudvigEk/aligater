@@ -909,7 +909,7 @@ def axisStats(fcsDF, xCol, vI=None,bins=300, sigma=3, scale='linear',T=1000):
         histo = np.histogram(x, BinEdges)
     else:
         histo=np.histogram(x, bins)
-    vHisto=np.linspace(min(histo[1]),max(histo[1]),bins)
+    vHisto=np.linspace(min(histo[1]),max(histo[1]),bins+1)
     smoothedHisto=gaussian_filter1d(histo[0].astype(float),sigma)
     #print(np.argmax(smoothedHisto))
     #*****
@@ -973,14 +973,14 @@ def EllipseGate(fcs, name, xCol, yCol, center, width, parentGate=None, height=No
         minorAxis = [height*np.cos(angle+np.pi/2), height*np.sin(angle+np.pi/2)] / np.linalg.norm([height*np.cos(angle+np.pi/2), height*np.sin(angle+np.pi/2)])
 
     if scale.lower() != 'linear':
-        if center[0] != 0:
-            width = transformWrapper(width+center[0], scale=scale, T=T) - transformWrapper(width, scale=scale, T=T)
-        else:
-            width = transformWrapper(width, scale=scale, T=T)
-        if center[1] != 0:
-            height = transformWrapper(height+center[1], scale=scale, T=T) - transformWrapper(height, scale=scale, T=T)
-        else:
-            height = transformWrapper(height, scale=scale, T=T)
+        # if center[0] != 0:
+        #     width = transformWrapper(width+center[0], scale=scale, T=T) - transformWrapper(width, scale=scale, T=T)
+        # else:
+        #     width = transformWrapper(width, scale=scale, T=T)
+        # if center[1] != 0:
+        #     height = transformWrapper(height+center[1], scale=scale, T=T) - transformWrapper(height, scale=scale, T=T)
+        # else:
+        #     height = transformWrapper(height, scale=scale, T=T)
         center = transformWrapper(center, scale=scale, T=T)
         #majorAxis = transformWrapper(majorAxis, scale=scale, T=T)
         #minorAxis = transformWrapper(minorAxis, scale=scale, T=T)
@@ -1258,9 +1258,9 @@ def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='li
             addLine(fig,ax,[xBottomThresh,ylim[0]],[xBottomThresh,yLeftThresh],scale=scale, T=T)
         if filePlot is not None:
             plt.savefig(filePlot)
-            plt.close()
         if plot:
             plt.show()
+        plt.close()
     TopLeft=AGgate(vTopLeft, parentGate, xCol, yCol, names[0])
     TopRight=AGgate(vTopRight, parentGate, xCol, yCol, names[1])
     BottomRight=AGgate(vBottomRight, parentGate, xCol, yCol, names[2])

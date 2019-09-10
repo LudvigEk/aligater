@@ -1384,7 +1384,8 @@ class AGExperiment:
                 sys.stderr.write(reportStr)
                 for i in np.arange(1,len(sample),1):
                     reportStr=sample[i]+"\n"
-                    sys.stderr.write(reportStr)            
+                    sys.stderr.write(reportStr)
+        return lFlagged            
     
     def check_compensation_exception(self, fcs):
         for i in np.arange(0, len(self.compensation_exceptions),1):
