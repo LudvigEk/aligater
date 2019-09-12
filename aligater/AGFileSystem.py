@@ -48,8 +48,8 @@ filePlotError=AliGaterError("If plotting to file is requested filePlot must be s
 markerError=AliGaterError("not present in sample, check spelling or control your dataframe.columns labels")
 
 
-def compensateDF(fcsDF, metaDict, *args, **kwargs):
-    #TODO spill_col_name in agconfig?
+def compensateDF(fcsDF, metaDict, fsc_ssc_count, *args, **kwargs):
+
     if 'spill_col_name' in kwargs:
         spill_keyword = kwargs['spill_col_name']
     elif 'SPILL' in metaDict.keys():
@@ -65,8 +65,11 @@ def compensateDF(fcsDF, metaDict, *args, **kwargs):
     
     spill_matrix=metaDict[spill_keyword].split(',')
     n = int(spill_matrix[0]) #number of colors
-    
-    colNames=fcsDF.columns[4:(n+4)]
+    if not (n == len(fcsDF.columns)-fsc_ssc_count):
+        raise AliGaterError("in LoadFCS, compensateDF: ", "unexpected number of channels. If your FCS are exported with Area+width+height values for each flourochrome the flourochrome_area_filter needs to be set to True.")
+    #Depending on version FCS different number of cols-per-flourochrome will be reported(A-W-H vs just A) , and different number of columns preceding and subsequent the flourchrome columns
+    #NOTE: AliGater assumes first columns are FSC/SSC
+    colNames=fcsDF.columns[fsc_ssc_count:(n+fsc_ssc_count)]
     fcsArray = fcsDF[colNames]
     
     comp_matrix = np.array(spill_matrix[n+1:]).reshape(n, n).astype(float)
@@ -215,7 +218,7 @@ def getGatedVectors(fcsDF, gate1, gate2, vI=None, return_type="pdseries"):
         return np.array([vX, vY])
 
 
-def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=sentinel, marker_names='label',ignore_minCell_filter=False):
+def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=sentinel, marker_names='label',ignore_minCell_filter=False, flourochrome_area_filter=False):
     #********Lazy loading of*************
     #TODO; could move to AGClasses, kind of makes sense.
     from aligater.AGClasses import AGsample
@@ -247,8 +250,34 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
         channel_naming='$PnN'
 
     metaDict,fcsDF = parse(path,output_format='DataFrame',channel_naming=channel_naming)
-    rows=fcsDF.shape[0]
-    cols=fcsDF.columns[4:-1]
+    rows=fcsDF.shape[0] # n of events
+    assert int(metaDict['$TOT']) == int(rows)
+    
+    #Update
+    #Depending on choices by the operator on export, machine, and FCS standard there can be different number of preceding and subsequent columns from the actual flourochrome cols
+    #Also each flourochrome can be exported with Area, Width, Height or only with Area
+    #This part attempts to parse this
+    #AliGater will attempt to only extract Area for the flourochromes while keeping height width area for for scatters.
+    #It also tries to drop redundant columns that sometimes exists such as Time, TLSW, TMSW, Event info
+    columns=fcsDF.columns.tolist()
+    exclude_cols = ['tlsw',	'tmsw', 'event info','time']
+    indicies_to_drop=[]
+    fsc_ssc_count=0
+    for index,col in enumerate(columns):
+        bExclusion=False
+        for exclusion in exclude_cols:
+            if exclusion in col.lower():
+                indicies_to_drop.append(index)
+                bExclusion=True
+        if 'fsc' not in col.lower() and 'ssc' not in col.lower():
+            if col.lower()[-2:] != '-a' and not bExclusion and flourochrome_area_filter:
+                indicies_to_drop.append(index)
+                continue
+        else:
+            fsc_ssc_count += 1
+    fcsDF.drop(fcsDF.columns[indicies_to_drop], axis=1, inplace=True)    
+    cols = fcsDF.columns
+    #cols=fcsDF.columns[4:-1]
     
     #SANITY CHECK: first four columns are some combination of foward and side scatters
     #scatter_cols=fcsDF.columns[0:4]
@@ -278,13 +307,22 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     if compensate:
         if comp_matrix is not None:
             sys.stderr.write("External compensation matrix passed, applying\n")
-            fcsDF=compensate_manual(fcsDF, comp_matrix)
+            fcsDF=compensate_manual(fcsDF, comp_matrix, fsc_ssc_count)
         else:
-            fcsDF=compensateDF(fcsDF, metaDict)
+            fcsDF=compensateDF(fcsDF, metaDict, fsc_ssc_count)
     
     if not isinstance(agconf.ag_trimMeasurements, (float, int)):
         raise AliGaterError('in loadFCS: ','ag_trimMeasurements must be float or int, found: '+str(type(agconf.ag_trimMeasurements)))
+    if not isinstance(agconf.ag_maxMeasurement, (float, int)):
+        raise AliGaterError('in loadFCS: ','ag_maxMeasurement must be float or int, found: '+str(type(agconf.ag_maxMeasurement)))
+    if not isinstance(agconf.ag_Divider, (int)):
+        raise AliGaterError('in loadFCS: ','ag_Divider must be int, found: '+str(type(agconf.ag_Divider)))
+    #Apply divider before pileup
+    fcsDF=fcsDF.apply(lambda x: x/agconf.ag_Divider)
+    #Apply lower truncation
     fcsDF=fcsDF.apply(lambda x: np.where(x < agconf.ag_trimMeasurements, agconf.ag_trimMeasurements, x))
+    #Apply upper truncation
+    fcsDF=fcsDF.apply(lambda x: np.where(x > agconf.ag_maxMeasurement, agconf.ag_maxMeasurement, x))
     
     if metadata:
         if return_type.lower()=='agsample':
