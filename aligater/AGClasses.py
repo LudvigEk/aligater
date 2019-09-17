@@ -528,7 +528,7 @@ class AGQC:
     Object that manages downsampled images while AliGater is running. It can also be used to load previously saved downsampled images to do quality control.
     
     While an AGExperiment is running with active QC the downsampled images are saved in temporary files as np arrays.
-    After a run is completed they are reloaded, and stored as one bigger HDF5 object with metadata about the for simpler loading at a later time.
+    After a run is completed they are reloaded, and stored as one bigger HDF5 object with metadata for simpler loading at a later time.
     
     **Members**
     
