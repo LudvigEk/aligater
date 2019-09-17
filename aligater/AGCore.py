@@ -30,7 +30,7 @@ from scipy.ndimage.filters import gaussian_filter1d
 #AliGater imports
 import aligater.AGConfig as agconf
 from aligater.AGPlotRoutines import plotHeatmap, plot_gmm, addLine, addAxLine, transformWrapper, convertToLogishPlotCoordinates, convertToBiLogPlotCoordinates, logishBin, logishTransform, bilogBin, bilogTransform, inverseLogishTransform, inverseBilogTransform, inverseTransformWrapper
-from aligater.AGCython import gateEllipsoid
+from aligater.AGCython import gateEllipsoid, gateThreshold
 from aligater.AGClasses import AGgate, AGsample
 from aligater.AGFileSystem import getGatedVector, getGatedVectors, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
 
@@ -646,33 +646,54 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
     if not any(isinstance(i,(float,int, str)) for i in interval):
         raise(AliGaterError("in valleySeek: ","Interval element had an unexpected type"))
 
-
     vX = getGatedVector(fcsDF, gate=xCol, vI=vI,return_type="nparray")
+
+    if type(interval[0]) is str:
+        if interval[0].lower() in ['start', 'first']:
+            interval[0]=min(vX) 
+        else:
+            raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'first' or 'start', found "+interval[0].lower())
+    if type(interval[1]) is str:
+        if interval[1].lower() in ['end', 'last']:
+            interval[1]=max(vX) 
+        else:
+            raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'last' or 'end', found "+interval[1].lower())
+
+    final_vX=[]
+    for x in vX:
+        if x<interval[1] and x>interval[0]:
+            final_vX.append(x)
+    vX=np.asarray(final_vX)
+    
     if scale.lower()!='linear':
         vX = transformWrapper(vX, scale=scale, T=T)
+        interval[1]=transformWrapper([interval[1]],scale=scale, T=T)[0]
+        interval[0]=transformWrapper([interval[0]],scale=scale, T=T)[0]    
     histo, binData = np.histogram(vX,bins)
     smoothedHisto=gaussian_filter1d(histo.astype(float),sigma)
     
-    if type(interval[0]) is str:
-        if interval[0].lower() in ['start', 'first']:
-            interval[0]=min(binData) 
-        else:
-            raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'first' or 'start', found "+interval[0].lower())
-    else:
-        if scale.lower!='linear':
-            interval[0]=transformWrapper([interval[0]],scale=scale, T=T)[0]
-    if type(interval[1]) is str:
-        if interval[1].lower() in ['end', 'last']:
-            interval[1]=max(binData) 
-        else:
-            raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'last' or 'end', found "+interval[1].lower())
-    else:
-        if scale.lower!='linear':
-            interval[1]=transformWrapper([interval[1]],scale=scale, T=T)[0]
+#    if type(interval[0]) is str:
+#        if interval[0].lower() in ['start', 'first']:
+#            interval[0]=min(binData) 
+#        else:
+#            raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'first' or 'start', found "+interval[0].lower())
+#    else:
+#        if scale.lower!='linear':
+#            interval[0]=transformWrapper([interval[0]],scale=scale, T=T)[0]
+#    if type(interval[1]) is str:
+#        if interval[1].lower() in ['end', 'last']:
+#            interval[1]=max(binData) 
+#        else:
+#            raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'last' or 'end', found "+interval[1].lower())
+#    else:
+#        if scale.lower!='linear':
+#            interval[1]=transformWrapper([interval[1]],scale=scale, T=T)[0]
     
     if interval[1] > max(binData):
         interval[1] = max(binData)
-
+    if interval[0] < min(binData):
+        interval[0] = min(binData)
+    
     vIndicies=[]
     #binData is the bin edges
     lowerLimit = interval[0]

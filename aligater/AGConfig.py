@@ -11,7 +11,14 @@ minCells=200
 cellFilter=100000
 
 #Truncate values below this treshold i.e. if any measured value is lower than this, the value is piled up at this level instead. Set with generous margin but might affect viewability of plots if too generous.
-ag_trimMeasurements = -5000
+ag_trimMeasurements = -10000
+#Similarly for max measurements (this is similar to flowjo > preferences > cytometer > custom log/linear scaling
+ag_maxMeasurement = 214748
+
+#Divider. Some machines outputs higher values and have a divider to downscale values for comparability. 
+#Manufacturer typically provides these and most are already preset in software such as FlowJo
+#BD machines like FacsCanto and Fortessa have divider 1 in my experience, BioRad like YETI and ZE5 have 10000
+ag_Divider = 10000
 
 #Sets verbosity level, if False only minor information and warnings are printed. Does not affect plotting behaviour.
 ag_verbose=False

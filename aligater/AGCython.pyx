@@ -867,7 +867,10 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
         ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
     #Switch from AGgate obj -> list from here
-    vI=startingGate()
+    if startingGate is not None:
+        vI=startingGate()
+    else:
+        vI=fcs.full_index()
     
     vX,vY = getGatedVectors(fcsDF=fcs(), gate1=xCol, gate2=yCol, vI=vI)
     
@@ -1186,6 +1189,7 @@ def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, bHoris
             break
         lim = sorted_vPL[idx_vPL][targetAxis]
         bin_i = sorted_vPL[idx_vPL][binAxis]
+        
         while sorted_events[i][binAxis] < bin_i:
             lim_coord=sorted_events[i][targetAxis]
             index=sorted_events[i][2]
@@ -1206,7 +1210,7 @@ def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, bHoris
     if bUnhandled:
         lim = sorted_vPL[len(vPL)-1][targetAxis]
         while i < len(sorted_events):
-            lim = sorted_events[i][targetAxis]
+            lim_coord = sorted_events[i][targetAxis]
             index=sorted_events[i][2]
             if lim_coord < lim:
                 if lower:
