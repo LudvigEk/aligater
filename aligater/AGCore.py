@@ -1142,6 +1142,111 @@ def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yO
     reportGateResults(vI, vOutput)
     return outputGate
 
+##NEW**********************************
+def gateBox(fcs, name, xCol, yCol, xThreshRight, yThreshTop, xThreshLeft, yThreshBottom, Outer=False, parentGate=None, bins=300, scale='linear', T=1000, update=False, filePlot=None, QC=False):
+    """
+    Gates a box in the view.
+    
+    **Parameters**
+    
+    fcs : AGClasses.AGSample object
+        Flow data loaded in an sample object.
+    xCol, yCol : str
+        Marker labels.
+    name : str
+        Name to the resulting gated population.
+    parentGate : AGClasses.AGgate object, optional
+        Parent population to apply the gating to. 
+        If no AGgate object is passed gating is applied to the ungated data frame.
+    xThreshLeft, xThreshRight, yThreshTop, yThreshBottom : float
+        The X- and Y-axis thresholds for the gate.
+    outer : bool, optional, default: False
+        If True, instead returns all events outside of the defined box.
+    bins : int, optional, default: 300
+        If plotting, defines the resolution of the heatmap.
+    scale : str, optional, default: 'linear'
+        If plotting enabled, which scale to be used on both axis.
+    T : int, optional, default: 1000
+        If plotting enabled and scale is logish, the threshold for linear-loglike transition.    
+    filePlot : str, optional, default: None
+        Option to plot the gate to file to specified path.\n
+        Warning: might overwrite stuff.
+    update : bool, optional, default: False
+        If True will add the resulting gated population(s) to the sample objects gate list in adition to returning the gate object.\n
+        If False (default), returns an AGgate object without adding it to the sample object.
+    QC : bool, optional, default: False
+        If True, adds a downsampled image of the gating view to the gate object. These can be collected by an AGExperiment object if it's QC flag is also True.
+        
+    **Returns**
+
+    AGClasses.AGgate object
+
+    **Examples**
+
+    None currently.
+    """    
+    if agconf.execMode in ["jupyter","ipython"]:
+        plot=True
+    else:
+        plot=False    
+    if not isinstance(fcs,AGsample):
+        raise invalidSampleError("in gateCorner:")
+    if parentGate is None:
+        vI=fcs.full_index()
+    elif not isinstance(parentGate,AGgate):
+        raise invalidAGgateParentError('in gateCorner:')
+    else:
+        vI=parentGate()
+    fcsDF=fcs()
+    if filePlot is not None:
+        if not isinstance(filePlot,str):
+            raise TypeError("If plotting to file is requested filePlot must be string filename")
+    if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
+        raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
+    if len(vI)<5:
+        sys.stderr.write("WARNING, in gateCorner: Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
+        return AGgate([], parentGate, xCol, yCol, name)
+    
+
+    vOutput=fcsDF[(fcsDF[xCol]>=xThreshLeft)&(fcsDF[xCol]<xThreshRight)&(fcsDF[yCol]>=yThreshBottom)&(fcsDF[yCol]<yThreshTop)].index
+
+        
+    if not Outer:
+        vOutput=list(set(vOutput).intersection(vI))
+    else:
+        vOutput=list(set(vI).difference(vOutput))
+    
+    if len(vOutput)==0:
+        return AGgate([], parentGate, xCol, yCol, name)
+    
+    if plot or filePlot is not None:
+        fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI,bins=bins, scale=scale,thresh=T)
+        vX,vY=getGatedVectors(fcsDF,xCol, yCol, vOutput, return_type="nparray")
+        addLine(fig,ax, [xThreshLeft,yThreshBottom], [xThreshLeft, yThreshTop],scale=scale, T=T)
+        addLine(fig,ax, [xThreshRight,yThreshBottom], [xThreshRight, yThreshTop],scale=scale, T=T)
+        addLine(fig,ax, [xThreshLeft,yThreshBottom], [xThreshRight, yThreshBottom],scale=scale, T=T)
+        addLine(fig,ax, [xThreshLeft,yThreshTop], [xThreshRight, yThreshTop],scale=scale, T=T)
+
+        if filePlot is not None:
+            plt.savefig(filePlot)
+            if not plot:
+                plt.close(fig)
+        if plot:
+            plt.show()
+            plt.clf()
+            plotHeatmap(fcsDF, xCol, yCol, vOutput,bins=bins, scale=scale, thresh=T)
+            plt.show()
+
+        
+    if parentGate is not None:
+        outputGate=AGgate(vOutput, parentGate, xCol, yCol, name)
+    else:
+        outputGate=AGgate(vOutput, None, xCol, yCol, name)
+    if update:
+        fcs.update(outputGate, QC=QC)
+    reportGateResults(vI, vOutput)
+    return outputGate
+#**************************************
 
 def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='linear',T=1000, filePlot=None):
     """

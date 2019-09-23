@@ -33,11 +33,11 @@ configuration = {
       'setup_requires': ['numpy','Cython'],
       'install_requires': ['numpy', 'scipy', 'sklearn','pandas', 'matplotlib','Cython','Jupyter'],
       'ext_modules': lazy_cythonize(extensions),
-      'data_files': [('.', ['pyAliGater_testing.ipynb'])],
+      'package_dir' : {'.': 'aligater'},
+      'data_files': [('.', [])],
       'include_package_data': True,
       'Platform': 'Built for ubuntu 16.04+'
 }
 
 setup(**configuration)
-
 

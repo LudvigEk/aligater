@@ -375,11 +375,14 @@ class AGsample:
     sample=None
     filePath=None
     fcsDF=None
+    _downsamplingBins=None
     
-    def __init__(self, fcsDF, filePath, sampleName = sentinel):
+    def __init__(self, fcsDF, filePath, sampleName = sentinel, sampling_resolution=32):
         if not isinstance(fcsDF, pd.DataFrame):
             raise
         if not isinstance(filePath, str):
+            raise
+        if not isinstance(sampling_resolution, int):
             raise
         if sampleName is not sentinel:
             if not isinstance(sampleName, str):
@@ -394,6 +397,7 @@ class AGsample:
         self.sample=sampleName
         self.vGates=[]
         self.filePath=filePath
+        self._downsamplingBins=sampling_resolution
     
     def __call__(self, name=sentinel):
         if name is sentinel:
@@ -415,7 +419,7 @@ class AGsample:
                 sys.stderr.write(reportStr)
                 return None
         
-    def update(self, gate, downSamplingBins=32, xlim=[0,500000], ylim=[0,500000], QC=False, scale='linear', xscale='linear', yscale='linear', T=1000):
+    def update(self, gate, xlim=[0,500000], ylim=[0,500000], QC=False, scale='linear', xscale='linear', yscale='linear', T=1000):
         if not isinstance(gate,AGgate):
             raise invalidAGgateError("in AGsample.update: ")
         if gate.xCol not in self.fcsDF.columns:
@@ -425,7 +429,7 @@ class AGsample:
         self.vGates.append(gate)
         if QC:
             if not gate.bInvalid:
-                gate.downSample(self.fcsDF, downSamplingBins, xlim, ylim, scale, xscale, yscale, T=T)
+                gate.downSample(self.fcsDF, self._downsamplingBins, xlim, ylim, scale, xscale, yscale, T=T)
         
     def full_index(self):
         return list(self.fcsDF.index.values)
@@ -937,6 +941,7 @@ class AGExperiment:
     output_folder=None
     exp_name=None
     bQC=False
+    flourochrome_area_filter=False
     QCbins=32
     
     def __init__(self, experimentRoot, *args, **kwargs):
@@ -994,6 +999,11 @@ class AGExperiment:
             else:
                 self.lMarkers=[kwargs['markers']]
 
+        if 'flourochrome_area_filter' in kwargs:
+            if not isinstance(kwargs['flourochrome_area_filter'],bool):
+                raise TypeError("flourochrome_area_filter must be a bool (True/False).")
+            else:
+                self.flourochrome_area_filter=[kwargs['flourochrome_area_filter']]
             
         if 'normaliseOn' in kwargs:
             if not isinstance(kwargs['normaliseOn'],str):
@@ -1132,7 +1142,7 @@ class AGExperiment:
                 comp_matrix=None
             if self.compensation_exceptions is not None:
                 comp_matrix=self.check_compensation_exception(fcs)
-            sample = loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=self.lMarkers)
+            sample = loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=self.lMarkers, flourochrome_area_filter=self.flourochrome_area_filter, sampling_resolution=self.QCbins)
             if sample is None:
                 continue
             sys.stderr.write("Applying strategy\n")

@@ -218,7 +218,7 @@ def getGatedVectors(fcsDF, gate1, gate2, vI=None, return_type="pdseries"):
         return np.array([vX, vY])
 
 
-def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=sentinel, marker_names='label',ignore_minCell_filter=False, flourochrome_area_filter=False):
+def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=None, marker_names='label',ignore_minCell_filter=False, flourochrome_area_filter=False, sampling_resolution=32):
     #********Lazy loading of*************
     #TODO; could move to AGClasses, kind of makes sense.
     from aligater.AGClasses import AGsample
@@ -231,7 +231,7 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
         raise AliGaterError("in loadFCS:","invalid dtype in marker_names, expected "+str(type(str))+" found "+str(type(marker_names)))
     if not marker_names.lower() in ['label','color']:
         raise AliGaterError("in loadFCS:"," marker_names must be either of 'label' or 'color' found: "+str(marker_names))
-    if markers is sentinel:
+    if markers is None:
         checkMarkers=False
     else:
         checkMarkers=True
@@ -326,12 +326,12 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     
     if metadata:
         if return_type.lower()=='agsample':
-            return metaDict, AGsample(fcsDF,path)
+            return metaDict, AGsample(fcsDF,path, sampling_resolution=sampling_resolution)
         else:
             return metaDict, fcsDF
     else:
         if return_type.lower()=='agsample':
-            return AGsample(fcsDF,path)
+            return AGsample(fcsDF,path, sampling_resolution=sampling_resolution)
         else:
             return fcsDF
 
