@@ -681,7 +681,7 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
 #     return outputGate
 
 def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='negative',
-                 startY=None, list xboundaries=None, list yboundaries=None, bool leftRight=True , str direction='up', maxStep=5, phi=0,
+                 startY=None, endY=None, list xboundaries=None, list yboundaries=None, bool leftRight=True , str direction='up', maxStep=5, phi=0,
                  int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True):
     if agconf.execMode in ["jupyter","ipython"]:
         plot=True
@@ -700,8 +700,59 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     if len(vI)<5:
         sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
         outputGate=AGgate([],parentGate,xCol,yCol,name)
+    #cdef int startbin
+    #originalvI=vI
+
+#*********************************************************************************************************
     cdef int startbin
+ 
+    cdef bool has_xbound, has_ybound
+    has_xbound = has_ybound = False
+    
+    if xboundaries is not None:
+        if isinstance(xboundaries, list):
+            if len(xboundaries) ==0:
+                pass
+            elif len(xboundaries) !=2:
+                reportStr="in horisontalPath: xboundaries must be list of two, found: "+str(len(xboundaries))+" entries."
+                raise ValueError(reportStr)
+            else:
+                has_xbound=True
+        else:
+            raise AliGaterError("in horisontalPath: ","is xboundaries is passed it must be list.")
+
+    if yboundaries is not None:
+        if isinstance(yboundaries, list):
+            if len(yboundaries) ==0:
+                pass
+            elif len(yboundaries) !=2:
+                reportStr="in horisontalPath: yboundaries must be list of two, found: "+str(len(yboundaries))+" entries."
+                raise ValueError(reportStr)
+            else:
+                has_ybound=True    
+        else:
+            raise AliGaterError("in horisontalPath: ","is yBoundaries is passed it must be list.")
+    
     originalvI=vI
+    if has_ybound and not has_xbound:
+        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=startingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
+    if has_xbound and not has_ybound:
+        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=tmpvI, info=False)
+    if has_xbound and has_ybound:
+        xtmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
+        xstartingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=xtmpvI, info=False)
+        ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
+    #Switch from AGgate obj -> list from here
+    if startingGate is not None:
+        vI=startingGate()
+    else:
+        vI=fcs.full_index()
+#*********************************************************************************************************
+
+
 
     vX,vY = getGatedVectors(fcsDF=fcs(), gate1=xCol, gate2=yCol, vI=vI)
     #Note on the heatmap, from numpy docs, np.histogram2d
@@ -714,9 +765,9 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     cdef np.ndarray[dtype_t, ndim=2] plot_heatmap = np.copy(cost)
         
     if direction.lower() == 'up':
-        minCostPathDir = 'right'
-    elif direction.lower() == 'down':
         minCostPathDir = 'left'
+    elif direction.lower() == 'down':
+        minCostPathDir = 'right'
     elif direction.lower() == 'both':
         minCostPathDir = direction
     else: 
@@ -730,32 +781,59 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
         raise AliGaterError("in horisontalPath","startY out of bounds")
 
     cdef int endBin
-    endBin = startBin
+    if endY is None:
+        endY=startY
+    for i in np.arange(0, len(yedges)-2, 1):
+        if endY >= yedges[i] and endY < yedges[i+1]:
+            endBin = i
+            break
+    else:
+        raise AliGaterError("in horisontalPath","startY out of bounds")
+
     cdef float LARGE_NUMBER = 10000000000000000.0
     
+#    if not leftRight:
+#        #To be able go right-left and not just left-right there's an option to reverse the rows order and keep internal functions
+#        reverse = True
+#        for i in np.arange(0, len(cost[-1]),1):
+#            if not i == endBin:
+#                cost[-1][i]=LARGE_NUMBER
+#            else:
+#                cost[-1][i]=0        
+#    else:
+#        for i in np.arange(0, len(cost[0]),1):
+#            if not i == endBin:
+#                cost[0][i]=LARGE_NUMBER
+#            else:
+#                cost[0][i]=0
+#        reverse=False
+
     if not leftRight:
         #To be able go right-left and not just left-right there's an option to reverse the rows order and keep internal functions
-        reverse = True
-        for i in np.arange(0, len(cost[-1]),1):
-            if not i == endBin:
-                cost[-1][i]=LARGE_NUMBER
-            else:
-                cost[-1][i]=0        
-    else:
+        reverse = False
         for i in np.arange(0, len(cost[0]),1):
             if not i == endBin:
                 cost[0][i]=LARGE_NUMBER
             else:
-                cost[0][i]=0
-        reverse=False
+                cost[0][i]=0        
+    else:
+        for i in np.arange(0, len(cost[-1]),1):
+            if not i == endBin:
+                cost[-1][i]=LARGE_NUMBER
+            else:
+                cost[-1][i]=0
+        reverse=True
 
+    
     pathMatrix = _minCostPath(cost, nCols=bins, nRows=bins, maxStep=maxStep, reverse=reverse, direction=minCostPathDir, phi=phi)
-          
+    
+    
     cdef int curBin
     cdef int nextBin
     path=[]
     curBin=startBin
     row_order = np.arange(0, bins, 1)
+    #if not leftRight: #ORIGINAL
     if not leftRight:
         row_order = row_order[::-1]
     for rowIdx in row_order:
@@ -766,8 +844,11 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
         path.append( [xedges[-1], yedges[curBin]])
     else:
         path.append( [xedges[0], yedges[curBin]])
-    
-    vOut=gatePointList(fcs(),xCol,yCol,path, population=population, vI=originalvI)
+        
+    #if not leftRight:
+    #    path = path[::-1]
+        
+    vOut=gatePointList(fcsDF=fcs(),xCol=xCol,yCol=yCol,vPL=path, population=population, bHorisontal=True, vI=originalvI)
     reportGateResults(vI,vOut)
     
 
