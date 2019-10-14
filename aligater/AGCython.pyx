@@ -778,8 +778,14 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
             startBin = i
             break
     else:
-        raise AliGaterError("in horisontalPath","startY out of bounds")
-
+        if startY<yedges[0]:
+            startY=0
+        elif startY > yedges[-1]:
+            startY = len(yedges)-1
+        else:    
+            raise AliGaterError("in horisontalPath","startY out of bounds")
+    
+    
     cdef int endBin
     if endY is None:
         endY=startY
@@ -788,7 +794,12 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
             endBin = i
             break
     else:
-        raise AliGaterError("in horisontalPath","startY out of bounds")
+        if endY<yedges[0]:
+            endY=0
+        elif endY > yedges[-1]:
+            endY = len(yedges)-1
+        else:
+            raise AliGaterError("in horisontalPath","endY out of bounds")
 
     cdef float LARGE_NUMBER = 10000000000000000.0
     
