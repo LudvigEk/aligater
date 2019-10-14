@@ -758,16 +758,21 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     #Note on the heatmap, from numpy docs, np.histogram2d
     #Please note that the histogram does not follow the Cartesian convention where x values are on the abscissa and y values on the ordinate axis. 
     #Rather, x is histogrammed along the first dimension of the array (vertical), and y along the second dimension of the array (horisontal).
-    heatmap, xedges, yedges = getHeatmap(vX=vX, vY=vY, scale=scale, xscale=scale, yscale=scale, T=T, bins=bins)
+    heatmap, xedges, yedges = getHeatmap(vX=vX, vY=vY, scale=scale, normalize=True, xscale=scale, yscale=scale, T=T, bins=bins)
     #I.e. note here, in contrast to verticalPath the cost heatmap from np.histogram2d is NOT transposed!
     cdef np.ndarray[dtype_t, ndim=2] cost = gaussian_filter(heatmap.astype(float),sigma=sigma)
     
     cdef np.ndarray[dtype_t, ndim=2] plot_heatmap = np.copy(cost)
         
+    #Adjust phi based on avg val in cost
+    cdef float mean_heatmap_val
+    mean_heatmap_val = np.mean(cost)
+    cdef corrected_phi = phi * mean_heatmap_val
+    
     if direction.lower() == 'up':
-        minCostPathDir = 'left'
-    elif direction.lower() == 'down':
         minCostPathDir = 'right'
+    elif direction.lower() == 'down':
+        minCostPathDir = 'left'
     elif direction.lower() == 'both':
         minCostPathDir = direction
     else: 
@@ -836,7 +841,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
         reverse=True
 
     
-    pathMatrix = _minCostPath(cost, nCols=bins, nRows=bins, maxStep=maxStep, reverse=reverse, direction=minCostPathDir, phi=phi)
+    pathMatrix = _minCostPath(cost, nCols=bins, nRows=bins, maxStep=maxStep, reverse=reverse, direction=minCostPathDir, phi=corrected_phi)
     
     
     cdef int curBin
