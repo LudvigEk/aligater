@@ -10,8 +10,8 @@
 #..V^V^V^V^V^V^\.................................
 #
 #
-#	Parsing flow data with fcsparser from Eugene Yurtsevs FlowCytometryTools (very slightly modified)
-#	Check out his excellent toolkit for flow cytometry analysis: 
+#	Parsing .fcs files with fcsparser from Eugene Yurtsevs FlowCytometryTools (very slightly modified)
+#	Check out his toolkit for flow cytometry analysis: 
 #	http://eyurtsev.github.io/FlowCytometryTools/
 #
 #	Björn Nilsson & Ludvig Ekdahl 2016~
@@ -19,27 +19,26 @@
 
 import pandas as pd
 import numpy as np
+
 import matplotlib.pyplot as plt
 import matplotlib.colors
 from matplotlib.patches import Ellipse, Arrow
 from matplotlib.ticker import Locator, Formatter
 from matplotlib import transforms as mtransforms
-import math
-
-import six
 from matplotlib import rcParams
+
+import math
+import six
+from scipy.ndimage.filters import gaussian_filter1d
+from sklearn.decomposition import PCA
+
+import sys
 
 #AliGater imports
 import aligater.AGConfig as agconf
 from aligater.AGFileSystem import getGatedVector, AliGaterError
 
-from scipy.ndimage.filters import gaussian_filter1d
-import sys
-
 sentinel = object()
-
-
-    
     
 def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='linear', yscale='linear', thresh=1000, aspect='auto', **kwargs):
     if vI is sentinel:
@@ -284,7 +283,7 @@ def inverseBilogTransform(a, T):
     invA=np.empty_like(a).astype(float)
     a_idx=0
     while a_idx < len(a):
-        if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
+        if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0 at T; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
             invA[a_idx] = T*np.exp(np.log(10)*a[a_idx])/10
         elif a[a_idx] <= 0.13141103619349642: #This is (np.log(10)-2)/np.log(10) I.e. the linear scale value at X=-T
             tmpX=a[a_idx]-1.13141103619349642 #This shift ensures that the transformed coordinates are continous, important for bins and plotting
@@ -318,7 +317,7 @@ def inverseLogishTransform(a, linCutOff):
     invA=np.empty_like(a).astype(float)
     a_idx=0
     while a_idx < len(a):
-        if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
+        if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0 at T; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
             invA[a_idx] = linCutOff*np.exp(np.log(10)*a[a_idx])/10
             #invA[a_idx]= (np.exp(a[a_idx])+10)*linCutOff/10
         else:
@@ -467,8 +466,6 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     #plt.show()
     return fig,ax
 
-from sklearn.decomposition import PCA
-
 def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
     immatrix = np.array([im.flatten() for im in imlist],'f')
     if immatrix.shape[0] == 0:
@@ -493,12 +490,16 @@ def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
     sys.stderr.write(reportStr)
     #center the coordinate system on the mean of each PC
     projection_d_df = projection_d_df - projection_d_df.mean()
-    if nOfComponents==2:
-        axes = projection_d_df.plot(kind='scatter', x='PC2', y='PC1', figsize=(16,8))
-        axes.set_xlim([projection_d_df['PC2'].min()*1.1, projection_d_df['PC2'].max()*1.1])
-        axes.set_ylim([projection_d_df['PC1'].min()*1.1, projection_d_df['PC1'].max()*1.1])
+    #Normalize
+    #normalised_projection_d_df=(projection_d_df-projection_d_df.min())/(projection_d_df.max()-projection_d_df.min())
+    #if nOfComponents==2:
+    #    axes = projection_d_df.plot(kind='scatter', x='PC2', y='PC1', figsize=(16,8))
+    #    axes.set_xlim([projection_d_df['PC2'].min()*1.1, projection_d_df['PC2'].max()*1.1])
+    #    axes.set_ylim([projection_d_df['PC1'].min()*1.1, projection_d_df['PC1'].max()*1.1])
         #TODO: PLOTTING OPTIONS
         #plt.show()
+    #normalised_projection_d_df['length']=np.sqrt(np.square(normalised_projection_d_df).sum(axis=1))
+    #normalised_projection_d_df.sort_values(by='length', inplace=True)
     projection_d_df['length']=np.sqrt(np.square(projection_d_df).sum(axis=1))
     projection_d_df.sort_values(by='length', inplace=True)
     return projection_d_df
