@@ -17,6 +17,13 @@
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
 
+#**************************
+#BOKEH TEST
+from bokeh.models.tools import *
+from bokeh.models.widgets import Button
+from bokeh.plotting import *
+#*************************
+
 import numpy as np
 import pandas as pd
 import sys, os, errno
@@ -561,6 +568,7 @@ class AGQC:
     h5py_filehandle=None
     image_list=[]
     sample_list=[]
+    source=None
     
     def __init__(self, downSamplingBins=32, *args, **kwargs):
         self.nOfBins=downSamplingBins
@@ -822,9 +830,21 @@ class AGQC:
             imlist.append(arr)
             samplelist.append(sampleName)
         return [samplelist, imlist]
-            
+    
+    
+    def run_QC(self, population, n_components=2):
+        if self.sourceFilePath is None:
+            reportStr="No QC object is loaded!\nRun load_QC_file first\n"
+            sys.stderr.write(reportStr)
+            return None
+        imlist, samplist = self.select_population(population)
+        if not isinstance(n_components,int):
+            raise AliGaterError("in AGQC::run_QC", "n_components must be int, found"+str(type(n_components)))
+        PC_DF = imagePCA_cluster(samplist,imlist, n_components)
+        return PC_DF
+    
 
-            
+    
 class AGExperiment:
     """
     **Overview**

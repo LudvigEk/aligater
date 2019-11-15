@@ -1305,6 +1305,7 @@ def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, bHoris
         idx_vPL+=1
 
     if bUnhandled:
+        print("ping!")
         lim = sorted_vPL[len(vPL)-1][targetAxis]
         while i < len(sorted_events):
             lim_coord = sorted_events[i][targetAxis]
