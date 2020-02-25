@@ -30,6 +30,8 @@ from matplotlib import rcParams
 import math
 import six
 from scipy.ndimage.filters import gaussian_filter1d
+#For computing bin width similarly to scipys histogram_bin_edges
+from scipy.stats import iqr
 from sklearn.decomposition import PCA
 
 import sys
@@ -422,9 +424,6 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     elif len(vI)==0:
         sys.stderr.write("Passed index contains no events\n")
         return None
-    if len(vI)<bins:
-        sys.stderr.write("Fewer events than bins, readjusting number of bins\n")
-        bins=len(vI)
     if not all(i in ['linear', 'logish', 'bilog'] for i in [scale]):
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish', 'bilog'")
     if not isinstance(sigma,(float,int)): 
@@ -434,12 +433,22 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
                 raise AliGaterError("Sigma must be float or int, found: "+str(type(sigma)),"in plot_densityFunc")
             else:
                 sigma=kwargs['sigma']
-    if 'bins' in kwargs:
-        if not isinstance(kwargs['bins'],int):
-            raise AliGaterError("sigma must be int, found: "+str(type(bins)),"in plot_densityFunc")
-        else:
-            bins=kwargs['bins']
+
     data=getGatedVector(fcsDF, xCol, vI, return_type="nparray")
+    
+    if isinstance(bins,int):
+        if len(vI)<bins:
+            sys.stderr.write("Fewer events than bins, readjusting number of bins\n")
+            bins=len(vI)
+    elif bins=='auto':
+        if scale.lower()!='linear':
+            t_data = transformWrapper(data, T=T, scale=scale)
+        else:
+            t_data=data
+        bins=__autoBinCount(t_data)
+    else:
+        raise AliGaterError("bins must be integer or string 'auto'","in plot_densityFunc")
+    
     if scale == 'logish':
         BinEdges=logishBin(data,bins,T)
         histo = np.histogram(data, BinEdges)
@@ -452,8 +461,8 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     smoothedHisto=gaussian_filter1d(histo[0].astype(float),sigma)
     plt.clf()
     fig,ax = plt.subplots()
-    ax.plot(vHisto,smoothedHisto, label="pdf for "+str(xCol)+", sigma: "+str(sigma))
-    plt.legend()
+    ax.plot(vHisto,smoothedHisto, label="pdf for "+str(xCol)+"\nsigma: "+str(sigma))
+    plt.legend(loc='upper right', shadow=True, fontsize='medium')
     if scale.lower()!='linear':
         ax=plt.gca()
         ax.set_xlim(left=min(data),right=max(data))
@@ -466,6 +475,18 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     #plt.show()
     return fig,ax
 
+def __autoBinCount(data):
+    #Internal function that mimics numpus numpy.histogram_bin_edges functionality to guess appropriate number of bins
+    #https://docs.scipy.org/doc/numpy/reference/generated/numpy.histogram_bin_edges.html
+    data_IQR = iqr(data)
+    n=len(data)
+    fd_h = 2*(data_IQR/(np.power(n,(1/3))))  #Freedman Diaconis Estimator
+    fd_bins = np.round(np.ceil((max(data)-min(data)) / fd_h))    #np.round(np.ceil(range / h))
+    s_bins = np.log2(n)+1                    #Sturges estimator        
+    bins=int(max([fd_bins,s_bins]))
+    
+    return bins
+    
 def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
     immatrix = np.array([im.flatten() for im in imlist],'f')
     if immatrix.shape[0] == 0:
@@ -712,6 +733,8 @@ def invertLogishPlotcoordinate(plotTic, vmin, vmax, T):
 
 
 class LogishLocator(Locator):
+    #Modified from matplotlibs LogLocator
+    #https://matplotlib.org/3.1.1/_modules/matplotlib/ticker.html#LogLocator
     """
     Determine the tick locations for logish axes based on LogLocator. Only locates and formats tics for the plot view.
     Transform of underlying data and heatmap is handled outside matplotlib.
@@ -869,6 +892,8 @@ class LogishLocator(Locator):
 
 
 class LogishFormatter(Formatter):
+    #Modified from matplotlibs LogFormatter
+    #https://matplotlib.org/3.1.1/_modules/matplotlib/ticker.html#LogFormatter
     """
     Base class for formatting ticks on a logish scale. Only locates and formats tics for the plot view.
     Transform of underlying data and heatmap is handled outside matplotlib.
@@ -1284,6 +1309,8 @@ class BiLogFormatter(Formatter):
         return s
     
 class SymmetricalLogLocator(Locator):
+    #Modified from matplotlibs SymmetricalLogLocator
+    #https://matplotlib.org/3.1.1/_modules/matplotlib/ticker.html#SymmetricalLogLocator
     """
     Determine the tick locations for symmetric log axes
     """

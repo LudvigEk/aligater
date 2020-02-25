@@ -92,9 +92,13 @@ def reportGateResults(vI, vOutput):
         sys.stderr.write(reportString)
     return
 
-def compensate_manual(fcsDF, comp_matrix):
+def compensate_manual(fcsDF, comp_matrix, fsc_ssc_count):
     n=len(comp_matrix)
-    colNames=fcsDF.columns[4:(n+4)]
+    if not (n == len(fcsDF.columns)-fsc_ssc_count):
+        raise AliGaterError("in LoadFCS, compensate_manual: ", "unexpected number of channels. If your FCS are exported with Area+width+height values for each flourochrome the flourochrome_area_filter needs to be set to True.")
+    #Depending on version FCS different number of cols-per-flourochrome will be reported(A-W-H vs just A) , and different number of columns preceding and subsequent the flourchrome columns
+    #NOTE: AliGater assumes first columns are FSC/SSC
+    colNames=fcsDF.columns[fsc_ssc_count:(n+fsc_ssc_count)]
     fcsArray = fcsDF[colNames]
     #Sanity check that the compensation matrix is non-zero if compensation was requested
     #Raise here instead of warning?
@@ -106,7 +110,7 @@ def compensate_manual(fcsDF, comp_matrix):
     inv_comp_matrix = np.linalg.inv(comp_matrix)
     compensatedArray=np.dot(fcsArray, inv_comp_matrix)
     fcsDF.update(pd.DataFrame(compensatedArray,columns=colNames))
-    reportStr="Successfully applied manual compensation\n"
+    reportStr="Applied passed compensation matrix\n"
     sys.stderr.write(reportStr)
     return fcsDF
     

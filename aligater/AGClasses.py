@@ -17,12 +17,6 @@
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
 
-#**************************
-#BOKEH TEST
-from bokeh.models.tools import *
-from bokeh.models.widgets import Button
-from bokeh.plotting import *
-#*************************
 
 import numpy as np
 import pandas as pd
@@ -34,6 +28,7 @@ import datetime #For creating output folder names
 import tempfile
 from shutil import copyfile
 import h5py
+
 
 #AliGater imports
 import aligater.AGConfig as agconf
@@ -1145,7 +1140,7 @@ class AGExperiment:
         for index in lFlaggedFolders:
             del self.plateList[index]
     
-    def apply(self, strategy, *args, **kwargs):
+    def apply(self, strategy, n_ray_workers=1, *args, **kwargs):
         if not hasattr(strategy, '__call__'):
             raise TypeError("Passed strategy does not seem to be a function")
         if self.bQC:
@@ -1181,7 +1176,11 @@ class AGExperiment:
             sys.stderr.flush()
                     
         nOfFlagged=len(self.flaggedSamples)
-        log_file_name = self.output_folder+"/"+self.exp_name+".log.txt"
+        if "/" in self.exp_name:
+            fixed_exp_name=self.exp_name.split('/')[-1]
+        else:
+            fixed_exp_name=self.exp_name
+        log_file_name = self.output_folder+fixed_exp_name+".log.txt"
         fhandle=open(log_file_name,'w')
         reportStr="Complete, "
         if nOfFlagged>0:
@@ -1200,7 +1199,11 @@ class AGExperiment:
             #    folder=kwargs['folder']
             #TODO: default folder
             #QCObj.reportPCs(self.output_folder)
-            QC_file_name=self.output_folder+self.exp_name+".QC.HDF5"
+            if "/" in self.exp_name:
+                fixed_exp_name=self.exp_name.split('/')[-1]
+            else:
+                fixed_exp_name=self.exp_name
+            QC_file_name=self.output_folder+fixed_exp_name+".QC.HDF5"
             QCObj.saveHDF5_QC_obj(destFilePath=QC_file_name, experiment_name=self.exp_name)
 
     
@@ -1252,9 +1255,15 @@ class AGExperiment:
     
     def printExperiment(self, file=None):
         if file is None:
-            file=self.output_folder+self.exp_name+".results.txt"
+            if "/" in self.exp_name:
+                fixed_exp_name=self.exp_name.split('/')[-1]
+            else:
+                fixed_exp_name=self.exp_name
+            file=self.output_folder+self.fixed_exp_name+".results.txt"
         assert isinstance(file, str)
-        assert all(isinstance(i, list) for i in [self.resultHeader, self.resultMatrix])
+        if not all(isinstance(i, list) for i in [self.resultHeader, self.resultMatrix]):
+            sys.stderr.write("Experiment data table empty, no results to print.\n")
+            return None
         fhandle = open(file, 'w')
         for elem in self.resultHeader:
             outputStr=str(elem)+"\t"
