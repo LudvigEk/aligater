@@ -29,7 +29,7 @@ from scipy.ndimage.filters import gaussian_filter1d
 
 #AliGater imports
 import aligater.AGConfig as agconf
-from aligater.AGPlotRoutines import plotHeatmap, plot_gmm, addLine, addAxLine, transformWrapper, convertToLogishPlotCoordinates, convertToBiLogPlotCoordinates, logishBin, logishTransform, bilogBin, bilogTransform, inverseLogishTransform, inverseBilogTransform, inverseTransformWrapper
+from aligater.AGPlotRoutines import plotHeatmap, plot_gmm, addLine, addAxLine, transformWrapper, convertToLogishPlotCoordinates, convertToBiLogPlotCoordinates, logishBin, logishTransform, bilogBin, bilogTransform, inverseLogishTransform, inverseBilogTransform, inverseTransformWrapper, plot_densityFunc
 from aligater.AGCython import gateEllipsoid, gateThreshold
 from aligater.AGClasses import AGgate, AGsample
 from aligater.AGFileSystem import getGatedVector, getGatedVectors, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
@@ -663,57 +663,44 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
     for x in vX:
         if x<interval[1] and x>interval[0]:
             final_vX.append(x)
+            
     vX=np.asarray(final_vX)
+    
     
     if scale.lower()!='linear':
         vX = transformWrapper(vX, scale=scale, T=T)
         interval[1]=transformWrapper([interval[1]],scale=scale, T=T)[0]
-        interval[0]=transformWrapper([interval[0]],scale=scale, T=T)[0]    
-    histo, binData = np.histogram(vX,bins)
-    smoothedHisto=gaussian_filter1d(histo.astype(float),sigma)
-    
-#    if type(interval[0]) is str:
-#        if interval[0].lower() in ['start', 'first']:
-#            interval[0]=min(binData) 
-#        else:
-#            raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'first' or 'start', found "+interval[0].lower())
-#    else:
-#        if scale.lower!='linear':
-#            interval[0]=transformWrapper([interval[0]],scale=scale, T=T)[0]
-#    if type(interval[1]) is str:
-#        if interval[1].lower() in ['end', 'last']:
-#            interval[1]=max(binData) 
-#        else:
-#            raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'last' or 'end', found "+interval[1].lower())
-#    else:
-#        if scale.lower!='linear':
-#            interval[1]=transformWrapper([interval[1]],scale=scale, T=T)[0]
-    
-    if interval[1] > max(binData):
-        interval[1] = max(binData)
-    if interval[0] < min(binData):
-        interval[0] = min(binData)
-    
-    vIndicies=[]
-    #binData is the bin edges
-    lowerLimit = interval[0]
-    upperLimit = interval[1]
-    for index, x in np.ndenumerate(binData):
-        #Note the non-inclusive upper bound, critical to stay in-bound of array index
-        if x >= lowerLimit and x < upperLimit:
-            vIndicies.append(index[0])
+        interval[0]=transformWrapper([interval[0]],scale=scale, T=T)[0]
 
-    if len(vIndicies)<=3:
-        sys.stderr.write("WARNING, in valleySeek: Specified interval is too narrow, defaulting to mid-interval\n")
-        result = (interval[0]+interval[1])/2
-        if scale.lower()!='linear':
-            result = inverseTransformWrapper([result],scale=scale, T=T)[0]
-        return result
+    #     sorted_vX=np.sort(vX)
+    #     N = len(sorted_vX) #n of events
+    #     nEventsPerBin = int(np.floor(N/bins))
+    #     if nEventsPerBin<10:
+    #         nEventsPerBin=10
+    #         sys.stderr.write("WARNING: valleySeek data is sparse in interval\n")
+    #     chunks=[]
+    #     for i in np.arange(0,len(sorted_vX),nEventsPerBin):
+    #         chunks.append(sorted_vX[i:i + nEventsPerBin])
+    #     binEdges=[min(sorted_vX)]
+    #     for chunk in chunks:
+    #         binEdges.extend([max(chunk)])
+    #     print(len(binEdges))
+    #     histo, binData = np.histogram(vX,binEdges)
+    # else:
+    #     histo, binData = np.histogram(vX,bins=bins)  
+        
+    # smoothedHisto=gaussian_filter1d(histo.astype(float),sigma, mode='nearest')
+    
+    
+    histo, binData = np.histogram(vX,bins=bins)
+    smoothedHisto=gaussian_filter1d(histo.astype(float),sigma, mode='nearest')
+
     
     if not require_local_min:
         minVal=np.inf
         minValIndex=0
-        for index in vIndicies:
+        #for index in vIndicies:
+        for index,value in enumerate(smoothedHisto):   
             if smoothedHisto[index] < minVal:
                 minVal=smoothedHisto[index]
                 minValIndex=index
@@ -721,15 +708,17 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
     if require_local_min: 
         minVal=np.inf
         minValIndex=0
-        for i in np.arange(1,len(vIndicies)-1,1):
-            value=smoothedHisto[vIndicies[i]]
-            if value < minVal and value < smoothedHisto[vIndicies[i-1]] and value < smoothedHisto[vIndicies[i+1]]:
-                minVal=value
-                minValIndex=vIndicies[i]         
-        if minVal==np.inf:
+        bLocalMin=False
+        for index,value in enumerate(smoothedHisto): 
+            if index > 0 and index < len(smoothedHisto)-1:
+                if value < minVal and value < smoothedHisto[index-1] and value < smoothedHisto[index+1]:
+                    minVal=value
+                    minValIndex=index
+                    bLocalMin=True
+        if not bLocalMin:
             #TODO, maybe raise this, or warning. If warning, reasonable return? 
             #Let user set return behaviour (raise - min - max - mid or val)?
-            sys.stderr.write("in valleySeek: Local min requested, but none found. Returning infinity.")
+            sys.stderr.write("in valleySeek: Local min requested, but none found. Returning infinity.\n")
             return np.inf
     
     result=(binData[minValIndex+1]+binData[minValIndex])/2
@@ -850,7 +839,7 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
         return AGgate([],parentGate,xCol,yCol,names[0]), AGgate([],parentGate,xCol,yCol,names[1]), AGgate([],parentGate,xCol,yCol,names[2]), AGgate([],parentGate,xCol,yCol,names[3])
     
     if plot or filePlot is not None:
-        if scale=='logish':
+        if scale!='linear':
             fig,ax=plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)    
         else:
             fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
@@ -1368,7 +1357,7 @@ def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='li
         sys.stderr.write("WARNING: in customQuadGate, with parent population "+str(parentGate.name)+":  No quadrant contains events\n")
         return None
     if plot or filePlot is not None:
-        if scale=='logish':
+        if scale.lower()!='linear':
             fig,ax=plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)    
         else:
             fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
