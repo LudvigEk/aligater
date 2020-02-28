@@ -20,11 +20,12 @@
 import numpy as np
 import sys
 import matplotlib.pyplot as plt
+from scipy.ndimage.filters import gaussian_filter1d
 
 #AliGater imports
 import aligater.AGConfig as agconf
 from aligater.AGCore import customQuadGate, getDensityFunc
-from aligater.AGPlotRoutines import getHeatmap, convertToLogishPlotCoordinate, logishTransform, bilogTransform, inverseLogishTransform, inverseBilogTransform, addLine, plotHeatmap
+from aligater.AGPlotRoutines import getHeatmap, convertToLogishPlotCoordinate, logishTransform, bilogTransform, inverseLogishTransform, inverseBilogTransform, addLine, plotHeatmap, transformWrapper, inverseTransformWrapper
 from aligater.AGCython import gateThreshold, gatePointList
 from aligater.AGFileSystem import getGatedVector, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
 from aligater.AGClasses import AGgate, AGsample
@@ -399,6 +400,144 @@ def penaltyValleySeek(fcs, xCol, x0, xEnd=None, parentGate=None, direction='up',
             minVal=penalizedX
             minValIndex=index
     return (binData[minValIndex+1]+binData[minValIndex])/2
+
+def densityDelimitation(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bins=300, limit_threshold=0.05, direction='left', scale='linear', T= 1000):
+    """
+    Function that finds a threshold where the density is some fraction of the maximum density in the specified interval. 
+    Returns the rough coordinate where this occurs.
+    
+    **Parameters**
+    
+    fcs : AGClasses.AGSample object
+        Flow data loaded in an sample object.
+    xCol : str
+        Marker label.
+    name : str
+        Name to the resulting gated population.
+    parentGate : AGgate object, optional
+        Parent population to apply the gating to. 
+        If no AGgate object is passed gating is applied to the ungated data frame.
+    interval : list-like, optional, default: ['start','end']
+        Interval to limit the search, defaults to entire axis.\n
+        Some examples: [5, 'end'], ['start', 6800], [30, 1500]
+        Accepts text-strings 'start' and 'first' as synonyms and similarly for 'end', 'last'
+    limit_threshold : float, optional, default: 0.05
+        Fraction based threshold relative to the maximum density in the given interval.
+    direction : str, optional, default : 'right'
+        The search direction in the density function.
+    sigma : float, optional, default: 3
+        Smoothing factor of density function (kernel smooth).
+    bins : int, optional, default: 300
+        Number of bins in density histogram.
+    scale : str, optional, default: 'linear'
+        If plotting enabled, which scale to be used on axis.
+    T : int, optional, default: 1000
+        If plotting enabled and scale is logish, the threshold for linear-loglike transition
+
+    **Returns**
+
+    float
+        Coordinate on axis with lowest density in given interval.
+        
+    
+    .. note::
+            If less than 5 events are passed in parentGate, returns mid interval without attempting to valleyseek\n
+            Since the lowest density point is estimated on a smoothed histogram/density func there is an built-in error of +- ( bin width / 2 )
+    
+    **Examples**
+
+    None currently.
+    """
+    if not isinstance(fcs,AGsample):
+        raise invalidSampleError("in valleySeek:")
+    if parentGate is None:
+        vI=fcs.full_index()
+    elif not isinstance(parentGate,AGgate):
+        raise invalidAGgateParentError('in valleySeek:')
+    else:
+        vI=parentGate()
+    fcsDF=fcs()
+    if len(vI)<5:
+        sys.stderr.write("WARNING, in valleySeek: Passed index contains too few events, defaulting to mid-interval\n")  
+        return (interval[0]+interval[1])/2
+    if xCol not in fcsDF.columns:
+        raise AliGaterError("in valleySeek: ","Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
+    if type(interval) is not list:
+        raise AliGaterError("in valleySeek: ","Interval must be specified as list of two: [x,y].\nInterval can be half open to either side, i.e. ['start',y] or [x,'end'].")
+    if len(interval)!=2:
+        raise AliGaterError("in valleySeek: ","Interval must be specified as list of two: [x,y].\nInterval can be half open to either side, i.e. ['start',y] or [x,'end'].")
+    if not any(isinstance(i,(float,int, str)) for i in interval):
+        raise(AliGaterError("in valleySeek: ","Interval element had an unexpected type"))
+
+    vX = getGatedVector(fcsDF, gate=xCol, vI=vI,return_type="nparray")
+
+    if type(interval[0]) is str:
+        if interval[0].lower() in ['start', 'first']:
+            interval[0]=min(vX) 
+        else:
+            raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'first' or 'start', found "+interval[0].lower())
+    if type(interval[1]) is str:
+        if interval[1].lower() in ['end', 'last']:
+            interval[1]=max(vX) 
+        else:
+            raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'last' or 'end', found "+interval[1].lower())
+
+    final_vX=[]
+    for x in vX:
+        if x<interval[1] and x>interval[0]:
+            final_vX.append(x)
+            
+    vX=np.asarray(final_vX)
+    
+    
+    if scale.lower()!='linear':
+        vX = transformWrapper(vX, scale=scale, T=T)
+        interval[1]=transformWrapper([interval[1]],scale=scale, T=T)[0]
+        interval[0]=transformWrapper([interval[0]],scale=scale, T=T)[0]
+    
+    
+    histo, binData = np.histogram(vX,bins=bins)
+    smoothedHisto=gaussian_filter1d(histo.astype(float),sigma, mode='nearest')
+    
+    maximum_density=max(smoothedHisto)
+    maximum_density_index=np.argmax(smoothedHisto)
+
+    if isinstance(maximum_density_index,(list, np.ndarray)):
+        sys.stderr.write("WARNING, in densityDelimitation: Multiple maxima.\n")
+        if direction.lower()=='right':
+            maximum_density_index=int(maximum_density_index[-1])
+        elif direction.lower()=='left':
+            maximum_density_index=int(maximum_density_index[0])
+            
+    density_threshold=limit_threshold*maximum_density
+
+    if direction.lower()=='left':
+        endPoint=0
+        searchStep=-1
+    elif direction.lower()=='right':
+        endPoint=len(smoothedHisto)
+        searchStep=1
+    else:
+        sys.stderr.write("WARNING, in densityDelimitation: density function did not reach threshold, returning infinity.\n")
+        raise
+        
+    for i in np.arange(maximum_density_index, endPoint, searchStep):
+        if smoothedHisto[i] < density_threshold:
+            threshold_index = i
+            break
+    else:
+        return np.inf
+    
+    if direction.lower()=='left':
+        result=(binData[threshold_index]+binData[threshold_index+1])/2
+    if direction.lower()=='right':
+        result=(binData[threshold_index]+binData[threshold_index-1])/2
+    
+    if scale.lower()!='linear':
+            result = inverseTransformWrapper([result],scale=scale, T=T)[0]
+    return result
+
+
 
 def halfNormalDistribution(fcs, xCol, mean, direction, parentGate=None, bins=300, scale='linear',T=1000):
     """
