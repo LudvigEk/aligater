@@ -566,7 +566,7 @@ class AGQC:
     source=None
     
     def __init__(self, downSamplingBins=32, *args, **kwargs):
-        self.nOfBins=downSamplingBins
+        self.downSamplingBins=downSamplingBins
     
     def __call__(self, fcs, *args, **kwargs):
         if len(self.tmpFiles)==0:
@@ -702,7 +702,7 @@ class AGQC:
                 reportStr="sample "+str(name)+" not found in passed arrays."
                 sys.stderr.write(reportStr)
                 return None
-            plot_flattened_heatmap(image_data[index], self.nOfBins, mask=mask_zero)
+            plot_flattened_heatmap(image_data[index], self.downSamplingBins, mask=mask_zero)
         elif rand_select is not None:
             if not isinstance(rand_select,int):
                 raise AliGaterError("in AGQC.image_viewer", "rand_select must be int")
@@ -712,15 +712,17 @@ class AGQC:
             random_selection = np.random.randint(len(image_data), size=rand_select)
             for i in random_selection:
                 print(sample_data[i])
-                plot_flattened_heatmap(image_data[i], self.nOfBins, mask=mask_zero)
+                plot_flattened_heatmap(image_data[i], self.downSamplingBins, mask=mask_zero)
             return None
         else:
             for index in np.arange(0,len(image_data),1):
                 print(sample_data[index])
-                plot_flattened_heatmap(image_data[index], self.nOfBins, mask=mask_zero)   
+                plot_flattened_heatmap(image_data[index], self.downSamplingBins, mask=mask_zero)   
         return None
     
-    def select_population(self, population):
+    def select_population(self, population, return_type="list"):
+        if not return_type.lower() in ['nparray','list']:
+            raise AliGaterError("in select_population"," return type must be either 'list' or 'nparray'")
         if self.sourceFilePath is None:
             reportStr="No QC object is loaded!\nRun load_QC_file first\n"
             sys.stderr.write(reportStr)
@@ -745,7 +747,10 @@ class AGQC:
             sys.stderr.write(reportStr)
             self.sample_list = sample_data
             self.image_list = image_data
-            return [sample_data, image_data]
+            if return_type.lower() == 'nparray':
+                sample_data = np.asarray(sample_data)
+                image_data = np.asarray(image_data)
+            return sample_data, image_data
 
     def select_images(self, imlist):
         if self.sample_list is None:
@@ -827,15 +832,35 @@ class AGQC:
         return [samplelist, imlist]
     
     
-    def run_QC(self, population, n_components=2):
+    def run_QC(self, population, filter_samples=[], n_components=2):
         if self.sourceFilePath is None:
             reportStr="No QC object is loaded!\nRun load_QC_file first\n"
             sys.stderr.write(reportStr)
             return None
-        imlist, samplist = self.select_population(population)
+        samplist,imlist = self.select_population(population, return_type="nparray")
         if not isinstance(n_components,int):
             raise AliGaterError("in AGQC::run_QC", "n_components must be int, found"+str(type(n_components)))
-        PC_DF = imagePCA_cluster(samplist,imlist, n_components)
+        if not isinstance(filter_samples,list):
+            raise AliGaterError("in AGQC::run_QC", "filter_samples must be list of str, found"+str(type(n_components)))
+        if not all([isinstance(x,str) for x in filter_samples]):
+            raise AliGaterError("in AGQC::run_QC", "filter_samples must be list of str, the list contained non-str entries")
+        if len(filter_samples)>=1:
+            include_indicies=[]
+            removed_samples=[]
+            for i in np.arange(0,len(samplist),1):
+                #if samplist[i] in filter_samples:
+                str_samp=str(samplist[i]) #str comparison for below to work, CAVE: might be slow
+                if any([str(samp_to_filter) in str_samp for samp_to_filter in filter_samples]):
+                    removed_samples.append(samplist[i])
+                else:
+                    include_indicies.append(i)
+            filtered_samplist = samplist[include_indicies]
+            filtered_imlist = imlist[include_indicies]
+            PC_DF = imagePCA_cluster(samplelist=filtered_samplist,imlist=filtered_imlist, nOfComponents=n_components)
+            reportStr="After filtering, "+str(len(removed_samples))+" were removed (filter size: "+str(len(filter_samples))+").\n"
+            sys.stderr.write(reportStr)
+        else:
+            PC_DF = imagePCA_cluster(samplist,imlist, n_components)
         return PC_DF
     
 
@@ -1144,7 +1169,7 @@ class AGExperiment:
         if not hasattr(strategy, '__call__'):
             raise TypeError("Passed strategy does not seem to be a function")
         if self.bQC:
-            QCObj=AGQC(self.QCbins)
+            QCObj=AGQC(downSamplingBins=self.QCbins)
         
         for fcs in self.fcsList:
             if 'ag_verbose' in kwargs:
@@ -1259,7 +1284,7 @@ class AGExperiment:
                 fixed_exp_name=self.exp_name.split('/')[-1]
             else:
                 fixed_exp_name=self.exp_name
-            file=self.output_folder+self.fixed_exp_name+".results.txt"
+            file=self.output_folder+fixed_exp_name+".results.txt"
         assert isinstance(file, str)
         if not all(isinstance(i, list) for i in [self.resultHeader, self.resultMatrix]):
             sys.stderr.write("Experiment data table empty, no results to print.\n")

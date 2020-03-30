@@ -20,4 +20,3 @@ except ImportError as e:
 
 from aligater.AGCore import *
 from aligater.AGExperimental import *
-

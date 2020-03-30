@@ -1308,7 +1308,7 @@ def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, bHoris
             i+=1
             
     return vOut        
-    #OLD SOUTION BELOW
+    #OLD SOUTION BELOw  
     # for event in np.arange(0,len(vX),1):
         
     #     x = vX[event]
