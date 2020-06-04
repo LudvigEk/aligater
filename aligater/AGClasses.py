@@ -21,7 +21,7 @@
 import numpy as np
 import pandas as pd
 import sys, os, errno
-import gc   #for manually calling garbage collection during large iterations
+
 import datetime #For creating output folder names
 
 #These are for i/o operations used by the AGQC object to store downsampled images

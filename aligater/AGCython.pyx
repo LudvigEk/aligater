@@ -849,7 +849,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     path=[]
     curBin=startBin
     row_order = np.arange(0, bins, 1)
-    #if not leftRight: #ORIGINAL
+
     if not leftRight:
         row_order = row_order[::-1]
     for rowIdx in row_order:
@@ -861,8 +861,6 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     else:
         path.append( [xedges[0], yedges[curBin]])
         
-    #if not leftRight:
-    #    path = path[::-1]
         
     vOut=gatePointList(fcsDF=fcs(),xCol=xCol,yCol=yCol,vPL=path, population=population, bHorisontal=True, vI=originalvI)
     reportGateResults(vI,vOut)
