@@ -17,8 +17,8 @@ ag_maxMeasurement = 214748
 
 #Divider. Some machines outputs higher values and have a divider to downscale values for comparability. 
 #Manufacturer typically provides these and most are already preset in software such as FlowJo
-#BD machines like FacsCanto and Fortessa have divider 1 in my experience, BioRad like YETI and ZE5 have 10000
-ag_Divider = 10000
+#In my experience, BD machines like FacsCanto and Fortessa have divider 1, BioRad machines like YETI and ZE5 have 10000
+ag_Divider = 1
 
 #Sets verbosity level, if False only minor information and warnings are printed. Does not affect plotting behaviour.
 ag_verbose=False
@@ -26,7 +26,7 @@ ag_verbose=False
 #AliGater output dir
 ag_out="/home/hematogenomics/Ludvig/AliGater_output/"
 
-#AliGater tempdir (intermediate files such as downsampled images)
+#AliGater tempdir/scratch space (intermediate files such as downsampled images)
 ag_tmp="/home/hematogenomics/Ludvig/ag_tmp/"
 
 #AliGater home

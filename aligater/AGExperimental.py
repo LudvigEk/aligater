@@ -518,9 +518,9 @@ def densityDelimitation(fcs, xCol, parentGate=None, interval=['start','end'], si
         endPoint=len(smoothedHisto)
         searchStep=1
     else:
-        sys.stderr.write("WARNING, in densityDelimitation: density function did not reach threshold, returning infinity.\n")
-        raise
+        raise AliGaterError("in densityDelimitation","direction must be specified as 'right' or 'left'.")
         
+    #Search from maximum density bin, in search direction (i.e. left or right)
     for i in np.arange(maximum_density_index, endPoint, searchStep):
         if smoothedHisto[i] < density_threshold:
             threshold_index = i
@@ -774,4 +774,215 @@ def shortestPath(fcsDF, xCol, yCol, boundaries, vI=sentinel,maxStep=30, sigma=3,
     return vOut
 
 
+def gateBezier(fcs, xCol, yCol, name, parentGate=None, points=None, xParam=0, yParam=0, population='upper', startExtension='left', endExtension='right', scale='linear', xscale='linear', yscale='linear', T=1000, filePlot=None):
+    """
+    
+    Gates the population by drawing a quadratic Bézier curve between two points with tunable parameters.
+    
+    **Parameters**
+    
+    fcs : AGClasses.AGSample object
+        Flow data loaded in a sample object.
+    xCol,yCol : str
+        Marker labels.
+    points : list-like of tuple
+        The points defining start and end of the bezier curve (a list of two tuples).
+    name : str
+        Name of the resulting gated population.
+    parentGate : AGgate object, optional
+        Parent population to apply the gating to. 
+        If no AGgate object is passed gating is applied to the ungated data frame.
+    xParam : float or list-like
+        Parameter defining the x-coordinate of the midpoint in the quadratic Bézier curve.\n
+        Should be a floating point value between which will be translated into a scaled coordinate between the start- and endpoints x coordinates.\n
+        I.e. 0.0 means the midpoints x coordinate is the same as the starting x-coordinate and 1.0 gives a midpoint x-coordinate equal to the endpoint.\n
+        If multiple sets of start and end points have been passed this argument expects a list with xParams for each Bézier curve in order.
+    yParam : float or list-like
+        Parameter defining the y-coordinate of the midpoint in the quadratic Bézier curve.\n
+        Should be a floating point value between which will be translated into a scaled coordinate between the start- and endpoints y coordinates.\n
+        I.e. 0.0 means the midpoints y coordinate is the same as the starting y-coordinate and 1.0 gives a midpoint y-coordinate equal to the endpoint.\n
+        If multiple sets of start and end points have been passed this argument expects a list with yParams for each Bézier curve in order.        
+    population, str, optional, default: 'upper'
+        This parameter determines which population should be returned.\n
+        'upper' means any events with a value above the tresholds are returned.\n
+        'lower' means any events with a value below the tresholds will be returned.\n
+        The default setting means the population that's considered 'positive' in flow cytometry terms is returned.
+    startExtension : str, optional, default: 'left'
+        If the start point is somewhere in the middle of the gating view, this parameter defines how events falling outside the extend of the Bézier curve are treated. \n
+        Options are 'up', 'down', 'left' and will extend the line in the specified direction
+    endExtension : str, optional, default: 'right'
+        If the end point is somewhere in the middle of the gating view, this parameter defines how events falling outside the extend of the Bézier curve are treated. \n
+        Options are 'up', 'down', 'left' and will extend the line in the specified direction
+    scale : str, optional, default: 'linear'
+        Which scale to be used on axis.
+    xscale : str, optional, default: 'linear'
+        Which scale to be used on x-axis.
+    yscale : str, optional, default: 'linear'
+        Which scale to be used on y-axis.        
+    T : int, optional, default: 1000
+        If scale is logish, the threshold for linear-loglike transition.
+    filePlot : str, optional, default: None
+        Option to plot the gate to file to specified path. \n
+        Warning: might overwrite stuff.
 
+    **Returns**
+
+    None 
+    
+    **Examples**
+
+    None currently.
+    """
+    
+    if agconf.execMode in ["jupyter","ipython"]:
+        plot=True
+    else:
+        plot=False
+    if parentGate is None:
+        vI=fcs.full_index()
+    elif not isinstance(parentGate,AGgate):
+        raise invalidAGgateParentError("in gateBezier: ")
+    else:
+        vI=parentGate()
+    if not isinstance(fcs, AGsample):
+        raise invalidSampleError("in gateBezier: ")
+    else:
+        fcsDF=fcs()
+    if len(vI)<5:
+        sys.stderr.write("WARNING: in gateBezier: Passed population ("+str(parentGate.name)+") contains <5 events, returning empty gate\n") 
+        return AGgate([],parentGate,xCol,yCol,name)
+    if filePlot is not None:
+        if not isinstance(filePlot,str):
+            raise TypeError("If plotting to file is requested filePlot must be string filename")
+    if xCol not in fcsDF.columns or yCol not in fcsDF.columns:
+        raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels") 
+
+    if not all([isinstance(x, tuple) for x in points]):
+        raise AliGaterError("in gateBezier: ","points must be list-like of tuples")
+    if not all([isinstance(x, (float,int)) for y in points for x in y]):
+        raise AliGaterError("in gateBezier: ","tuples in points must be float or int")
+        
+    if not all(isinstance(x,str) for x in [scale, xscale, yscale]):
+        raise AliGaterError("in gateBezier: ","scale, xscale and yscale must be str if specified")
+    if not all(x.lower() in ['linear','logish','bilog'] for x in [scale, xscale, yscale]):
+        raise AliGaterError("in gateBezier: ","scale, xscale and yscale must be either of 'linear', 'logish' or 'bilog'")
+    
+    if not len(points) % 2 == 0:
+        raise AliGaterError("in gateBezier: ","points must contain even sets of points for Bezier curves (2,4,6 etc)")
+
+    
+    if scale.lower() != 'linear':
+        xscale = scale
+        yscale = scale
+    vX = getGatedVector(fcsDF, xCol, vI=vI, return_type="nparray")
+    vY = getGatedVector(fcsDF, yCol, vI=vI, return_type="nparray")    
+    if xscale.lower()!='linear':
+        vX=transformWrapper(vX, T=T, scale=xscale)
+    if yscale.lower()!='linear':
+        vY=transformWrapper(vY, T=T, scale=yscale)
+        
+    x_min = min(vX)
+    x_max = max(vX)
+    y_min = min(vY)
+    y_max = max(vY)
+    
+
+    if xscale != 'linear':
+        x_coords = transformWrapper([x[0] for x in points], T, xscale)
+    else:
+        x_coords=[x[0] for x in points]
+    if yscale != 'linear':
+        y_coords = transformWrapper([y[1] for y in points], T, yscale)
+    else:
+        y_coords = [y[1] for y in points]
+    
+        
+    def rect(x1, y1, x2, y2):
+        a = (y1 - y2) / (x1 - x2)
+        b = y1 - a * x1
+        return (a, b)
+
+    def beizer(xstart,ystart, xend, yend, xParam, yParam):
+        xmid = xstart+abs(xstart-xend)*xParam
+        ymid = ystart+abs(ystart-yend)*yParam
+        (x1, y1, x2, y2) = (xstart, ystart, xmid, ymid)
+        (a1, b1) = rect(xstart, ystart, xmid, ymid)
+        (a2, b2) = rect(xmid, ymid, xend, yend)
+        beizerPoints = []
+    
+        for i in range(0, 1000):
+            if x1 == x2:
+                continue
+            else:
+                (a, b) = rect(x1, y1, x2, y2)
+            x = i*(x2 - x1)/1000 + x1
+            y = a*x + b
+            beizerPoints.append((x,y))
+            x1 += (xmid - xstart)/1000
+            y1 = a1*x1 + b1
+            x2 += (xend - xmid)/1000
+            y2 = a2*x2 + b2
+        return beizerPoints
+
+    
+    #nOfBeizerCurves = len(points)/2
+    
+    beizerPoints=beizer(x_coords[0],y_coords[0],x_coords[1],y_coords[1],xParam[0],yParam[0])
+    
+    if endExtension.lower()=='up':
+        endCoord = (x_coords[-1],y_max)
+    elif endExtension.lower()=='right':
+        endCoord = (x_max,y_coords[-1])
+    elif endExtension.lower()=='down':
+        endCoord = (x_coords[-1],y_min)
+    else:
+        raise
+
+    if startExtension.lower()=='up':
+        startCoord = (x_coords[0],y_max)
+    elif startExtension.lower()=='left':
+        startCoord = (x_min,y_coords[0])
+    elif startExtension.lower()=='down':
+        startCoord = (x_coords[0],y_min)
+    else:
+        raise
+    
+    t_vPL = [startCoord] + beizerPoints + [endCoord]
+    vPL=[]
+    for point in t_vPL:
+        if scale.lower() != 'linear':
+            x=inverseTransformWrapper(point[0], scale=scale, T=T)
+            y=inverseTransformWrapper(point[1], scale=scale, T=T)
+        else:
+            x=point[0]
+            y=point[1]
+        vPL.append((x,y))
+    
+    result_vI=gatePointList(fcsDF,xCol,yCol,vPL, vI=parentGate())
+    
+    outputGate = AGgate(result_vI, parentGate, xCol, yCol, name)
+    
+    
+    #plotting section
+    if plot or filePlot is not None:
+        fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
+        addLine(fig,ax, vPL[0], vPL[1], scale=scale, T=T)
+        addLine(fig,ax, vPL[-2],vPL[-1], scale=scale, T=T)
+        for i in np.arange(0,len(beizerPoints),2):
+            x1=inverseTransformWrapper(beizerPoints[i][0], scale=scale, T=T)
+            x2=inverseTransformWrapper(beizerPoints[i+1][0], scale=scale, T=T)
+            y1=inverseTransformWrapper(beizerPoints[i][1], scale=scale, T=T)
+            y2=inverseTransformWrapper(beizerPoints[i+1][1], scale=scale, T=T)
+            addLine(fig,ax, [x1,y1], [x2,y2], scale=scale, T=T)
+
+        if filePlot is not None:
+            plt.savefig(filePlot)
+            if not plot:
+                plt.close(fig)
+        if plot:
+            plt.show()
+            plt.clf()
+            plotHeatmap(fcsDF, xCol, yCol, result_vI, scale=scale, thresh=T)
+            plt.show()
+            
+    return outputGate

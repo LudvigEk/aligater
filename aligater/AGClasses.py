@@ -634,7 +634,7 @@ class AGQC:
     def saveHDF5_QC_obj(self, destFilePath, experiment_name):
         sys.stderr.write("Creating HDF5 QC object\n")
 
-        #has_truncated_sample_names = False
+
         with h5py.File(destFilePath, 'w') as h5pyfile:
         
             for file in self.tmpFiles:
@@ -746,10 +746,13 @@ class AGQC:
             reportStr="Loaded data for "+str(population)+" containing "+str(len(sample_data))+" ("+str(self.downSamplingBins)+","+str(self.downSamplingBins)+") images\n"
             sys.stderr.write(reportStr)
             self.sample_list = sample_data
-            self.image_list = image_data
+            self.image_list = [x.reshape(self.downSamplingBins, self.downSamplingBins) for x in image_data]
             if return_type.lower() == 'nparray':
                 sample_data = np.asarray(sample_data)
                 image_data = np.asarray(image_data)
+            else:
+                sample_data = self.sample_list
+                image_data = self.image_list
             return sample_data, image_data
 
     def select_images(self, imlist):
@@ -860,7 +863,7 @@ class AGQC:
             reportStr="After filtering, "+str(len(removed_samples))+" were removed (filter size: "+str(len(filter_samples))+").\n"
             sys.stderr.write(reportStr)
         else:
-            PC_DF = imagePCA_cluster(samplist,imlist, n_components)
+            PC_DF = imagePCA_cluster(samplelist=samplist,imlist=imlist, nOfComponents=n_components)
         return PC_DF
     
 
@@ -1050,7 +1053,7 @@ class AGExperiment:
                 raise (TypeError("normaliseOn must be string"))
             self.normalise=True
             self.normaliseLevel=kwargs['normaliseOn']
-            reportStr="Plate normalisation/outlier detection requested\n"
+            reportStr="Plate normalisation/outlier detection requested\nNOT IMPLEMENTED YET\n"
             sys.stderr.write(reportStr)
             
         if 'QC' in kwargs:
@@ -1330,44 +1333,6 @@ class AGExperiment:
         fcs = strategy(fcs, *args, **kwargs)
         return fcs
     
-#    def check_plate(self, plate_samples, order=None):
-#        #print(plate_samples)
-#        #population_names=[]
-#        #population_avgs=[]
-#        #Gets list of AGSamples in this plate.
-#        #Check for outliers, compute averages and report
-#        nOfGates=[len(sample.vGates) for sample in plate_samples]
-#        if not nOfGates[1:] == nOfGates[:-1]:
-#            sys.stderr.write("plate samples has unequal amount of gates\n")
-#            raise  
-#        if len(nOfGates)==0:
-#            reportStr="Sample object has no gates\n"
-#            sys.stderr.write(reportStr)
-#            return None
-#        
-#        nOfGates=nOfGates[0]
-#        popList=[]
-#        for sample in plate_samples:
-#            popList.append(sample.resultVector(order=order))
-#        
-#        plate_matrix=np.array(popList, dtype=np.float64)
-#        #print(plate_matrix)
-#        #print("shape: "+str(plate_matrix.shape[1]))
-#        #iterate through cols, compute means and std dev
-#        t_plate_matrix=np.transpose(plate_matrix)
-#        for i in np.arange(0,len(t_plate_matrix),1):
-#            #Important, require array to be C continous with order='C'
-#            np_popList=np.asarray(t_plate_matrix[i], dtype=np.float64, order='C')
-#            #print(np_popList)
-#            mean, var = Stat_GetMeanAndVariance_double(np_popList)
-#            #print("mean: "+str(mean)+"\nstd_dev: "+str(np.sqrt(var)))
-#            std_dev = np.sqrt(var)
-#            for x in np.arange(0, len(np_popList),1):
-#                if np_popList[x] < (mean - 4*std_dev) or np_popList[x] > (mean + 2*std_dev):
-#                    self.flaggedSamples.append((plate_samples[x].filePath, plate_samples[x].vGates[i][0]))
-#        #np_popList=np.asarray(popList,dtype=np.float64)
-#        #mean, var = Stat_GetMeanAndVariance_double(np_popList)
-#        return None
     
     def check_metadata_internal(self, filePath, fcsDF, lFlagged, metaDict):
         bOk=True

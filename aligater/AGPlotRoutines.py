@@ -489,6 +489,18 @@ def __autoBinCount(data):
     
 def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
     immatrix = np.array([im.flatten() for im in imlist],'f')
+
+    #Check for nan elements in matrix
+    if np.isnan(immatrix).any():
+        array_has_nan = np.array([np.isnan(arr).any() for arr in immatrix])
+        removed_images = samplelist[array_has_nan]
+        imlist = imlist[~array_has_nan]
+        samplelist=samplelist[~array_has_nan]
+        n_of_nan=array_has_nan.sum()
+        reportStr=str(n_of_nan)+" samples had invalid images and where removed:\n"+"\n".join(removed_images)+"\n"
+        sys.stderr.write(reportStr)
+        immatrix = np.array([im.flatten() for im in imlist],'f')
+    
     if immatrix.shape[0] == 0:
         reportStr="No data in passed image matrix\n"
         sys.stderr.write(reportStr)
@@ -511,18 +523,10 @@ def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
     sys.stderr.write(reportStr)
     #center the coordinate system on the mean of each PC
     projection_d_df = projection_d_df - projection_d_df.mean()
-    #Normalize
-    #normalised_projection_d_df=(projection_d_df-projection_d_df.min())/(projection_d_df.max()-projection_d_df.min())
-    #if nOfComponents==2:
-    #    axes = projection_d_df.plot(kind='scatter', x='PC2', y='PC1', figsize=(16,8))
-    #    axes.set_xlim([projection_d_df['PC2'].min()*1.1, projection_d_df['PC2'].max()*1.1])
-    #    axes.set_ylim([projection_d_df['PC1'].min()*1.1, projection_d_df['PC1'].max()*1.1])
-        #TODO: PLOTTING OPTIONS
-        #plt.show()
-    #normalised_projection_d_df['length']=np.sqrt(np.square(normalised_projection_d_df).sum(axis=1))
-    #normalised_projection_d_df.sort_values(by='length', inplace=True)
+
     projection_d_df['length']=np.sqrt(np.square(projection_d_df).sum(axis=1))
     projection_d_df.sort_values(by='length', inplace=True)
+    
     return projection_d_df
     
 def imagePCA(imlist):
@@ -823,7 +827,10 @@ class LogishLocator(Locator):
             
         #How many decs in the log part?
         log_vmin = math.log(self.T) / math.log(self._base)
-        log_vmax = math.log(vmax) / math.log(self._base)      
+        try:
+            log_vmax = math.log(vmax) / math.log(self._base)      #If empty input in log-span this can lead to math domain error. Return small default span in that case
+        except ValueError:
+            log_vmax = log_vmin + 1.0
 
         numdec = math.floor(log_vmax) - math.ceil(log_vmin)
         ticklocs = self._base ** numdec   #Base ** decades
