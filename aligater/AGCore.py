@@ -511,7 +511,7 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
             center=transformWrapper(customCenter, T, scale)
         
     if plot or filePlot is not None:
-        fig, ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale, thresh=T)
+        fig, ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale, thresh=T, return_plot_objects=True)
 
     center, eigen1, eigen2 = getPCs(fcsDF, xCol, yCol, center, vI, scale=scale, T=T)
 
@@ -526,7 +526,7 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
         #Recalculate eigen 1
         adjustAngle=math.radians(adjustAngle)
         angle=angle+adjustAngle
-        new_eigen1=calculateNormVector([0,0], adjustAngle)
+        new_eigen1=calculateNormVector([0,0], angle)
         #Recalculate eigen 2
         secondAngle=calculateAngle(center, PC2)
         secondAngle=secondAngle+adjustAngle

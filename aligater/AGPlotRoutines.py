@@ -48,7 +48,7 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     elif len(vI)<2:
         sys.stderr.write("Passed index contains no events\n")
         return None, None
-    if len(vI)<bins:
+    if not isinstance(bins,str) and len(vI)<bins:
         bins=len(vI)
     if scale.lower()=='logish':
         xscale='logish'
@@ -86,16 +86,22 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     else:
         mask_value=0
     
-    vX=getGatedVector(fcsDF, x, vI)
-    vY=getGatedVector(fcsDF, y, vI)
+    vX=getGatedVector(fcsDF, x, vI, return_type="nparray")
+    vY=getGatedVector(fcsDF, y, vI, return_type="nparray")
     plt.clf()
     matplotlib.rcParams['image.cmap'] = 'jet'
     heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, thresh)
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
     heatmap=np.ma.masked_where(heatmap <= mask_value, heatmap)
-    plt.clf()
-    fig, ax = plt.subplots()
-    plt.imshow(heatmap.T, extent=extent, origin='lower',aspect=aspect)
+    
+    #CLOSES ALL OPEN FIGURES ON CALL - PERHAPS BAD ?
+    plt.close('all')
+    fig = plt.figure()
+    ax = plt.gca()
+    #matplotlib 3.2.x changed behaviour of interpolation
+    #see https://github.com/matplotlib/matplotlib/issues/17722
+    #and https://matplotlib.org/3.2.1/api/api_changes.html#default-image-interpolation
+    plt.imshow(heatmap.T, extent=extent, origin='lower',aspect=aspect, interpolation='none')
     plt.xlabel(x)
     plt.ylabel(y)
     cmap=plt.get_cmap()
@@ -124,12 +130,15 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     if bYlim:
         ax.yaxis.set_xlim(left=yscale_limits[0], right=yscale_limits[1])
     return fig,ax
+    
 
-def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xlim=None, ylim=None, range=None):
+def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='linear', T=1000, normalize=False, xlim=None, ylim=None, range=None):
     if not any(isinstance(i,str) for i in [scale,xscale,yscale]):
         raise TypeError("scale, xscale, yscale must be specified as string, such as: 'linear', 'logish'")
     if not all(i.lower() in ['linear', 'logish', 'bilog'] for i in [scale,xscale,yscale]):
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
+    if not isinstance(bins,(int,str)):
+        raise TypeError("bins can only be either of int or str")
     if range is not None:
         if isinstance(range,list):
             if len(range)==2:
@@ -150,15 +159,25 @@ def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xli
         defaultRange=None
         xRange=None
         yRange=None
-
+    
     if not len(vX) == len(vY):
         raise AliGaterError("in getHeatmap: ","Coordinate vectors are of unequal length")
     if len(vX)==0:
         raise AliGaterError("in getHeatmap: ","Coordinate vectors are empty")
         
+    if not isinstance(vX,np.ndarray):
+        try:
+            vX=np.asarray(vX)
+        except:
+            raise AliGaterError("in getHeatmap: ", "Couldn't coerce x-value vectors into numpy array format")
+    if not isinstance(vY,np.ndarray):
+        try:
+            vY=np.asarray(vY)
+        except:
+            raise AliGaterError("in getHeatmap: ", "Couldn't coerce x-value vectors into numpy array format")  
     index_mask=[]
     for i in np.arange(len(vX)-1,-1,-1):
-        if xlim is not None:
+       if xlim is not None:
             if vX[i] < xlim[0] or vX[i] > xlim[1]:
                 index_mask.append(i)
                 continue
@@ -168,9 +187,46 @@ def getHeatmap(vX, vY, bins, scale, xscale, yscale, T=1000, normalize=False, xli
         vX = np.delete(vX, index_mask)
         vY = np.delete(vY, index_mask)
         assert len(vX) == len(vY)
-                
-    if scale=='linear' and xscale=='linear' and yscale == 'linear':
-        return np.histogram2d(vX, vY, bins, normed=normalize, range=defaultRange)
+    
+    if isinstance(bins, str):
+        xbin_edges=np.histogram_bin_edges(vX,bins=bins)
+        ybin_edges=np.histogram_bin_edges(vY,bins=bins)
+    else:
+        xbin_edges=bins
+        ybin_edges=bins
+        
+    if scale.lower()=='linear' and xscale.lower()=='linear' and yscale.lower() == 'linear':
+        return np.histogram2d(vX, vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
+    
+    #if not linear probably just transform and calc edges after
+    #attempt at fix, still some redundancy...
+    t_xbin_edges = t_ybin_edges = None
+    if scale.lower()!='linear':
+        t_vX = transformWrapper(vX, scale=scale, T=T)
+        t_xbin_edges=np.histogram_bin_edges(t_vX,bins=bins)
+        xbin_edges = inverseTransformWrapper(t_xbin_edges, scale=scale, T=T)
+        
+        t_vY = transformWrapper(vY, scale=scale, T=T)
+        t_ybin_edges=np.histogram_bin_edges(t_vY,bins=bins)      
+        ybin_edges = inverseTransformWrapper(t_ybin_edges, scale=scale, T=T)
+        
+    if xscale.lower()!='linear':
+        t_vX = transformWrapper(vX, scale=xscale, T=T)
+        t_xbin_edges=np.histogram_bin_edges(t_vX,bins=bins)
+        xbin_edges = inverseTransformWrapper(t_xbin_edges, scale=scale, T=T)
+        
+    if yscale.lower()!='linear':
+        t_vY = transformWrapper(vY, scale=yscale, T=T)
+        t_ybin_edges=np.histogram_bin_edges(t_vY,bins=bins)
+        ybin_edges = inverseTransformWrapper(t_ybin_edges, scale=scale, T=T)
+        
+    #print(ybin_edges)
+    #print("\n\n")
+    #print(xbin_edges)
+    #print("\n\n")
+    return np.histogram2d(vX,vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
+    
+    #-------------------------DEPRECATED below---------------------------
     if scale=='logish' or (xscale == 'logish' and yscale == 'logish'):
         xBinEdges=logishBin(vX,bins,T, xRange)
         yBinEdges=logishBin(vY,bins,T, yRange)
@@ -217,8 +273,14 @@ def plot_flattened_heatmap(heatmap_array, nOfBins, mask=True):
 def transformWrapper(vX, T, scale):
     result=None
     single_val=False
-    if isinstance(vX, pd.Series):
-        raise AliGaterError("in transformWrapper: ","transformWrapper does not accept pandas Series input, use list or numpy array")
+
+    if not isinstance(vX,np.ndarray):
+        try:
+            vX=np.asarray(vX)
+        except:
+            raise AliGaterError("in transformWrapper: ", "Couldn't coerce input vector to numpy array format")
+  
+        
     if not isinstance(vX, (list, np.ndarray, tuple)):
         if isinstance(vX, (float, int)):
             vInput=[vX]

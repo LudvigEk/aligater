@@ -21,14 +21,14 @@
 import numpy as np
 import pandas as pd
 import sys, os, errno
-import gc   #for manually calling garbage collection during large iterations
+import gc   #for manually calling garbage collection during large iterations - deprecated
 import datetime #For creating output folder names
 
 #These are for i/o operations used by the AGQC object to store downsampled images
 import tempfile
 from shutil import copyfile
 import h5py
-
+from matplotlib.pyplot import close as close_pyplot_figures
 
 #AliGater imports
 import aligater.AGConfig as agconf
@@ -649,7 +649,7 @@ class AGQC:
                 #Read all images in the file
                 while True:
                     try:
-                        image=np.load(fhandle)
+                        image=np.load(fhandle, allow_pickle=True) #CAVE: https://stackoverflow.com/questions/60191681/cannot-load-file-containing-pickled-data-python-npy-i-o
                     except OSError:
                         break
                     #Image data is from third element and onwards
@@ -1200,6 +1200,8 @@ class AGExperiment:
             if self.bQC:
                 sys.stderr.write("and QC metrics collection ")
             sys.stderr.write("done\n")
+            #Clear all opened figure objects
+            #close_pyplot_figures.close('all') - moved to plotheatmap (the culprit that generates all figures)
             #Flush stderr for logfile between each sample
             sys.stderr.flush()
                     
