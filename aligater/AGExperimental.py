@@ -981,7 +981,7 @@ def gateBezier(fcs, xCol, yCol, name, parentGate=None, points=None, xParam=0, yP
                 plt.close(fig)
         if plot:
             plt.show()
-            plt.clf()
+            plt.close()
             plotHeatmap(fcsDF, xCol, yCol, result_vI, scale=scale, thresh=T)
             plt.show()
             
