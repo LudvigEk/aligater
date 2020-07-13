@@ -693,12 +693,12 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     if parentGate is None:
         vI=fcs.full_index()
     elif not parentGate.__class__.__name__ == "AGgate":
-        raise TypeError("Parent population in "+name+" is an invalid AGgate object.")
+        raise AliGaterError("in horisontalPath","Passed parent population is an invalid AGgate object.")
     else:
         vI=parentGate()
         startingGate=parentGate
     if len(vI)<5:
-        sys.stderr.write("Passed parent population to "+name+" contains too few events, returning empty gate.\n") 
+        sys.stderr.write("in horisontalPath: Passed parent population contains too few events, returning empty gate.\n") 
         outputGate=AGgate([],parentGate,xCol,yCol,name)
     #cdef int startbin
     #originalvI=vI
@@ -1303,7 +1303,6 @@ def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, bHoris
         idx_vPL+=1
 
     if bUnhandled:
-        print("ping!")
         lim = sorted_vPL[len(vPL)-1][targetAxis]
         while i < len(sorted_events):
             lim_coord = sorted_events[i][targetAxis]
@@ -1317,7 +1316,7 @@ def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, bHoris
             i+=1
             
     return vOut        
-    #OLD SOUTION BELOW
+    #OLD SOUTION BELOw  
     # for event in np.arange(0,len(vX),1):
         
     #     x = vX[event]
