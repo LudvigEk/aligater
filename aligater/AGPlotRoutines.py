@@ -41,7 +41,8 @@ import aligater.AGConfig as agconf
 from aligater.AGFileSystem import getGatedVector, AliGaterError
 
 sentinel = object()
-    
+
+
 def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='linear', yscale='linear', thresh=1000, aspect='auto', **kwargs):
     if vI is sentinel:
         vI=fcsDF.index
@@ -80,6 +81,26 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
                     yscale_limits=logishTransform(yscale_limits,thresh)
                     bYlim=True
     
+        
+    if 'cmap' in kwargs:
+        cmap = kwargs['cmap']
+        if not isinstance(cmap, str):
+            collect_default=False
+        else:
+            collect_default=True
+    else:
+        collect_default=True
+        cmap='jet'
+    
+    if 'rcParams' in kwargs:
+        if not isinstance(kwargs['rcParams'],dict):
+            raise TypeError("if rcParams is passed, it must be a dict")
+        else:
+            rcParams=kwargs['rcParams']
+            custom_rcParams=True
+    else:
+        custom_rcParams=False
+    
     if 'mask_where' in kwargs:
         mask_value = kwargs['mask_where']
         assert isinstance(mask_value,(float,int))
@@ -89,16 +110,23 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     vX=getGatedVector(fcsDF, x, vI)
     vY=getGatedVector(fcsDF, y, vI)
     plt.clf()
-    matplotlib.rcParams['image.cmap'] = 'jet'
+    if custom_rcParams:
+        plt.rcParams=rcParams
+    else:
+        plt.rcParams['figure.figsize']=5,5
+        plt.rcParams['image.cmap']=cmap
+    
     heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, thresh)
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
     heatmap=np.ma.masked_where(heatmap <= mask_value, heatmap)
     plt.clf()
+
     fig, ax = plt.subplots()
-    plt.imshow(heatmap.T, extent=extent, origin='lower',aspect=aspect)
+    plt.imshow(heatmap.T, extent=extent, origin='lower',aspect=aspect, cmap=cmap)
     plt.xlabel(x)
     plt.ylabel(y)
-    cmap=plt.get_cmap()
+    if collect_default:
+        cmap=plt.get_cmap()
     cmap.set_bad(color='white') #Zeroes should be white, not blue
 
     if xscale.lower()=='logish':

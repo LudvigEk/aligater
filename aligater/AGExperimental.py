@@ -958,7 +958,7 @@ def gateBezier(fcs, xCol, yCol, name, parentGate=None, points=None, xParam=0, yP
             y=point[1]
         vPL.append((x,y))
     
-    result_vI=gatePointList(fcsDF,xCol,yCol,vPL, vI=parentGate())
+    result_vI=gatePointList(fcsDF,xCol,yCol,vPL, population=population, vI=parentGate())
     
     outputGate = AGgate(result_vI, parentGate, xCol, yCol, name)
     

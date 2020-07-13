@@ -519,6 +519,7 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
     width=getVectorLength(center, PC1)
     height=getVectorLength(center, PC2)
     angle=calculateAngle(center, PC1)
+    
     if 'adjustAngle' in kwargs:
         #Collect requested adjustment
         adjustAngle=kwargs['adjustAngle']
@@ -526,18 +527,19 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
         #Recalculate eigen 1
         adjustAngle=math.radians(adjustAngle)
         angle=angle+adjustAngle
-        new_eigen1=calculateNormVector([0,0], adjustAngle)
+        
+        new_eigen1=calculateNormVector([0,0], angle)
         #Recalculate eigen 2
         secondAngle=calculateAngle(center, PC2)
         secondAngle=secondAngle+adjustAngle
         new_eigen2=calculateNormVector([0,0],secondAngle)
-
+        
         eigen1[1]=new_eigen1[0]
         eigen1[2]=new_eigen1[1]
         eigen2[1]=new_eigen2[0]
         eigen2[2]=new_eigen2[1]
-       
-    
+        
+        
     result=gateEllipsoid(fcsDF, xCol, yCol,xCenter=center[0],yCenter=center[1], majorAxis=[eigen1[1],eigen1[2]],majorRadii=width ,minorAxis=[eigen2[1],eigen2[2]], minorRadii=height,vI=vI, scale=scale, T=T)
 
     if plot or filePlot is not None:
@@ -946,6 +948,8 @@ def axisStats(fcsDF, xCol, vI=None,bins=300, sigma=3, scale='linear',T=1000):
 
 def EllipseGate(fcs, name, xCol, yCol, center, width, parentGate=None, height=None, angle=0, scale='linear', T=1000, filePlot=None):
     #TODO: NOT WORKING WITH SCALES!
+    #DEPRECATED - DO NOT USE
+    sys.stderr.write("WARNING: EllipseGate is deprecated\n")
     if agconf.execMode in ["jupyter","ipython"]:
         plot=True
     else:
