@@ -223,8 +223,55 @@ def getGatedVectors(fcsDF, gate1, gate2, vI=None, return_type="pdseries"):
 
 
 def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=None, marker_names='label',ignore_minCell_filter=False, flourochrome_area_filter=False, sampling_resolution=32):
+    """
+    Loads an fcs file from given path into an aligater.AGClasses.AGSample object. \n
+    Multiple settings dealing with compensation, checking for markers etc.
+    
+    **Parameters**
+    
+    path : str
+        Absolute path to .fcs file.
+    compensate : bool, default: True
+        Apply compensation based on the compensation matrix in file metadata.
+    comp_matrix : np.ndarray or None, default: None
+        Optional passed external compensation matrix to apply for compensation.
+    return_type : str, optional, default: "index"
+        Specifies if the loaded flow intensities should be return as an aligater.AGClasses.AGSample object ("agsample") or a pandas.Dataframe ("index").
+    markers : list-like, optional, default: None
+        A list-like containing str names of the expected markers in the sample. Loading will fail if any marker is missing and None is instead returned.
+    marker_names : str, default: 'label'
+        Options are 'label' or 'color'\n
+        Specify which labelling style should be used for the flow data - the flourochrome marker or the labels, both are read from the .fcs files metadata.
+    ignore_minCell_filter : bool, default: False
+        If true, ignores the minCell filter for total sample events specified in aligater.AGConf.minCells and loads the sample anyway.
+    flourochrome_area_filter : bool, default : False
+        Some machines/fcs files report Area, width and height for each flourochrome, some only report the area signal.\n
+        This flag enables filtering of the height and width channels for flourochromes and only return the area.\n
+        For side- and forward-scatter channels all three are always returned.
+    sampling_resolution : int, default: 32
+        To-be-deprecated.
+        Used to specify downsampling dimensions for batch runs through aligater.AGClasses.AGExperiments, this parameter is just passed through.\n
+        Will be moved into a ``*args`` ``**kwargs`` style parameter.\n
+        Should always be ignored if loading single files - it does nothing.
+    
+    **Returns**
+    
+    dict (optional)
+        if metadata is True a dictionary object containing metadata information is returned first, in addition to the flow data.
+    pandas.core.dataframe
+        If return type is 'index'
+    aligater.AGClasses.AGSample
+        If return_type is 'agsample' returns an AGSample object with the flow data loaded
+        
+    .. note::   
+        If any checks fail such as marker names were supplied and do not match marker names in the sample or the sample containing fewer total events than aligater.AGConf.minCell, None is instead returned.
+        
+    **Examples**
+
+    None currently.
+    """
     #********Lazy loading of*************
-    #TODO; could move to AGClasses, kind of makes sense.
+    # could move to AGClasses and avoid, kind of makes sense.
     from aligater.AGClasses import AGsample
     #************************************
     if not isinstance(return_type, str):

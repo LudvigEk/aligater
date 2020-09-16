@@ -869,7 +869,7 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
 
 def axisStats(fcsDF, xCol, vI=None,bins=300, sigma=3, scale='linear',T=1000):
     """
-    Report mean, standard deviation and maximum value on axis.
+    Report mean, median, standard deviation and maximum value on axis.
     
     **Parameters**
     
@@ -886,18 +886,33 @@ def axisStats(fcsDF, xCol, vI=None,bins=300, sigma=3, scale='linear',T=1000):
     scale : str, optional, default: 'linear'
         The returned values can be transformed to a plotting scale; \n
         options: 'linear', 'logish'
+        
+    .. note::
+        If a scale is changed from the default 'linear', \n
+        **The returned values will then also be the mean, median, sigma and maxval in transformed coordinates**.\n 
+        (i.e. what you would visually see if plotting with this scale)\n
+        To reverse transform see aligater.AGPlotRoutines.inverseTransformWrapper.
+        When setting a treshold based on these values (such as mean+2*sigma), use transformed values and then invert.
+    
     T : int, optional, default: 1000
         If plotting enabled and scale is logish, the threshold for linear-loglike transition
 
     **Returns**
 
-    float, float, float
+    float, float, float, float
         mean, median, standard deviation, maximum value
-
+        
+    .. note::
+        The input heatmap is smoothed using a gaussian filter to avoid finding noisy local minima.\n
+        The returned maxvalue will be the center of the (smoothed) bin where it occured. This means it has an inbuilt approximation error of:\n
+        +- ( bin width / 2 )
+            
     **Examples**
 
     None currently.
+    
     """
+    
     if vI is None:
         vI=fcsDF.index
     elif len(vI)<5:
@@ -946,10 +961,10 @@ def axisStats(fcsDF, xCol, vI=None,bins=300, sigma=3, scale='linear',T=1000):
 
     return mean, median, sigma, maxVal
 
-def EllipseGate(fcs, name, xCol, yCol, center, width, parentGate=None, height=None, angle=0, scale='linear', T=1000, filePlot=None):
-    #TODO: NOT WORKING WITH SCALES!
-    #DEPRECATED - DO NOT USE
-    sys.stderr.write("WARNING: EllipseGate is deprecated\n")
+def EllipseGate(fcs, name, xCol, yCol, center, width, parentGate=None, height=None, angle=0, in_radians=False, scale='linear', T=1000, filePlot=None):
+    #TODO: write docs, clean up
+    #Wrapper for gateEllipsoid cythonfunc
+    #Width & heigh should be passed in transformed coordinates if scales are used
     if agconf.execMode in ["jupyter","ipython"]:
         plot=True
     else:
@@ -976,16 +991,19 @@ def EllipseGate(fcs, name, xCol, yCol, center, width, parentGate=None, height=No
         height=width
     if width <= 0 or height <=0:
         raise AliGaterError("in EllipseGate","height/width cant be negative")       
-        
-    #fcsDF, str xCol, str yCol, float xCenter, float yCenter, list majorAxis, float majorRadii, list minorAxis, float minorRadii    
+           
+    if not in_radians:
+        angle=np.radians(angle)
     
     if angle == 0: #To avoid weird rounding when angle is zero
         majorAxis = [1,0]
         minorAxis = [0,1]
     else:
-        majorAxis = [width*np.cos(angle), width*np.sin(angle)] / np.linalg.norm([width*np.cos(angle), width*np.sin(angle)])
-        minorAxis = [height*np.cos(angle+np.pi/2), height*np.sin(angle+np.pi/2)] / np.linalg.norm([height*np.cos(angle+np.pi/2), height*np.sin(angle+np.pi/2)])
-
+        #majorAxis = [width*np.cos(angle), width*np.sin(angle)] / np.linalg.norm([width*np.cos(angle), width*np.sin(angle)])
+        majorAxis = [np.cos(angle), np.sin(angle)]
+        #minorAxis = [height*np.cos(angle+np.pi/2), height*np.sin(angle+np.pi/2)] / np.linalg.norm([height*np.cos(angle+np.pi/2), height*np.sin(angle+np.pi/2)])
+        minorAxis = [np.cos(angle+np.pi/2), np.sin(angle+np.pi/2)]
+        
     if scale.lower() != 'linear':
         # if center[0] != 0:
         #     width = transformWrapper(width+center[0], scale=scale, T=T) - transformWrapper(width, scale=scale, T=T)
@@ -1002,11 +1020,32 @@ def EllipseGate(fcs, name, xCol, yCol, center, width, parentGate=None, height=No
     majorAxis=list(majorAxis)
     minorAxis=list(minorAxis)
 
+    if plot or filePlot is not None:
+        fig, ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale, thresh=T, return_plot_objects=True)
     #if using a non-linear scale, the input center, axis and radii must be in the correct transformed coordinates.
     
     vOut = gateEllipsoid(fcsDF=fcs(), xCol=xCol, yCol=yCol, xCenter=center[0], yCenter=center[1], majorAxis = majorAxis, majorRadii = width, minorAxis = minorAxis, minorRadii=height, vI=vI, population="inner", info=False, scale=scale, T=T)
-    output_gate = AGgate(vOut, parentGate, xCol, yCol, name)
-    return output_gate
+    #output_gate = AGgate(vOut, parentGate, xCol, yCol, name)
+    
+    if plot or filePlot is not None:
+        #addLine(fig, ax, center, PC1)
+        #addLine(fig, ax, center, PC2)
+        ax.add_patch(Ellipse(center, 2*width, 2*height, np.degrees(angle), fill=False, edgecolor='#FF0000', linestyle='dashed'))
+        if filePlot is not None:
+            plt.savefig(filePlot)
+            if not plot:
+                plt.close(fig)
+        if plot:
+            plt.show()
+            plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale, thresh=T)
+            plt.show()
+            plt.clf()
+    if parentGate is not None:
+        outputGate=AGgate(vOut, parentGate, xCol, yCol, name)
+    else:
+        outputGate=AGgate(vOut, None, xCol, yCol, name)
+    
+    return outputGate
 
 def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yOrientation='upper', Outer=False, parentGate=None, bins=300, scale='linear', T=1000, update=False, filePlot=None, QC=False):
     """
@@ -1274,8 +1313,6 @@ def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='li
     
     .. note::
             All limits are considered greater than inclusive (<=) and less than exclusive (>)\n
-            If QC is requested, the downsampled image will be same of all the gated populations. Only one image will be saved, with its name given by the top-left population.
-
 
     **Examples**
 

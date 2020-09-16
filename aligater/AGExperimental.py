@@ -565,7 +565,7 @@ def halfNormalDistribution(fcs, xCol, mean, direction, parentGate=None, bins=300
     .. note::
             If a scale is changed from the default 'linear', the normal distribution is estimated on the transformed values (i.e. what you would see if plotting with this scale)\n
             **The returned values will then also be the mean and sigma of the transformed values**.\n 
-            To reverse transform see aligater.AGPlotRoutines.inverseLogishTransform.
+            To reverse transform see aligater.AGPlotRoutines.inverseTransformWrapper.
             When setting a treshold based on these values (such as mean+2*sigma), use transformed values and then invert.
         
     **Returns**

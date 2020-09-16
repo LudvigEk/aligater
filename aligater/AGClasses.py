@@ -876,16 +876,16 @@ class AGExperiment:
     
     **Members**
     
-    lFilter, list-like
+    filters, list-like
         List-like of str. Inclusive filter that will be passed on to AGFileSystem.CollectFiles.
         
-    lIgnoreTypes, list-like
+    ignoretype, list-like
         List-like of str. Exclusive filter that will be passed on to AGFileSystem.CollectFiles.
         
-    lMask, list-like
+    mask, list-like
         List-like of str. Exclusive filter that will be passed on to AGFileSystem.CollectFiles.
         
-    lMarkers, list-like
+    markers, list-like
         List-like of str. Both inclusive and exclusive filter that will be passed on to AGFileSystem.loadFCS. 
         Any marker labels encountered in a .fcs file must exist in this filter, otherwise sample is skipped.
         
@@ -1356,11 +1356,21 @@ class AGExperiment:
             
         #Check that the first four fields in the fcs are forward and side scatters
         #Otherwise parsing will fail
-        scatter_cols=fcsDF.columns[0:4]
-        if not all([scatter in ['FSC-A', 'FSC-H', 'SSC-A', 'SSC-H'] for scatter in scatter_cols]):
-            reportStr="First four columns in fcs are not forward and side scatters"
-            bOk=False
-            lFlags.append(reportStr)
+        
+        
+        #TODO
+        if not self.flourochrome_area_filter:
+            scatter_cols=fcsDF.columns[0:4]
+            if not all([scatter in ['FSC-A', 'FSC-H', 'SSC-A', 'SSC-H'] for scatter in scatter_cols]):
+                reportStr="First four columns in fcs are not forward and side scatters"
+                bOk=False
+                lFlags.append(reportStr)
+        else:
+            scatter_cols=fcsDF.columns[0:5]
+            if not all([['FSC', 'SSC'] in scatter for scatter in scatter_cols]):
+                reportStr="First four columns in fcs are not forward and side scatters"
+                bOk=False
+                lFlags.append(reportStr)
             
         #If markers have been passed to the experiment object, check that they are
         #correctly specified for each sample

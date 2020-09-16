@@ -1282,8 +1282,9 @@ class BiLogFormatter(Formatter):
     """
     Base class for formatting ticks on a log or symlog scale.
     It may be instantiated directly, or subclassed.
-    Parameters
-    ----------
+    
+    **Parameters**
+    
     base : float, optional, default: 10.
         Base of the logarithm used in all calculations.
     labelOnlyBase : bool, optional, default: False
@@ -1304,8 +1305,9 @@ class BiLogFormatter(Formatter):
     linthresh : None or float, optional, default: None
         If a symmetric log scale is in use, its ``linthresh``
         parameter must be supplied here.
-    Notes
-    -----
+        
+    **Notes**
+
     The `set_locs` method must be called to enable the subsetting
     logic controlled by the ``minor_thresholds`` parameter.
     In some cases such as the colorbar, there is no distinction between
@@ -1317,13 +1319,15 @@ class BiLogFormatter(Formatter):
     To disable labeling of minor ticks when 'labelOnlyBase' is False,
     use ``minor_thresholds=(0, 0)``.  This is the default for the
     "classic" style.
-    Examples
-    --------
+    
+    **Examples**
+
     To label a subset of minor ticks when the view limits span up
     to 2 decades, and all of the ticks when zoomed in to 0.5 decades
     or less, use ``minor_thresholds=(2, 0.5)``.
     To label all minor ticks when the view limits span up to 1.5
     decades, use ``minor_thresholds=(1.5, 1.5)``.
+    
     """
     def __init__(self, labelOnlyBase=True,
                  minor_thresholds=None,
