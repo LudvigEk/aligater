@@ -21,8 +21,11 @@
 import sys
 import numpy as np
 from cpython cimport bool
+from libc.math cimport log10, log
+
 from scipy.ndimage.filters import gaussian_filter
 import matplotlib.pyplot as plt
+
 
 #for faster sorting with list comprehension
 from operator import itemgetter
@@ -165,7 +168,7 @@ def gateEllipsoid(fcsDF, str xCol, str yCol, float xCenter, float yCenter, list 
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', T=1000, filePlot=None, QC=False, *args, **kwargs):
+def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="vertical", parentGate=None, population="upper", scale='linear', xscale='linear', yscale='linear', T=1000, filePlot=None, QC=False, *args, **kwargs):
     """
     Threshold gating function. Can be called with one or two markers which affects plotting.\n
     Call with two markers to get a two dimensional view or with one col which will instead show a density plot.
@@ -233,7 +236,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
         if yCol not in fcsDF.columns:
             raise markerError("in gateThreshold, marker: '"+str(yCol)+"'")
     if xCol not in fcsDF.columns:
-        raise markerError("in gateThreshold, marker: '"+str(yCol)+"'")
+        raise markerError("in gateThreshold, marker: '"+str(xCol)+"'")
     if population.lower() not in ["upper","lower"]:
         raise AliGaterError("Specify desired population, 'upper' or 'lower' in regard to set threshold","in gateThreshold: ")
     if orientation.lower() not in ["horisontal","vertical"]:
@@ -287,7 +290,9 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
 
     if (plot or filePlot is not None) and not densityPlot:
         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
+
         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
+            
         if filePlot is not None:
             plt.savefig(filePlot)
             if not plot:
@@ -1538,40 +1543,3 @@ def findBin(heatmap, value, edges, scale='linear', T=1000):
     if binIndex>=nBins:
         binIndex=nBins-1
     return binIndex
-
-
-#-----Some simple sample code to look at below------------
-
-def test_multiply():
-    print("testing!")
-
-    a = np.arange(12, dtype=np.float64).reshape((3,4))
-
-    print(a)
-
-    multiply(a, 3)
-
-    print(a)
-    return None
-
-
-@cython.boundscheck(False)
-@cython.wraparound(False)
-def multiply(np.ndarray[double, ndim=2, mode="c"] input not None, double value):
-    """
-    multiply (arr, value)
-
-    Takes a numpy arry as input, and multiplies each elemetn by value, in place
-
-    param: array -- a 2-d numpy array of np.float64
-    param: value -- a number that will be multiplied by each element in the array
-
-    """
-    cdef int m, n
-
-    m, n = input.shape[0], input.shape[1]
-
-    c_multiply(&input[0,0], value, m, n)
-
-    return None
-

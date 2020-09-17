@@ -1338,10 +1338,45 @@ class AGExperiment:
     def check_metadata_internal(self, filePath, fcsDF, lFlagged, metaDict):
         bOk=True
         lFlags=[]
-        spill_matrix=metaDict['SPILL'].split(',')
-        n = int(spill_matrix[0]) #number of colors
-        colNames=fcsDF.columns[4:(n+4)] 
+        if 'SPILL' in metaDict.keys():
+            spill_keyword='SPILL'
+        elif '$SPILL' in metaDict.keys():
+            spill_keyword='$SPILL'
+        elif 'SPILLOVER' in metaDict.keys():
+            spill_keyword='SPILLOVER'
+        elif '$SPILLOVER' in metaDict.keys():
+            spill_keyword='$SPILLOVER'
+        else:
+            reportStr="Unknown spillover keyword in metadata"
+            lFlags.append(reportStr)
+            bOk=False
+
+        spill_matrix=metaDict[spill_keyword].split(',')
         
+        if len(fcsDF) < agconf.cellFilter:
+            reportStr="Sample has fewer events than cellFilter treshold"
+            lFlags.append(reportStr)
+            bOk=False
+        
+        n = int(spill_matrix[0]) #number of colors
+        columns=fcsDF.columns.tolist()
+        exclude_cols = ['tlsw',	'tmsw', 'event info','time']
+        indicies_to_drop=[]
+        fsc_ssc_count=0
+        for index,col in enumerate(columns):
+            bExclusion=False
+            for exclusion in exclude_cols:
+                if exclusion in col.lower():
+                    indicies_to_drop.append(index)
+                    bExclusion=True
+            if 'fsc' not in col.lower() and 'ssc' not in col.lower():
+                if col.lower()[-2:] != '-a' and not bExclusion and self.flourochrome_area_filter:
+                    indicies_to_drop.append(index)
+                    continue
+            else:
+                fsc_ssc_count += 1
+        fcsDF.drop(fcsDF.columns[indicies_to_drop], axis=1, inplace=True)
+        colNames = fcsDF.columns        
         #Check that the fcs has a supported fcs version
         try:
             fcs_vs = metaDict['__header__']['FCS format'].decode('UTF-8')
@@ -1355,22 +1390,19 @@ class AGExperiment:
             lFlags.append(reportStr)
             
         #Check that the first four fields in the fcs are forward and side scatters
-        #Otherwise parsing will fail
-        
-        
-        #TODO
-        if not self.flourochrome_area_filter:
-            scatter_cols=fcsDF.columns[0:4]
-            if not all([scatter in ['FSC-A', 'FSC-H', 'SSC-A', 'SSC-H'] for scatter in scatter_cols]):
-                reportStr="First four columns in fcs are not forward and side scatters"
-                bOk=False
-                lFlags.append(reportStr)
-        else:
-            scatter_cols=fcsDF.columns[0:5]
-            if not all([['FSC', 'SSC'] in scatter for scatter in scatter_cols]):
-                reportStr="First four columns in fcs are not forward and side scatters"
-                bOk=False
-                lFlags.append(reportStr)
+        #Deprecated, uneccessary check
+        # if not self.flourochrome_area_filter:
+        #     scatter_cols=fcsDF.columns[0:4]
+        #     if not all([scatter in ['FSC-A', 'FSC-H', 'SSC-A', 'SSC-H'] for scatter in scatter_cols]):
+        #         reportStr="First four columns in fcs are not forward and side scatters"
+        #         bOk=False
+        #         lFlags.append(reportStr)
+        # else:
+        #     scatter_cols=fcsDF.columns[0:5]
+        #     if not all([['FSC', 'SSC'] in scatter for scatter in scatter_cols]):
+        #         reportStr="First four columns in fcs are not forward and side scatters"
+        #         bOk=False
+        #         lFlags.append(reportStr)
             
         #If markers have been passed to the experiment object, check that they are
         #correctly specified for each sample
@@ -1449,6 +1481,75 @@ class AGExperiment:
                     self.flaggedSamples.append((fcs,"NO EXTERNAL COMP"))
         return None
     
+    def create_aligater_files(self, target_root_dir, folder_naming_levels=0):
+        reportStr="Creating compressed compensated files for all fcs files loaded in the experiment.\nMetadata and filter checks will be limited, it is strongly recommended to run check_metadata first and update experiment file filters masks accordingly"
+        sys.stderr.write(reportStr)
+        bFolderExists = os.isdir(target_root_dir)
+        if not bFolderExists:
+            sys.stderr.write("target_root_dir doesn't exists, attempting to create")
+            os.mkdir(target_root_dir)
 
+        #Load FCSes here
+        for fcs in self.fcsList:
+            if self.man_comp:
+                comp_matrix=self.comp_matrix
+            else:
+                comp_matrix=None
+            if self.compensation_exceptions is not None:
+                comp_matrix=self.check_compensation_exception(fcs)
+            sample = loadFCS(fcs, comp_matrix=comp_matrix, markers=self.lMarkers, flourochrome_area_filter=self.flourochrome_area_filter)
+            if sample is None:
+                continue
+
+            fcs_filePath=fcs.filePath
+            if folder_naming_levels > 0:
+                parent_folder_names=[]
+                parent_folder_paths=[]
+                for i in np.arange(0, folder_naming_levels+1,1):
+                    parentFolder = getParent(fcs_filePath) 
+                    parent_folder_paths.append(parentFolder)
+                    parent_folder_names.append(getFileName(parentFolder))
+                    fcs_filePath=parentFolder
+            for folder in parent_folder_names:
+                if not os.isdir(folder):
+                    os.mkdir(folder)
+                    
+            #Subfolders exists construct h5py binary filename
+            h5py_filehandle=target_root_dir+"".join(parent_folder_names)+getFileName(fcs.filePath).replace(".fcs",".h5")
+            h5py_internal_name = "".join(parent_folder_names)+getFileName(fcs.filePath).replace(".fcs")
+            
+            self.__create_hp5_file(sample, h5py_filehandle, h5py_internal_name)
+            
+        return None
     
+    def __create_hp5_file(self, sample, h5py_filehandle, h5py_internal_name):
+        #sample is supposedly a pandas dataframe here
+        if not isinstance(sample, pd.DataFrame):
+            raise #Todo: better raise
+            
+        #Below pandas-to-h5py for numeric-only pandas dataframes modified from user phil on stackoverflow
+        #https://stackoverflow.com/questions/30773073/save-pandas-dataframe-using-h5py-for-interoperabilty-with-other-hdf5-readers
+        """
+        Convert a pandas DataFrame object to a numpy structured array.
+        This is functionally equivalent to but more efficient than
+        np.array(df.to_array())
+        """
     
+        v = sample.values
+        
+        #cols = sample.columns
+        #types = [(cols[i].encode(), sample[k].dtype.type) for (i, k) in enumerate(cols)]
+        #dtype = np.dtype(types)
+        dtype = np.float64
+        
+        #Convert to structured array
+        z = np.zeros(v.shape[0], dtype)
+        for (i, k) in enumerate(z.dtype.names):
+            z[k] = v[:, i]
+        #save
+        with h5py.File(h5py_filehandle, 'w') as hf:
+            hf['intensities'] = z
+            hf['filePath'] = h5py_internal_name
+        
+
+        return None

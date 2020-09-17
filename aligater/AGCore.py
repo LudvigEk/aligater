@@ -456,7 +456,7 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
     widthScale, heightScale : float, optional, default: 1
         Number of standard deviations to scale eigenvectors with, corresponding to the width and height of the ellipse.
     center : str, optional, default: 'centroid'
-        Where to center the image for PC analysis, options are 'center', 'centroid' or 'custom'\n
+        Where to center the image for PC analysis, options are 'density', 'centroid' or 'custom'\n
         Data will temporarily be centered around this point for the PC analysis.
     customCenter : None or list-like, optional, default: None
         Only used if center option is 'custom'. Then takes a list-like of two being the coordinates of the center point.

@@ -22,6 +22,7 @@ import pandas as pd
 import os
 import sys
 import copy #For deep copies of lists
+import h5py
 
 #AliGater imports
 from aligater.fscparser_api import parse
@@ -326,7 +327,7 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
                 continue
         else:
             fsc_ssc_count += 1
-    fcsDF.drop(fcsDF.columns[indicies_to_drop], axis=1, inplace=True)    
+    fcsDF.drop(fcsDF.columns[indicies_to_drop], axis=1, inplace=True)
     cols = fcsDF.columns
     #cols=fcsDF.columns[4:-1]
     
@@ -493,3 +494,14 @@ def getFileName(sSrc):
     nameWithoutExtension=os.path.splitext(baseName)[0]
     return nameWithoutExtension
 
+def __loadH5FCS(path, sampling_resolution=32):
+    #********Lazy loading of*************
+    # could move to AGClasses and avoid, kind of makes sense.
+    from aligater.AGClasses import AGsample
+    #************************************    
+    with h5py.File(path,'r') as hf:
+            sa2 = hf['intensities'][:]
+            filePath = hf['filePath']
+    fcsDF = pd.DataFrame(sa2)
+    fcs = AGsample(fcsDF, filePath, sampling_resolution=sampling_resolution)
+    return fcs

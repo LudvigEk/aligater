@@ -39,6 +39,7 @@ import sys
 #AliGater imports
 import aligater.AGConfig as agconf
 from aligater.AGFileSystem import getGatedVector, AliGaterError
+from aligater.AGCythonUtils import __vectorLogishTransform, __vectorInverseLogishTransform, __vectorBilogTransform, __vectorInverseBilogTransform
 
 sentinel = object()
 
@@ -118,6 +119,7 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     
     heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, thresh)
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+        
     heatmap=np.ma.masked_where(heatmap <= mask_value, heatmap)
 
     plt.clf()
@@ -221,38 +223,44 @@ def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='lin
         vX = np.delete(vX, index_mask)
         vY = np.delete(vY, index_mask)
         assert len(vX) == len(vY)
-    
+
     if isinstance(bins, str):
         xbin_edges=np.histogram_bin_edges(vX,bins=bins)
         ybin_edges=np.histogram_bin_edges(vY,bins=bins)
     else:
         xbin_edges=bins
         ybin_edges=bins
-        
+   
+    
     if scale.lower()=='linear' and xscale.lower()=='linear' and yscale.lower() == 'linear':
         return np.histogram2d(vX, vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
     
     #if not linear probably just transform and calc edges after
     #attempt at fix, still some redundancy...
     t_xbin_edges = t_ybin_edges = None
-    if scale.lower()!='linear':
-        t_vX = transformWrapper(vX, scale=scale, T=T)
+    if scale.lower()!='linear' or (xscale.lower()!='linear' and yscale.lower()!='linear'):
+        t_vX = transformWrapper(vX, scale=xscale, T=T)
         t_xbin_edges=np.histogram_bin_edges(t_vX,bins=bins)
-        xbin_edges = inverseTransformWrapper(t_xbin_edges, scale=scale, T=T)
+        xbin_edges = inverseTransformWrapper(t_xbin_edges, scale=xscale, T=T)
         
-        t_vY = transformWrapper(vY, scale=scale, T=T)
+        t_vY = transformWrapper(vY, scale=yscale, T=T)
         t_ybin_edges=np.histogram_bin_edges(t_vY,bins=bins)      
-        ybin_edges = inverseTransformWrapper(t_ybin_edges, scale=scale, T=T)
-        
+        ybin_edges = inverseTransformWrapper(t_ybin_edges, scale=yscale, T=T)
+        return np.histogram2d(vX,vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
+    
     if xscale.lower()!='linear':
         t_vX = transformWrapper(vX, scale=xscale, T=T)
         t_xbin_edges=np.histogram_bin_edges(t_vX,bins=bins)
-        xbin_edges = inverseTransformWrapper(t_xbin_edges, scale=scale, T=T)
+        xbin_edges = inverseTransformWrapper(t_xbin_edges, scale=xscale, T=T)
+        
+        ybin_edges = np.histogram_bin_edges(vY, bins=bins)
         
     if yscale.lower()!='linear':
         t_vY = transformWrapper(vY, scale=yscale, T=T)
         t_ybin_edges=np.histogram_bin_edges(t_vY,bins=bins)
-        ybin_edges = inverseTransformWrapper(t_ybin_edges, scale=scale, T=T)
+        ybin_edges = inverseTransformWrapper(t_ybin_edges, scale=yscale, T=T)
+        
+        xbin_edges = np.histogram_bin_edges(vX, bins=bins)
         
     #print(ybin_edges)
     #print("\n\n")
@@ -365,31 +373,43 @@ def bilogBin(vX, bins, T, customRange=None):
     return inverseBilogTransform(transformedBinEdges, T)
 
 def bilogTransform(a, T):
-    tA = np.empty_like(a).astype(float)
-    a_idx=0
-    while a_idx < len(a):
-        if a[a_idx] >= T:
-           tA[a_idx] = np.log(10 * a[a_idx] / T)/np.log(10)
-        elif a[a_idx] < T and a[a_idx] > -T:
-            tA[a_idx] = (a[a_idx]/T  + np.log(10) - 1) / np.log(10)
-        else:
-            tA[a_idx] = -np.log(10 * abs(a[a_idx]) / T) / np.log(10)+1.13141103619349642 #This shift ensures that the transformed coordinates are continous, important for bins and plotting
-        a_idx+=1
+    
+    vA = np.asarray(a, dtype = np.float64, order='C')
+    tA=__vectorBilogTransform(vA, np.float64(T))
     return tA
+    
+    # old python implementation, moved to AGCythonUtils
+    # tA = np.empty_like(a).astype(float)
+    # a_idx=0
+    # while a_idx < len(a):
+    #     if a[a_idx] >= T:
+    #        tA[a_idx] = np.log(10 * a[a_idx] / T)/np.log(10)
+    #     elif a[a_idx] < T and a[a_idx] > -T:
+    #         tA[a_idx] = (a[a_idx]/T  + np.log(10) - 1) / np.log(10)
+    #     else:
+    #         tA[a_idx] = -np.log(10 * abs(a[a_idx]) / T) / np.log(10)+1.13141103619349642 #This shift ensures that the transformed coordinates are continous, important for bins and plotting
+    #     a_idx+=1
+    # return tA
 
 def inverseBilogTransform(a, T):
-    invA=np.empty_like(a).astype(float)
-    a_idx=0
-    while a_idx < len(a):
-        if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0 at T; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
-            invA[a_idx] = T*np.exp(np.log(10)*a[a_idx])/10
-        elif a[a_idx] <= 0.13141103619349642: #This is (np.log(10)-2)/np.log(10) I.e. the linear scale value at X=-T
-            tmpX=a[a_idx]-1.13141103619349642 #This shift ensures that the transformed coordinates are continous, important for bins and plotting
-            invA[a_idx] = -T*np.exp(np.log(10)*-tmpX)/10
-        else:
-            invA[a_idx] = T * (np.log(10)*a[a_idx] - np.log(10) + 1)
-        a_idx+=1
+    
+    vA = np.asarray(a, dtype = np.float64, order='C')
+    invA = __vectorInverseBilogTransform(vA, np.float64(T))
     return invA
+    
+    # old python implementation, moved to AGCythonUtils
+    # invA=np.empty_like(a).astype(float)
+    # a_idx=0
+    # while a_idx < len(a):
+    #     if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0 at T; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
+    #         invA[a_idx] = T*np.exp(np.log(10)*a[a_idx])/10
+    #     elif a[a_idx] <= 0.13141103619349642: #This is (np.log(10)-2)/np.log(10) I.e. the linear scale value at X=-T
+    #         tmpX=a[a_idx]-1.13141103619349642 #This shift ensures that the transformed coordinates are continous, important for bins and plotting
+    #         invA[a_idx] = -T*np.exp(np.log(10)*-tmpX)/10
+    #     else:
+    #         invA[a_idx] = T * (np.log(10)*a[a_idx] - np.log(10) + 1)
+    #     a_idx+=1
+    # return invA
 
 def logishBin(vX, bins, T, customRange=None):
     if customRange is not None:
@@ -401,27 +421,42 @@ def logishBin(vX, bins, T, customRange=None):
     return inverseLogishTransform(transformedBinEdges, T)
 
 def logishTransform(a, linCutOff):
-    tA = np.empty_like(a).astype(float)
-    a_idx=0
-    while a_idx < len(a):
-        if a[a_idx] >= linCutOff:
-           tA[a_idx] = np.log(10 * a[a_idx] / linCutOff)/np.log(10)
-        else:
-            tA[a_idx] = (a[a_idx]/linCutOff + np.log(10.0) - 1)/np.log(10)
-        a_idx+=1
+    
+    vA = np.asarray(a, dtype = np.float64, order='C')
+    
+    tA=__vectorLogishTransform(vA, np.float64(linCutOff))
+    
     return tA
 
+    # old python implementation, moved to AGCythonUtils
+    # tA = np.empty_like(a).astype(float)
+    # a_idx=0
+    # while a_idx < len(a):
+    #     if a[a_idx] >= linCutOff:
+    #        tA[a_idx] = np.log(10 * a[a_idx] / linCutOff)/np.log(10)
+    #     else:
+    #         tA[a_idx] = (a[a_idx]/linCutOff + np.log(10.0) - 1)/np.log(10)
+    #     a_idx+=1
+    #return tA
+
 def inverseLogishTransform(a, linCutOff):
-    invA=np.empty_like(a).astype(float)
-    a_idx=0
-    while a_idx < len(a):
-        if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0 at T; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
-            invA[a_idx] = linCutOff*np.exp(np.log(10)*a[a_idx])/10
-            #invA[a_idx]= (np.exp(a[a_idx])+10)*linCutOff/10
-        else:
-            invA[a_idx] = linCutOff*(np.log(10.0)*a[a_idx] - np.log(10.0) + 1)
-        a_idx+=1
+    
+    vA = np.asarray(a, dtype = np.float64, order='C')
+    invA = __vectorInverseLogishTransform(vA, np.float64(linCutOff))
+    
     return invA
+    # old python implementation, moved to AGCythonUtils
+    # invA=np.empty_like(a).astype(float)
+    # a_idx=0
+    # while a_idx < len(a):
+    #     if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0 at T; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
+    #         invA[a_idx] = linCutOff*np.exp(np.log(10)*a[a_idx])/10
+    #         #invA[a_idx]= (np.exp(a[a_idx])+10)*linCutOff/10
+    #     else:
+    #         invA[a_idx] = linCutOff*(np.log(10.0)*a[a_idx] - np.log(10.0) + 1)
+    #     a_idx+=1
+    # return invA
+    
 
 
 def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', T=1000):
@@ -433,9 +468,9 @@ def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', T=1000):
             vmin = lims[0]
             vmax = lims[1]
             if scale.lower() == 'logish':
-                pos = convertToLogishPlotCoordinates([pos],vmin,vmax,T)
+                pos = convertToLogishPlotCoordinate(pos,vmin,vmax,T)
             if scale.lower() == 'bilog':
-                pos = convertToBiLogPlotCoordinates([pos],vmin,vmax,T)
+                pos = convertToBiLogPlotCoordinate(pos,vmin,vmax,T)
         ax.axvline(pos, c='r')
     else:
         if scale.lower() !='linear':
@@ -443,9 +478,9 @@ def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', T=1000):
             vmin = lims[0]
             vmax = lims[1]
             if scale=='logish':
-                pos = convertToLogishPlotCoordinates([pos],vmin,vmax,T)
+                pos = convertToLogishPlotCoordinate(pos,vmin,vmax,T)
             if scale.lower() == 'bilog':
-                pos = convertToBiLogPlotCoordinates([pos],vmin,vmax,T)
+                pos = convertToBiLogPlotCoordinate(pos,vmin,vmax,T)
         ax.axhline(pos,  c='r')
     return fig
 
