@@ -289,7 +289,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
                         vOutput.append(index)
 
     if (plot or filePlot is not None) and not densityPlot:
-        fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,thresh=T)
+        fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale,xscale=xscale,yscale=yscale,thresh=T)
 
         addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
             
@@ -300,7 +300,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
         if plot:
             plt.show()
             plt.clf()
-            plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale,thresh=T)
+            plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale,xscale=xscale,yscale=yscale,thresh=T)
             plt.show()
     if (plot or filePlot is not None) and densityPlot:
         fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale, T=T,*args,**kwargs)

@@ -5,6 +5,8 @@
 from aligater.AGConfig import execMode,ag_verbose,minCells,cellFilter
 #Wrapper for AGCython import with a simple reminder on py3.6+ ipykernel while using ipython/Jupyter and py3.6+ otherwise. 
 #If that's not the reason for your error I apologize sincerely for misleading.
+import sys
+
 try:
 	from aligater.AGCythonUtils import *
 except ImportError as e:
