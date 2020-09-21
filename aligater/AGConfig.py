@@ -24,13 +24,13 @@ ag_Divider = 10000
 ag_verbose=False
 
 #AliGater output dir
-ag_out="/media/ludvig/Project_Storage/BloodVariome/aligater_output/"
+ag_out="/home/antton/TFM/output/"
 
-#AliGater tempdir (intermediate files such as downsampled images)
-ag_tmp="/media/ludvig/Project_Storage/aligater_temp/"
+#AliGater tempdir/scratch space (intermediate files such as downsampled images)
+ag_tmp="/home/antton/TFM/tmp"
 
 #AliGater home
-ag_home="/media/ludvig/Project_Storage/BloodVariome/aligater/"
+ag_home="/home/antton/Programs/aligater/"
 
 #Check ag dirs are valid
 from aligater.check_exec_mode import check_ag_dirs

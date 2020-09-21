@@ -18,7 +18,7 @@ def extensions():
     import numpy as np
     sourcefiles = ['aligater/AGCython.pyx', 'aligater/AGc.cpp']
     ext =Extension("aligater.AGCython", sourcefiles,libraries=["m"],language='c++', include_dirs=[np.get_include(),"./aligater"])
-    sourcefiles1 = ['aligater/AGCythonUtils.pyx']
+    sourcefiles1 = ['aligater/AGCythonUtils.pyx', 'aligater/AGc.cpp']
     ext1 =Extension("aligater.AGCythonUtils", sourcefiles1,libraries=["m"],language='c++', include_dirs=[np.get_include(),"./aligater"])
     return cythonize([ext,ext1])
 
