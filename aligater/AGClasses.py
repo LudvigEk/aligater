@@ -32,7 +32,7 @@ from matplotlib.pyplot import close as close_pyplot_figures
 #AliGater imports
 import aligater.AGConfig as agconf
 from aligater.AGPlotRoutines import getHeatmap, imagePCA_cluster, plot_flattened_heatmap
-from aligater.AGFileSystem import getGatedVectors, getFileName, getParent, collectFiles, listDir, loadFCS, getCompensationMatrix, AliGaterError, invalidAGgateError, check_exists, applyFilter
+from aligater.AGFileSystem import getGatedVectors, getFileName, getParent, collectFiles, listDir, loadFCS, getCompensationMatrix, AliGaterError, invalidAGgateError, check_exists, applyFilter, loadHDF5sample
 #API to the FlowCytometryTools parser
 from aligater.fscparser_api import parse
 
@@ -933,7 +933,9 @@ class AGExperiment:
     
     plateList, list-like
         List-like of str filepaths. Used for plate normalisation. Not fully implemented.
-        
+    
+    HDF5Fileset, bool
+        Flag for loading pre-processed HDF5 datasets created with create_HDF5_files.
     
     **Methods**
     
@@ -985,6 +987,7 @@ class AGExperiment:
     bQC=False
     flourochrome_area_filter=False
     QCbins=32
+    HDF5Fileset=False
     
     def __init__(self, experimentRoot, *args, **kwargs):
         if 'filters' in kwargs:
@@ -1105,6 +1108,10 @@ class AGExperiment:
                 sys.stderr.write(reportStr)
                 pass
             
+        if 'HDF5Fileset' in kwargs:
+            if not isinstance(kwargs['HDF5Fileset'],bool):
+                raise TypeError("HDF5Fileset must be specified as True/False")
+            self.HDF5Fileset = True
         
         if self.output_folder is None:
             self.exp_name = 'AGexperiment_'+str(datetime.datetime.now().date()) + '_' + str(datetime.datetime.now().time()).replace(':', '_')
@@ -1178,13 +1185,16 @@ class AGExperiment:
                 agconf.ag_verbose = kwargs['ag_verbose']
             else:
                 agconf.ag_verbose = True
-            if self.man_comp:
-                comp_matrix=self.comp_matrix
+            if self.HDF5Fileset:
+                sample = loadHDF5sample(fcs, sampling_resolution=self.QCbins)
             else:
-                comp_matrix=None
-            if self.compensation_exceptions is not None:
-                comp_matrix=self.check_compensation_exception(fcs)
-            sample = loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=self.lMarkers, flourochrome_area_filter=self.flourochrome_area_filter, sampling_resolution=self.QCbins)
+                if self.man_comp:
+                    comp_matrix=self.comp_matrix
+                else:
+                    comp_matrix=None
+                if self.compensation_exceptions is not None:
+                    comp_matrix=self.check_compensation_exception(fcs)
+                sample = loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=self.lMarkers, flourochrome_area_filter=self.flourochrome_area_filter, sampling_resolution=self.QCbins)
             if sample is None:
                 continue
             sys.stderr.write("Applying strategy\n")
@@ -1481,12 +1491,12 @@ class AGExperiment:
                     self.flaggedSamples.append((fcs,"NO EXTERNAL COMP"))
         return None
     
-    def create_aligater_files(self, target_root_dir, folder_naming_levels=0):
-        reportStr="Creating compressed compensated files for all fcs files loaded in the experiment.\nMetadata and filter checks will be limited, it is strongly recommended to run check_metadata first and update experiment file filters masks accordingly"
+    def create_HDF5_files(self, target_root_dir, folder_naming_levels=0):
+        reportStr="Creating compressed compensated files for all fcs files loaded in the experiment.\nMetadata and filter checks will be limited, it is strongly recommended to run check_metadata first and update experiment file filters and masks in the AGExperiment accordingly.\nRoot folder for binary files: "+str(target_root_dir)+"\n"
         sys.stderr.write(reportStr)
-        bFolderExists = os.isdir(target_root_dir)
+        bFolderExists = os.path.isdir(target_root_dir)
         if not bFolderExists:
-            sys.stderr.write("target_root_dir doesn't exists, attempting to create")
+            sys.stderr.write("target_root_dir doesn't exists, attempting to create\n")
             os.mkdir(target_root_dir)
 
         #Load FCSes here
@@ -1497,59 +1507,44 @@ class AGExperiment:
                 comp_matrix=None
             if self.compensation_exceptions is not None:
                 comp_matrix=self.check_compensation_exception(fcs)
-            sample = loadFCS(fcs, comp_matrix=comp_matrix, markers=self.lMarkers, flourochrome_area_filter=self.flourochrome_area_filter)
+            sample = loadFCS(fcs, comp_matrix=comp_matrix, compensate=True, markers=self.lMarkers, flourochrome_area_filter=self.flourochrome_area_filter, return_type="agsample")
             if sample is None:
                 continue
 
-            fcs_filePath=fcs.filePath
+            tmp_filePath=sample.filePath
             if folder_naming_levels > 0:
                 parent_folder_names=[]
                 parent_folder_paths=[]
-                for i in np.arange(0, folder_naming_levels+1,1):
-                    parentFolder = getParent(fcs_filePath) 
+                for i in np.arange(0, folder_naming_levels,1):
+                    parentFolder = getParent(tmp_filePath) 
                     parent_folder_paths.append(parentFolder)
                     parent_folder_names.append(getFileName(parentFolder))
-                    fcs_filePath=parentFolder
-            for folder in parent_folder_names:
-                if not os.isdir(folder):
-                    os.mkdir(folder)
+                    tmp_filePath = parentFolder
+
+            target_folder=target_root_dir
+            for folder in parent_folder_names[::-1]:
+                if target_folder[-1] != "/":
+                    target_folder=target_folder+"/"+folder
+                else:
+                    target_folder=target_folder+folder
+                if not os.path.isdir(target_folder):
+                    os.mkdir(target_folder)
                     
             #Subfolders exists construct h5py binary filename
-            h5py_filehandle=target_root_dir+"".join(parent_folder_names)+getFileName(fcs.filePath).replace(".fcs",".h5")
-            h5py_internal_name = "".join(parent_folder_names)+getFileName(fcs.filePath).replace(".fcs")
-            
-            self.__create_hp5_file(sample, h5py_filehandle, h5py_internal_name)
+            h5py_filehandle=target_root_dir+"/".join(parent_folder_names[::-1])+"/"+getFileName(sample.filePath)+".h5"
+            h5py_internal_name = "/".join(parent_folder_names[::-1])+"/"+getFileName(sample.filePath)+".fcs"
+            self.__create_hdf5_file(sample = sample(), h5py_filehandle = h5py_filehandle, h5py_internal_name = h5py_internal_name)
             
         return None
     
-    def __create_hp5_file(self, sample, h5py_filehandle, h5py_internal_name):
+    def __create_hdf5_file(self, sample, h5py_filehandle, h5py_internal_name):
         #sample is supposedly a pandas dataframe here
         if not isinstance(sample, pd.DataFrame):
             raise #Todo: better raise
-            
-        #Below pandas-to-h5py for numeric-only pandas dataframes modified from user phil on stackoverflow
-        #https://stackoverflow.com/questions/30773073/save-pandas-dataframe-using-h5py-for-interoperabilty-with-other-hdf5-readers
-        """
-        Convert a pandas DataFrame object to a numpy structured array.
-        This is functionally equivalent to but more efficient than
-        np.array(df.to_array())
-        """
-    
-        v = sample.values
         
-        #cols = sample.columns
-        #types = [(cols[i].encode(), sample[k].dtype.type) for (i, k) in enumerate(cols)]
-        #dtype = np.dtype(types)
-        dtype = np.float64
+        HDF5_metadata = pd.Series([h5py_filehandle,h5py_internal_name])
         
-        #Convert to structured array
-        z = np.zeros(v.shape[0], dtype)
-        for (i, k) in enumerate(z.dtype.names):
-            z[k] = v[:, i]
-        #save
-        with h5py.File(h5py_filehandle, 'w') as hf:
-            hf['intensities'] = z
-            hf['filePath'] = h5py_internal_name
+        sample.to_hdf(h5py_filehandle, key='fcs', mode='w')
+        HDF5_metadata.to_hdf(h5py_filehandle, key='filenames', mode='a')
         
-
         return None

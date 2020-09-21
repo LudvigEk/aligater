@@ -222,6 +222,37 @@ def getGatedVectors(fcsDF, gate1, gate2, vI=None, return_type="pdseries"):
         vY=fcsDF[gate2].loc[vI].values
         return np.array([vX, vY])
 
+def loadHDF5sample(path, sampling_resolution=32):
+    """
+    Loads a HDF5 compressed fcs file, these are created with aligater.AGClasses.AGExperiment.create_HDF5_files
+    This function is mainly intended for internal use in the aligater.AGClasses.AGExperiment.apply function.
+    
+    **Parameters**
+    
+    path : str
+        Absolute path to .fcs file.
+    
+    sampling_resolution : int, default: 32
+        To-be-deprecated.
+        Used to specify downsampling dimensions for batch runs through aligater.AGClasses.AGExperiments, this parameter is just passed through.\n
+        Will be moved into a ``*args`` ``**kwargs`` style parameter.\n
+        Should always be ignored if loading single files - it does nothing.
+    
+    **Returns**
+    
+    aligater.AGClasses.AGSample
+    
+    """
+    #********Lazy loading of*************
+    # could move to AGClasses and avoid, kind of makes sense.
+    from aligater.AGClasses import AGsample
+    #************************************
+    
+    fcsDF = pd.read_hdf(path, key='fcs')
+    metadata = pd.read_hdf(path, key='filenames')
+    h5py_internal_name = metadata.iloc[1]
+    return AGsample(fcsDF, h5py_internal_name, sampling_resolution=sampling_resolution)
+
 
 def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=None, marker_names='label',ignore_minCell_filter=False, flourochrome_area_filter=False, sampling_resolution=32):
     """

@@ -459,27 +459,27 @@ def inverseLogishTransform(a, linCutOff):
     
 
 
-def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', T=1000):
-    if not all(i in ['linear', 'logish', 'bilog'] for i in [scale]):
+def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', xscale='linear', yscale='linear', T=1000):
+    if not all(i in ['linear', 'logish', 'bilog'] for i in [scale, xscale, yscale]):
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish', 'bilog'")
     if orientation.lower()=='vertical':
-        if scale.lower() != 'linear':
+        if scale.lower() != 'linear' or xscale.lower() != 'linear':
             lims=ax.get_xlim()
             vmin = lims[0]
             vmax = lims[1]
-            if scale.lower() == 'logish':
+            if scale.lower() == 'logish' or xscale.lower() == 'logish':
                 pos = convertToLogishPlotCoordinate(pos,vmin,vmax,T)
-            if scale.lower() == 'bilog':
+            if scale.lower() == 'bilog' or xscale.lower() == 'bilog':
                 pos = convertToBiLogPlotCoordinate(pos,vmin,vmax,T)
         ax.axvline(pos, c='r')
     else:
-        if scale.lower() !='linear':
+        if scale.lower() !='linear' or yscale.lower() != 'linear':
             lims=ax.get_ylim()
             vmin = lims[0]
             vmax = lims[1]
-            if scale=='logish':
+            if scale=='logish' or yscale.lower() == 'logish':
                 pos = convertToLogishPlotCoordinate(pos,vmin,vmax,T)
-            if scale.lower() == 'bilog':
+            if scale.lower() == 'bilog' or yscale.lower() == 'bilog':
                 pos = convertToBiLogPlotCoordinate(pos,vmin,vmax,T)
         ax.axhline(pos,  c='r')
     return fig
