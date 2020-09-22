@@ -233,7 +233,7 @@ class AGgate:
         if not isinstance(parent, AGgate):
             raise TypeError("Error in changeParent call: Passed parent population to AGgate object "+self.name+" is not a AGClasses.AGgate object")
         self.parent=parent()
-        self.parentName=name
+        self.parentName=parent.name
         self.bNoparent=False
         return
     
@@ -420,7 +420,8 @@ class AGsample:
                 sys.stderr.write(reportStr)
                 return None
         
-    def update(self, gate, xlim=[0,500000], ylim=[0,500000], QC=False, scale='linear', xscale='linear', yscale='linear', T=1000):
+    def update(self, gate, xlim=[0,500000], ylim=[0,500000], QC=False, scale='linear', xscale='linear', yscale='linear', T=1000, MFI=False, MFI_type="current", extra_MFI=None):
+                
         if not isinstance(gate,AGgate):
             raise invalidAGgateError("in AGsample.update: ")
         if gate.xCol not in self.fcsDF.columns:
@@ -1111,7 +1112,7 @@ class AGExperiment:
         if 'HDF5Fileset' in kwargs:
             if not isinstance(kwargs['HDF5Fileset'],bool):
                 raise TypeError("HDF5Fileset must be specified as True/False")
-            self.HDF5Fileset = True
+            self.HDF5Fileset = kwargs['HDF5Fileset']
         
         if self.output_folder is None:
             self.exp_name = 'AGexperiment_'+str(datetime.datetime.now().date()) + '_' + str(datetime.datetime.now().time()).replace(':', '_')
@@ -1143,7 +1144,7 @@ class AGExperiment:
             
         #If no normalisation, collect all files
         if not bList:
-            self.fcsList=collectFiles(experimentRoot,self.lFilter,self.lMask,self.lIgnoreTypes)
+            self.fcsList=collectFiles(experimentRoot,self.lFilter,self.lMask,self.lIgnoreTypes, self.HDF5Fileset)
         else:
             sys.stderr.write("Experiment initialised with file list. Checking entries...\n")
             file_list=check_exists(experimentRoot)
@@ -1322,14 +1323,14 @@ class AGExperiment:
             agconf.ag_verbose = True
         reportStr="Parsing plate: "+folder+" \n"
         sys.stderr.write(reportStr)
-        fcs_in_folder = collectFiles(folder, lFilter=self.lFilter, lMask=self.lMask, lIgnoreTypes=self.lIgnoreTypes)
+        fcs_in_folder = collectFiles(folder, lFilter=self.lFilter, lMask=self.lMask, lIgnoreTypes=self.lIgnoreTypes, HDF5 = self.HDF5Fileset)
         samples_in_plate=[]
         for fcs in fcs_in_folder:
             if self.man_comp:
                 comp_matrix=self.comp_matrix
             if self.compensation_exceptions is not None:
                     comp_matrix=self.check_compensation_exception(fcs)
-            sample = loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=["IgA", "CD27" ,"CD34" ,"CD19", "IgD" ,"CD45","CD38","CD24"])
+            sample = loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=self.lMarkers)
             if sample is None:
                 continue
             sample = self.fcs_apply_strategy(sample, strategy, *args, **kwargs)

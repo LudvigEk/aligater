@@ -11,7 +11,7 @@ minCells=200
 cellFilter=100000
 
 #Truncate values below this treshold i.e. if any measured value is lower than this, the value is piled up at this level instead. Set with generous margin but might affect viewability of plots if too generous.
-ag_trimMeasurements = -10000
+ag_trimMeasurements = -5000
 #Similarly for max measurements (this is similar to flowjo > preferences > cytometer > custom log/linear scaling
 ag_maxMeasurement = 214748
 
@@ -24,13 +24,13 @@ ag_Divider = 10000
 ag_verbose=False
 
 #AliGater output dir
-ag_out="/home/antton/TFM/output/"
+ag_out="/media/ludvig/Project_Storage/aliGater_output/"
 
 #AliGater tempdir/scratch space (intermediate files such as downsampled images)
-ag_tmp="/home/antton/TFM/tmp"
+ag_tmp="/media/ludvig/Project_Storage/aligater_temp/"
 
 #AliGater home
-ag_home="/home/antton/Programs/aligater/"
+ag_home="/media/ludvig/Project_Storage/BloodVariome/aligater/"
 
 #Check ag dirs are valid
 from aligater.check_exec_mode import check_ag_dirs

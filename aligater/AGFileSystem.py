@@ -251,6 +251,10 @@ def loadHDF5sample(path, sampling_resolution=32):
     fcsDF = pd.read_hdf(path, key='fcs')
     metadata = pd.read_hdf(path, key='filenames')
     h5py_internal_name = metadata.iloc[1]
+    reportStr="Opening "+str(metadata[0])+" which is compressed from "+str(metadata[1])+"\n"
+    sys.stderr.write(reportStr)
+    rows = len(fcsDF)
+    sys.stderr.write("Loaded dataset with "+str(rows)+" events.\n")
     return AGsample(fcsDF, h5py_internal_name, sampling_resolution=sampling_resolution)
 
 
@@ -422,7 +426,7 @@ def getParent(sSrc):
     parentDir=os.path.abspath(os.path.join(sSrc, os.pardir))
     return parentDir
 
-def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
+def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None, HDF5=False):
     if lIgnoreTypes is not None:
         if type(lIgnoreTypes) is not list:
             raise TypeError("lIgnoreTypes is not of type List, do lIgnoreTypes=['.FileEnding'] for single file ending strings")    
@@ -439,7 +443,7 @@ def collectFiles(sSrc, lFilter=None, lMask=None, lIgnoreTypes=None):
             filePath = os.path.join(root,file)
             lOutput.append(filePath)
             
-    lFlaggedIndicies=applyFilter(lOutput, lFilter,lMask, lIgnoreTypes)
+    lFlaggedIndicies=applyFilter(lOutput, lFilter,lMask, lIgnoreTypes, HDF5)
     
     lOutput = [i for j, i in enumerate(lOutput) if j not in lFlaggedIndicies]
     sOutputString="Collected "+str(len(lOutput))+" files, "+str(len(lFlaggedIndicies))+" files did not pass filter(s) and mask(s).\n"
@@ -482,13 +486,18 @@ def check_exists(sSrc):
             del result[i]
     return result
     
-def applyFilter(lOutput, lFilter, lMask, lIgnoreTypes):
+def applyFilter(lOutput, lFilter, lMask, lIgnoreTypes, HDF5=False):
     lFlaggedIndicies=[]
     for index, filePath in enumerate(lOutput):
         fileName=os.path.basename(filePath)
-        if '.fcs' not in fileName:
-            lFlaggedIndicies.append(index)
-            continue
+        if HDF5:
+            if '.h5' not in fileName:
+                lFlaggedIndicies.append(index)
+                continue
+        else:
+            if '.fcs' not in fileName:
+                lFlaggedIndicies.append(index)
+                continue
         if lIgnoreTypes is not None:
             if any(ignoreType in os.path.splitext(fileName)[1] for ignoreType in lIgnoreTypes):
                 lFlaggedIndicies.append(index)
