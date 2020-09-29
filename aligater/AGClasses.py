@@ -32,7 +32,7 @@ from matplotlib.pyplot import close as close_pyplot_figures
 #AliGater imports
 import aligater.AGConfig as agconf
 from aligater.AGPlotRoutines import getHeatmap, imagePCA_cluster, plot_flattened_heatmap
-from aligater.AGFileSystem import getGatedVectors, getFileName, getParent, collectFiles, listDir, loadFCS, getCompensationMatrix, AliGaterError, invalidAGgateError, check_exists, applyFilter, loadHDF5sample
+from aligater.AGFileSystem import getGatedVector, getGatedVectors, getFileName, getParent, collectFiles, listDir, loadFCS, getCompensationMatrix, AliGaterError, invalidAGgateError, check_exists, applyFilter, loadHDF5sample
 #API to the FlowCytometryTools parser
 from aligater.fscparser_api import parse
 
@@ -175,20 +175,31 @@ class AGgate:
     def __init__(self, gate, parentGate, xCol, yCol, name, RatioGate=False, IgnoreCellLimit=False):
         if not isinstance(gate, AGgate):
             if not isinstance(gate,list):
-                raise
+                raise AliGaterError("Invalid init of AGClasses.AGgate object.")
             else:
                 self.current=gate
+                if name is None or not isinstance(name, str):
+                    raise AliGaterError("Invalid init of AGClasses.AGgate object. If gate argument is list-like, a valid name has to be provided.")
+                self.name=name
         else:
             self.current=gate()
+            if gate.name is None or not isinstance(gate.name, str):
+                if name is None or not isinstance(name, str):
+                    raise AliGaterError("Invalid init of AGClasses.AGgate object, passed gate object has an invalid name and no overwriting name was passed.")
+                else:
+                    self.name=name
+            else:
+                self.name = gate.name
+            
         if not isinstance(RatioGate,bool):
             raise TypeError("unexpected type of bRatioGate. Expected bool, found: "+str(type(RatioGate)))
         self.bRatioGate=RatioGate
         if not isinstance(IgnoreCellLimit,bool):
             raise TypeError("unexpected type of IgnoreCellLimit. Expected bool, found: "+str(type(IgnoreCellLimit)))
         self.bIgnoreCellLimit=IgnoreCellLimit
-        if name is None or not isinstance(name, str):
-            raise ValueError("No, or invalid, name specified for gate")
-        self.name=name
+        # if name is None or not isinstance(name, str):
+        #     raise ValueError("No, or invalid, name specified for gate")
+        # self.name=name
         if not isinstance(parentGate, AGgate):
             if parentGate is not None:
                 raise AliGaterError("Invalid init of AGClasses.AGgate object, parentGate must either be AGClasses.AGgate or None.")
@@ -368,7 +379,7 @@ class AGsample:
      
     To ensure that no changes has been made to the fcsDF, inadvertently or intentionally, it would be possible for AliGater to store a copy and make a comparison with that copy after each user-strategy has been applied.
     
-    This can have a significant performance impact depending on how many events are contained in each sample and has **thus been left out by design**. If that functionality is desired you can easily set it up yourself.
+    This can have a significant performance impact depending on how many events have been recorded in each sample and has **thus been left out by design**.
 
     """
     #vGate intended as list of tuple(name, gate)
@@ -377,6 +388,7 @@ class AGsample:
     filePath=None
     fcsDF=None
     _downsamplingBins=None
+    MFI_Series=pd.Series()
     
     def __init__(self, fcsDF, filePath, sampleName = sentinel, sampling_resolution=32):
         if not isinstance(fcsDF, pd.DataFrame):
@@ -396,6 +408,7 @@ class AGsample:
             
         self.fcsDF=fcsDF
         self.sample=sampleName
+        self.MFI_Series.name = sampleName
         self.vGates=[]
         self.filePath=filePath
         self._downsamplingBins=sampling_resolution
@@ -408,7 +421,7 @@ class AGsample:
             return self.fcsDF
         else:
             if not isinstance(name, str):
-                raise
+                raise AliGaterError("TypeError in AGSample call,","name argument must be string")
             else:
                 if not self.vGates:
                     sys.stderr.write("sample does not contain any gates\n")
@@ -418,21 +431,109 @@ class AGsample:
                         return gate
                 reportStr=name+" not in sample name list\n"
                 sys.stderr.write(reportStr)
-                return None
+                return False
         
     def update(self, gate, xlim=[0,500000], ylim=[0,500000], QC=False, scale='linear', xscale='linear', yscale='linear', T=1000, MFI=False, MFI_type="current", extra_MFI=None):
-                
         if not isinstance(gate,AGgate):
             raise invalidAGgateError("in AGsample.update: ")
         if gate.xCol not in self.fcsDF.columns:
             raise AliGaterError("in update: ","x marker label ("+str(gate.xCol)+") doesn't exist in the sample")
         if gate.xCol not in self.fcsDF.columns:
             raise AliGaterError("in update: ","y marker label ("+str(gate.yCol)+") doesn't exist in the sample")
+        #*****************MFI STUFF*****************************************************
+        if MFI:
+            if MFI_type is not None:
+                if isinstance(MFI_type, str):
+                    if not any([MFI_type.lower() in ['current', 'all']]):
+                        raise AliGaterError("in update: ","MFI_type must be None or string: 'current' or 'all'")
+                    if MFI_type.lower() == 'current':
+                        self.collect_current_MFI(gate=gate)                        
+                    elif MFI_type.lower() == 'all':
+                        self.collect_all_MFI(gate=gate)
+                else:
+                    raise AliGaterError("in update: ","MFI_type must be None or string: 'current' or 'all'")
+
+            if extra_MFI is not None:
+                if not isinstance(extra_MFI,(list,np.ndarray)):
+                    raise AliGaterError("in update: ","extra_MFI must be None or a list/array of string labels of MFIs to save for current population.")
+                if len(extra_MFI)>=1:
+                    self.collect_extra_MFI(gate = gate, MFIs_to_collect = extra_MFI)
+        #******************************************************************************
         self.vGates.append(gate)
         if QC:
             if not gate.bInvalid:
                 gate.downSample(self.fcsDF, self._downsamplingBins, xlim, ylim, scale, xscale, yscale, T=T)
+    
+    def collect_current_MFI(self, gate):
+        if gate.xCol is not None:
+            self.collect_MFI(gate=gate, marker=gate.xCol)
+        if gate.yCol is not None:
+            self.collect_MFI(gate=gate, marker=gate.yCol)
+        return None
+    
+    def collect_MFI(self, gate, marker):
+        if "FSC" in marker or "SSC" in marker:
+            return None
+        #Collect MFI of a single marker for an AGGate object
+        vX = getGatedVector(self.fcsDF, gate = marker, vI=gate(), return_type='nparray')
+        x_mean = np.mean(vX)
+        x_mean_MFI_label = gate.name +"_" + marker + "_mean"
         
+        x_median = np.median(vX)
+        x_median_MFI_label = gate.name +"_" + marker + "_median"
+        
+        self.MFI_Series = self.MFI_Series.append(pd.Series(data=[x_mean, x_median], index=[x_mean_MFI_label,  x_median_MFI_label], name=self.sample))
+        return None
+
+    def collect_all_MFI(self, gate):
+        #Collect MFI of markers in current gate and that of all parent gates except FSC/SSC channels
+        #First initialize marker list with current gate
+        if gate.xCol is None and gate.yCol is None:
+            raise AliGaterError("Invalid sample encountered in collect_all_MFI, for sample "+str(self.sample)+" in gate "+str(gate.name)+" both defining markers are None\n")
+        if gate.xCol is None:
+            markers=[gate.yCol]
+        elif gate.yCol is None:
+            markers=[gate.xCol]
+        else:
+            markers=[gate.xCol, gate.yCol]
+        
+        gate_Iterator = gate
+        
+        while not gate_Iterator.bNoparent:
+            iterator_name=gate_Iterator.name        
+            iterator_parent_name = gate_Iterator.parentName
+            if gate_Iterator.parent is None:
+                if not gate_Iterator.bNoparent:
+                    raise AliGaterError("in collect_all_MFI:", "Couldn't collect MFI of "+str(iterator_name)+" due to parent population ("+str(iterator_parent_name)+") not found, is it labeled correctly in the update call?")
+            gate_Iterator = self(name=iterator_parent_name)
+            if not gate_Iterator: #Not found in AGSample
+                raise AliGaterError("in collect_all_MFI:", "Couldn't collect MFI of "+str(iterator_name)+" due to parent population ("+str(iterator_parent_name)+") not found, is it labeled correctly in the update call?")
+            #Save parent gates x and y markers if they are not None
+            if gate_Iterator.xCol is not None:
+                markers.append(gate_Iterator.xCol)
+            if gate_Iterator.yCol is not None:
+                markers.append(gate_Iterator.yCol)
+            #Go to next parent
+            #gate_Iterator = gate_Iterator.parentName
+            #if gate_Iterator == 'total': #What a gate with no parent will be called
+            #    break
+        #Prune the markers list to unique non FSC/SSC markers
+        unique_markers = list(set(markers))
+        #Use collect_extra_MFI to collect MFIs for all these markers for this population
+        self.collect_extra_MFI(gate=gate, MFIs_to_collect=unique_markers)
+        return None
+    
+    def collect_extra_MFI(self, gate, MFIs_to_collect):
+        #User defined list of extra MFIs to collect for current population
+        markers_in_df = self.fcsDF.columns.tolist()
+        for marker in MFIs_to_collect:
+            if marker in markers_in_df:
+                self.collect_MFI(gate, marker)
+            else:
+                reportStr = "Requested MFI for marker "+str(marker)+" for population "+str(gate.name)+" which doesn't exists in the sample ("+self.sample+").\n"
+                sys.stderr.write(reportStr)
+        return None
+    
     def full_index(self):
         return list(self.fcsDF.index.values)
     
@@ -983,6 +1084,8 @@ class AGExperiment:
     flaggedSamples=[]       #List of tuple (path, flagged pop)
     resultHeader=None
     resultMatrix=None
+    result_MFI_DF = None
+    has_MFI = False
     output_folder=None
     exp_name=None
     bQC=False
@@ -1210,9 +1313,6 @@ class AGExperiment:
             if self.bQC:
                 sys.stderr.write("and QC metrics collection ")
             sys.stderr.write("done\n")
-            #Clear all opened figure objects
-            #close_pyplot_figures.close('all') - moved to plotheatmap (the culprit that generates all figures)
-            #Flush stderr for logfile between each sample
             sys.stderr.flush()
                     
         nOfFlagged=len(self.flaggedSamples)
@@ -1255,6 +1355,11 @@ class AGExperiment:
             if gate.name==None or gate.parentName is None:
                 raise AliGaterError("Error when initializing resultmatrix gatename or parentname missing")
             self.resultHeader.extend([gate.name, gate.name+str("/")+gate.parentName])
+        
+        if len(fcs.MFI_Series) > 0 :
+            #if MFI available, also init MFI table
+            self.result_MFI_DF = pd.DataFrame()
+            self.has_MFI = True
             
     def collectGateData(self, fcs):
         assert all(isinstance(i, list) for i in [self.resultHeader, self.resultMatrix])
@@ -1290,10 +1395,32 @@ class AGExperiment:
                 sampleResults[indexOfGate] = currentGate
                 sampleResults[indexOfGate+1] = currentRatio
         self.resultMatrix.append(sampleResults)
+        
+        #****Check/Add MFI*****
+        if len(fcs.MFI_Series) > 0:
+            #Make sure duplicate entries are dropped (can happen if extra MFIs are applied etc)
+            non_dup_series=fcs.MFI_Series.drop_duplicates()
+            #Make sure the series has the correct name
+            non_dup_series.name=fcs.sample
+            
+            dups = non_dup_series[non_dup_series.index.duplicated()]
+            if len(dups) > 0:
+                #This will cause a worse pandas error if allowed ('cannot reindex from duplicate axis') 
+                sys.stderr.write("Duplicated entry in MFI data, have you incorrectly labeled some position? Printing offending labels:\n")
+                for index,elem in dups.iteritems():
+                    reportStr = str(index)+"\t"+str(elem)+"\n"
+                    sys.stderr.write(reportStr)
+                raise AliGaterError("Duplicated entry in MFI data.")
+            # for index,entry in non_dup_series.iteritems():
+            #     reportStr=str(index)+"\t"+str(entry)+"\n"
+            #     sys.stderr.write(reportStr)
+            #Append
+            self.result_MFI_DF = self.result_MFI_DF.append(non_dup_series)
+        
         if bFlagged:
             self.flaggedSamples.append(fcs.sample)
     
-    def printExperiment(self, file=None):
+    def printExperiment(self, file=None, MFI_file=None):
         if file is None:
             if "/" in self.exp_name:
                 fixed_exp_name=self.exp_name.split('/')[-1]
@@ -1303,19 +1430,39 @@ class AGExperiment:
         assert isinstance(file, str)
         if not all(isinstance(i, list) for i in [self.resultHeader, self.resultMatrix]):
             sys.stderr.write("Experiment data table empty, no results to print.\n")
-            return None
-        fhandle = open(file, 'w')
-        for elem in self.resultHeader:
-            outputStr=str(elem)+"\t"
-            fhandle.write(outputStr)
-        fhandle.write("\n")
-        for sample in self.resultMatrix:
-            for elem in sample:
+            #No ratio/count data, but maybe MFI?
+            if not self.has_MFI:
+                return None
+        else:
+            fhandle = open(file, 'w')
+            for elem in self.resultHeader:
                 outputStr=str(elem)+"\t"
                 fhandle.write(outputStr)
             fhandle.write("\n")
-        fhandle.close()
+            for sample in self.resultMatrix:
+                for elem in sample:
+                    outputStr=str(elem)+"\t"
+                    fhandle.write(outputStr)
+                fhandle.write("\n")
+            fhandle.close()
         
+        #MFI stuff
+        if self.has_MFI:
+            sys.stderr.write("printing MFI data\n")
+            if len(self.result_MFI_DF) == 0:
+                sys.stderr.write("No MFI data to print.\n")
+                return None
+            if MFI_file is None:
+                if "/" in self.exp_name:
+                    fixed_exp_name=self.exp_name.split('/')[-1]
+                else:
+                    fixed_exp_name=self.exp_name
+                MFI_file=self.output_folder+fixed_exp_name+".MFI.txt"
+            assert isinstance(MFI_file, str)
+            sys.stderr.write(MFI_file)
+            sys.stderr.write("\n")
+            self.result_MFI_DF.to_csv(MFI_file, sep="\t")
+            
     def parse_folder(self, strategy, folder, comp_matrix=None, *args, **kwargs):
         if 'ag_verbose' in kwargs:
             agconf.ag_verbose = kwargs['ag_verbose']
