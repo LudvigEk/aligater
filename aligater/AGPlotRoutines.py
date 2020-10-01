@@ -313,24 +313,27 @@ def plot_flattened_heatmap(heatmap_array, nOfBins, mask=True):
 
 
 def transformWrapper(vX, T, scale):
+    #ToDo write documentation
     result=None
     single_val=False
+    #ToDo raise if more than 1 dim?
+        
+    if not isinstance(vX, (list, np.ndarray, tuple)):
+        if isinstance(vX, (float, int)):
+            vInput=np.asarray(vX).reshape(1,)
+            single_val=True
+        else:
+            raise AliGaterError("in transformWrapper","invalid dType of passed vX, must be either a single float/int value or list/np.ndarray/tuple of float/int values")
+    else:
+        vInput=vX
 
     if not isinstance(vX,np.ndarray):
         try:
             vX=np.asarray(vX)
         except:
             raise AliGaterError("in transformWrapper: ", "Couldn't coerce input vector to numpy array format")
-  
-        
-    if not isinstance(vX, (list, np.ndarray, tuple)):
-        if isinstance(vX, (float, int)):
-            vInput=[vX]
-            single_val=True
-        else:
-            raise AliGaterError("in transformWrapper","invalid dType of passed vX, must be either a single float/int value or list/np.ndarray/tuple of float/int values")
-    else:
-        vInput=vX
+
+    
     if scale.lower() == 'logish':
         result = logishTransform(vInput, T)
     elif scale.lower() == 'bilog':
@@ -346,11 +349,21 @@ def transformWrapper(vX, T, scale):
 def inverseTransformWrapper(vX, T, scale):
     result=None
     single_val=False
-    if not isinstance(vX, (list, np.ndarray)):
-        vInput=[vX]
-        single_val=True
+    if not isinstance(vX, (list, np.ndarray, tuple)):
+        if isinstance(vX, (float, int)):
+            vInput=np.asarray(vX).reshape(1,)
+            single_val=True
+        else:
+            raise AliGaterError("in inverseTransformWrapper","invalid dType of passed vX, must be either a single float/int value or list/np.ndarray/tuple of float/int values")
     else:
         vInput=vX
+
+    if not isinstance(vX,np.ndarray):
+        try:
+            vX=np.asarray(vX)
+        except:
+            raise AliGaterError("in inverseTransformWrapper: ", "Couldn't coerce input vector to numpy array format")
+      
     if scale.lower() == 'logish':
         result = inverseLogishTransform(vInput, T)
     elif scale.lower() == 'bilog':
