@@ -941,7 +941,7 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
         outputGate=AGgate([],parentGate,xCol,yCol,name)
         return outputGate
 
-    cdef int startbin
+    cdef int startBin
  
     cdef bool has_xbound, has_ybound
     has_xbound = has_ybound = False

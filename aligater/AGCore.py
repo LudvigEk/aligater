@@ -413,6 +413,9 @@ def getHighestDensityPoint(fcs, xCol, yCol, parentGate=None, bins=300, scale='li
     fcsDF=fcs()
     if (xCol not in fcsDF.columns or yCol not in fcsDF.columns):
         raise TypeError("Specified gate(s) not in dataframe, check spelling or control your dataframe.columns labels")
+    if len(vI) < 5:
+        sys.stderr.write("WARNING, in getHighestDensityPoint: population has less than 5 events, returning [inf, inf]\n")
+        return [np.inf, np.inf]
     vX=getGatedVector(fcsDF, xCol, vI, return_type="nparray")
     vY=getGatedVector(fcsDF, yCol, vI, return_type="nparray")
     
