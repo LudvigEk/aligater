@@ -684,7 +684,8 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
 #         outputGate=AGgate(vOut, fcs.full_index(), xCol, yCol, name)
         
 #     return outputGate
-
+#@cython.wraparound(False)
+#@cython.boundscheck(False)
 def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='negative',
                  startY=None, endY=None, list xboundaries=None, list yboundaries=None, bool leftRight=True , str direction='up', maxStep=5, phi=0,
                  int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True):
@@ -710,7 +711,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     #originalvI=vI
 
 #*********************************************************************************************************
-    cdef int startbin
+    cdef int startBin
  
     cdef bool has_xbound, has_ybound
     has_xbound = has_ybound = False
@@ -790,9 +791,13 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
             break
     else:
         if startY<yedges[0]:
-            startY=0
+            startBin=0
+            reportStr="startY value out of bounds. Using lowest possible value instead.\n"
+            sys.stderr.write(reportStr)
         elif startY > yedges[-1]:
-            startY = len(yedges)-1
+            startBin = len(yedges)-1
+            reportStr="startY value out of bounds. Using highest possible value instead.\n"
+            sys.stderr.write(reportStr)
         else:    
             raise AliGaterError("in horisontalPath","startY out of bounds")
     
@@ -806,9 +811,13 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
             break
     else:
         if endY<yedges[0]:
-            endY=0
+            endBin=0
+            reportStr="endY value out of bounds. Using lowest possible value instead.\n"
+            sys.stderr.write(reportStr)
         elif endY > yedges[-1]:
-            endY = len(yedges)-1
+            endBin = len(yedges)-1
+            reportStr="endY value out of bounds. Using highest possible value instead.\n"
+            sys.stderr.write(reportStr)
         else:
             raise AliGaterError("in horisontalPath","endY out of bounds")
 
@@ -854,8 +863,14 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     cdef int nextBin
     path=[]
     curBin=startBin
+    #print('FOR '+name+' curBin IS: ', curBin)
+    #print('FOR '+name+' len OF yedges IS: ', len(yedges))
+    #print('FOR '+name+' size OF pathMatrix IS: ', pathMatrix.shape)
+    if  curBin >= pathMatrix.shape[1]: # Fix by Antton, may be incorrect!
+        curBin = pathMatrix.shape[1] - 1
+        reportStr="internal variable curBin too big for bin-matrix, given biggest possible value instead.\n"
+        sys.stderr.write(reportStr)
     row_order = np.arange(0, bins, 1)
-
     if not leftRight:
         row_order = row_order[::-1]
     for rowIdx in row_order:
