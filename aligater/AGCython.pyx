@@ -705,6 +705,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     if len(vI)<5:
         sys.stderr.write("in horisontalPath: Passed parent population contains too few events, returning empty gate.\n") 
         outputGate=AGgate([],parentGate,xCol,yCol,name)
+        return outputGate
     #cdef int startbin
     #originalvI=vI
 

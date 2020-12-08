@@ -461,7 +461,7 @@ class AGsample:
         #******************************************************************************
         self.vGates.append(gate)
         if QC:
-            if not gate.bInvalid:
+            if not gate.bInvalid:                
                 gate.downSample(self.fcsDF, self._downsamplingBins, xlim, ylim, scale, xscale, yscale, T=T)
     
     def collect_current_MFI(self, gate):
