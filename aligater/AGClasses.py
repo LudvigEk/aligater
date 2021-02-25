@@ -172,7 +172,7 @@ class AGgate:
     bRatioGate=False
     bIgnoreCellLimit=False
     
-    def __init__(self, gate, parentGate, xCol, yCol, name, RatioGate=False, IgnoreCellLimit=False):
+    def __init__(self, gate, parentGate, xCol, yCol, name=None, RatioGate=False, IgnoreCellLimit=False):
         if not isinstance(gate, AGgate):
             if not isinstance(gate,list):
                 raise AliGaterError("Invalid init of AGClasses.AGgate object.")
@@ -183,13 +183,14 @@ class AGgate:
                 self.name=name
         else:
             self.current=gate()
-            if gate.name is None or not isinstance(gate.name, str):
-                if name is None or not isinstance(name, str):
+            if name is None or not isinstance(name, str):
+                if gate.name is None or not isinstance(gate.name, str) :
                     raise AliGaterError("Invalid init of AGClasses.AGgate object, passed gate object has an invalid name and no overwriting name was passed.")
                 else:
-                    self.name=name
+                    self.name=gate.name
             else:
-                self.name = gate.name
+                self.name = name
+
             
         if not isinstance(RatioGate,bool):
             raise TypeError("unexpected type of bRatioGate. Expected bool, found: "+str(type(RatioGate)))
@@ -440,16 +441,37 @@ class AGsample:
             raise AliGaterError("in update: ","x marker label ("+str(gate.xCol)+") doesn't exist in the sample")
         if gate.xCol not in self.fcsDF.columns:
             raise AliGaterError("in update: ","y marker label ("+str(gate.yCol)+") doesn't exist in the sample")
+
+        #*************************************************
+        validName=False
+        nameChange=False
+        newNameCounter=0
+        if self.vGates is not None: #Only check for existing gates if there are any
+            new_name=gate.name #initialize to current name
+            while not validName:
+                for existing_gate in self.vGates:
+                    if existing_gate.name == new_name:
+                        #A gate with the same name already exists
+                        newNameCounter+=1
+                        nameChange=True #Flag that name has to be changed
+                        new_name = gate.name+str(newNameCounter)
+                        break
+                else:
+                    validName=True
+                    
+            if nameChange: #Update name is needed
+                gate.name = new_name
+
         #*****************MFI STUFF*****************************************************
         if MFI:
             if MFI_type is not None:
                 if isinstance(MFI_type, str):
-                    if not any([MFI_type.lower() in ['current', 'all']]):
+                    if not any([MFI_type.lower() in ['current', 'all']]): #Option is to just remove the all option
                         raise AliGaterError("in update: ","MFI_type must be None or string: 'current' or 'all'")
                     if MFI_type.lower() == 'current':
                         self.collect_current_MFI(gate=gate)                        
                     elif MFI_type.lower() == 'all':
-                        self.collect_all_MFI(gate=gate)
+                        self.collect_all_MFI(gate=gate) #This probably doesn't work atm (after MFI fix reversal)
                 else:
                     raise AliGaterError("in update: ","MFI_type must be None or string: 'current' or 'all'")
 
@@ -486,6 +508,12 @@ class AGsample:
         return None
 
     def collect_all_MFI(self, gate):
+        #Just sanity check for empty list in self
+        if self.vGates is None or len(self.vGates) == 0: 
+            #In that case just collect current
+            self.collect_current_MFI(gate)
+            return None
+        
         #Collect MFI of markers in current gate and that of all parent gates except FSC/SSC channels
         #First initialize marker list with current gate
         if gate.xCol is None and gate.yCol is None:
@@ -504,9 +532,16 @@ class AGsample:
             iterator_parent_name = gate_Iterator.parentName
             if gate_Iterator.parent is None:
                 if not gate_Iterator.bNoparent:
-                    raise AliGaterError("in collect_all_MFI:", "Couldn't collect MFI of "+str(iterator_name)+" due to parent population ("+str(iterator_parent_name)+") not found, is it labeled correctly in the update call?")
+                    #Don't raise
+                    #log warning and break
+                    break
+                    #raise AliGaterError("in collect_all_MFI:", "Couldn't collect MFI of "+str(iterator_name)+" due to parent population ("+str(iterator_parent_name)+") not found, is it labeled correctly in the update call?")
             gate_Iterator = self(name=iterator_parent_name)
             if not gate_Iterator: #Not found in AGSample
+                #Simply not true, first update call might not be a population with None as parent!
+                #Don't raise
+                #log warning and break
+                break
                 raise AliGaterError("in collect_all_MFI:", "Couldn't collect MFI of "+str(iterator_name)+" due to parent population ("+str(iterator_parent_name)+") not found, is it labeled correctly in the update call?")
             #Save parent gates x and y markers if they are not None
             if gate_Iterator.xCol is not None:
@@ -1304,7 +1339,7 @@ class AGExperiment:
             sys.stderr.write("Applying strategy\n")
             gatedSample=self.fcs_apply_strategy(sample,strategy, *args, **kwargs)
             if self.resultHeader is None:
-                    self.initResultMatrix(sample)
+                    self.initResultMatrix(sample)  #BIG WARNING IN DOC FOR THIS BEHAVIOR
             self.collectGateData(gatedSample)
             self.sampleList.append(gatedSample.sample)
             if self.bQC:

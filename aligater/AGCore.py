@@ -778,7 +778,7 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
     
     .. note::
             All limits are considered greater than inclusive (<=) and less than exclusive (>)\n
-            If QC is requested, the downsampled image will be same of all the gated populations. Only one image will be saved, with its name given by the top-left population.
+            
         
     **Examples**
 
@@ -909,7 +909,7 @@ def axisStats(fcsDF, xCol, vI=None,bins=300, sigma=3, scale='linear',T=1000):
         The input heatmap is smoothed using a gaussian filter to avoid finding noisy local minima.\n
         The returned maxvalue will be the center of the (smoothed) bin where it occured. This means it has an inbuilt approximation error of:\n
         +- ( bin width / 2 )
-            
+    
     **Examples**
 
     None currently.

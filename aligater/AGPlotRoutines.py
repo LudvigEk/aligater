@@ -114,8 +114,14 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     if custom_rcParams:
         plt.rcParams=rcParams
     else:
-        plt.rcParams['figure.figsize']=5,5
+        plt.rcParams['figure.figsize']=10,10
         plt.rcParams['image.cmap']=cmap
+        
+        #extra
+        plt.rcParams['font.size'] = 22
+        plt.rcParams['xtick.labelsize'] = 16
+        plt.rcParams['ytick.labelsize'] = 16
+        #plt.rcParams['label.size': 22]
     
     heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, thresh)
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
