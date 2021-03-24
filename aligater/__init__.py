@@ -3,11 +3,11 @@
 
 #First four python loads must be in correct order to avoid circular loading. Basic functions and the aligater classes. 
 from aligater.AGConfig import execMode,ag_verbose,minCells,cellFilter
-#Wrapper for AGCython import with a simple reminder on py3.6+ ipykernel while using ipython/Jupyter and py3.6+ otherwise. 
-#If that's not the reason for your error I apologize sincerely for misleading.
+
 import sys
 
 try:
+	#Wrapper for AGCython import with a simple reminder on py3.6+ ipykernel while using ipython/Jupyter and py3.6+ otherwise. 
 	from aligater.AGCythonUtils import *
 except ImportError as e:
 	if execMode in ['jupyter','ipython']:

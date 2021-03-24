@@ -111,7 +111,7 @@ def gmm2D(fcs, xCol, yCol, nOfComponents, parentGate=None, scale='linear', T=100
         Parent population to apply the gating to. 
         If no AGgate object is passed gating is applied to the ungated data frame.
     args, kwargs : 
-        optional arguments passed on to scipy.ndimage.filters.GaussianMixture, see it's sklearn documentation for options.
+        Optional arguments passed on to scipy.ndimage.filters.GaussianMixture, see it's sklearn documentation for options.
 
     **Returns**
 
@@ -391,7 +391,11 @@ def getHighestDensityPoint(fcs, xCol, yCol, parentGate=None, bins=300, scale='li
         If no AGgate object is passed gating is applied to the ungated data frame.
     bins : int, optional, default: 300
         Resolution of the heatmap used to calculate the highest density point
-        
+    scale : str, optional, default: 'linear'
+        Which scale to be used on axis.
+    T : int, optional, default: 1000
+        If the threshold for linear-loglike transition for bilog or logicle scales.
+    
     **Returns**
 
     List-like
@@ -466,7 +470,11 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
     filePlot : str, optional, default: None
         Option to plot the gate to file to specified path. \n
         Warning: might overwrite stuff.
-
+    scale : str, optional, default: 'linear'
+        Which scale to be used on axis.
+    T : int, optional, default: 1000
+        If the threshold for linear-loglike transition for bilog or logicle scales.
+    
     **Returns**
     
     AGClasses.AGgate object
@@ -590,7 +598,8 @@ def getDensityFunc(fcsDF, xCol,vI=None, sigma=3, bins=300, scale='linear', T=100
 
 def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bins=300, require_local_min=False, scale='linear', T= 1000):
     """
-    Function that finds the least dense point in a given interval by searching a smoothed density function.
+    Function that finds the least dense point in a given interval by searching a smoothed density function. 
+    Can, optionally, be required to find local minima.
     
     **Parameters**
     
@@ -598,19 +607,20 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
         Flow data loaded in an sample object.
     xCol : str
         Marker label.
-    name : str
-        Name to the resulting gated population.
-    parentGate : AGgate object, optional
+    parentGate : AGgate object, optional, default: None
         Parent population to apply the gating to. 
-        If no AGgate object is passed gating is applied to the ungated data frame.
+        If no AGgate object is passed, the algorithm is applied to the ungated data frame.
     interval : list-like, optional, default: ['start','end']
         Interval to limit the search, defaults to entire axis.\n
         Some examples: [5, 'end'], ['start', 6800], [30, 1500]
         Accepts text-strings 'start' and 'first' as synonyms and similarly for 'end', 'last'
     sigma : float, optional, default: 3
-        Smoothing factor of density function (kernel smooth).
+        Smoothing factor of density function (gaussian kernel smooth).
     bins : int, optional, default: 300
         Number of bins in density histogram.
+    require_local_min : bool, default: False
+        If True, will find lowest density point with added requirement of being a local_minima.
+        If no local minima is found, returns numpy.inf
     scale : str, optional, default: 'linear'
         If plotting enabled, which scale to be used on axis.
     T : int, optional, default: 1000
@@ -621,6 +631,7 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
     float
         Coordinate on axis with lowest density in given interval.
         
+    .. note:: If require_local_min is set to True and no local minima is found, returns numpy.inf
     
     .. note::
             If less than 5 events are passed in parentGate, returns mid interval without attempting to valleyseek\n
@@ -751,7 +762,7 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
         Threshold for vertical line.
 
     yThresh : float
-        Threshold for horisontal line.
+        Threshold for horizontal line.
 
     parentGate : AGgate object, optional
         Parent population to apply the gating to. 
@@ -849,7 +860,7 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
         else:
             fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
         addAxLine(fig,ax,xThresh,'vertical',scale=scale, T=T)
-        addAxLine(fig,ax,yThresh,'horisontal',scale=scale, T=T)
+        addAxLine(fig,ax,yThresh,'horizontal',scale=scale, T=T)
 
         if plot:
             plt.show()    
@@ -1473,7 +1484,10 @@ def backGate(fcs, xCol, yCol, population, background_population=None, markersize
 
     None currently.
     """
-    
+    if agconf.execMode in ["jupyter","ipython"]:
+        plot=True
+    else:
+        plot=False
     if not isinstance(fcs,AGsample):
         raise invalidSampleError("in backGate:")
         
@@ -1537,7 +1551,7 @@ def backGate(fcs, xCol, yCol, population, background_population=None, markersize
     if filePlot is not None:
         plt.savefig(filePlot)
         plt.close()
-    else:
+    if plot:
         plt.show()
     return None
 

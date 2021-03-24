@@ -2,6 +2,7 @@
 # Eugene Yurtsev 07/20/2013
 # Distributed under the MIT License
 # Channel name identification modified by Kerstin Johnsson 05/21/2016
+# Possibility to limit number of events read from file by Ludvig Ekdahl 22/03/2021
 
 # Thanks to:
 # - Ben Roth : adding a fix for Accuri C6 fcs files.
@@ -56,7 +57,7 @@ class FCSParser(object):
         self.channel_names_alternate holds the alternate names of the channels
     """
 
-    def __init__(self, path, read_data=True, channel_naming='$PnS'):
+    def __init__(self, path, read_data=True, channel_naming='$PnS', nOfEvents=None):
         """
         Parameters
         ----------
@@ -90,7 +91,10 @@ class FCSParser(object):
         self._analysis = ''
 
         self._file_size = os.path.getsize(path)
-
+	
+	#added attribute nOfEvents, added by Ludvig 22/03/2021
+        self.nOfEvents=nOfEvents	
+	
         if channel_naming not in ('$PnN', '$PnS'):
             raise ValueError("channel_naming must be either '$PnN' or '$PnS")
 
@@ -308,6 +312,12 @@ class FCSParser(object):
 
         num_events = text['$TOT']  # Number of events recorded
         num_pars = text['$PAR']  # Number of parameters recorded
+        if self.nOfEvents is None or num_events <= self.nOfEvents:
+        #if nOfEvents not specified, or $TOT < nOfEvents, then read all
+            num_events_to_read=num_events
+        else:   	
+            num_events_to_read=self.nOfEvents
+
 
         if text['$BYTEORD'].strip() == '1,2,3,4' or text['$BYTEORD'].strip() == '1,2':
             endian = '<'
@@ -346,14 +356,14 @@ class FCSParser(object):
         if len(set(par_numeric_type_list)) > 1:
             # values saved in mixed data formats
             dtype = ','.join(par_numeric_type_list)
-            data = numpy.fromfile(file_handle, dtype=dtype, count=num_events)
+            data = numpy.fromfile(file_handle, dtype=dtype, count=num_events_to_read) #Pass number of events to read instead ##Ludvig @ 22/03/2021
             names = self.get_channel_names()
             data.dtype.names = tuple([name.encode('ascii', errors='replace') for name in names])
         else:
             # values saved in a single data format
             dtype = par_numeric_type_list[0]
-            data = numpy.fromfile(file_handle, dtype=dtype, count=num_events * num_pars)
-            data = data.reshape((num_events, num_pars))
+            data = numpy.fromfile(file_handle, dtype=dtype, count=num_events_to_read * num_pars)
+            data = data.reshape((num_events_to_read, num_pars))
         ##
         # Convert to native byte order 
         # This is needed for working with pandas datastructures
@@ -420,7 +430,8 @@ class FCSParser(object):
 
 def parse(path, meta_data_only=False, output_format='DataFrame', compensate=False,
               channel_naming='$PnS',
-              reformat_meta=False):
+              reformat_meta=False,
+              nOfEvents=None): #add n of events to read argument
     """
     Parse an fcs file at the location specified by the path.
     Parameters
@@ -467,9 +478,9 @@ def parse(path, meta_data_only=False, output_format='DataFrame', compensate=Fals
         if pd is None:
             raise ImportError('You do not have pandas installed.')
 
-    read_data = not meta_data_only
+    read_data = not meta_data_only 
 
-    parsed_fcs = FCSParser(path, read_data=read_data, channel_naming=channel_naming)
+    parsed_fcs = FCSParser(path, read_data=read_data, channel_naming=channel_naming, nOfEvents=nOfEvents)
 
     if reformat_meta:
         parsed_fcs.reformat_meta()

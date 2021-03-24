@@ -31,6 +31,7 @@ from matplotlib.pyplot import close as close_pyplot_figures
 
 #AliGater imports
 import aligater.AGConfig as agconf
+from aligater.check_exec_mode import check_filePath
 from aligater.AGPlotRoutines import getHeatmap, imagePCA_cluster, plot_flattened_heatmap
 from aligater.AGFileSystem import getGatedVector, getGatedVectors, getFileName, getParent, collectFiles, listDir, loadFCS, getCompensationMatrix, AliGaterError, invalidAGgateError, check_exists, applyFilter, loadHDF5sample
 #API to the FlowCytometryTools parser
@@ -1040,6 +1041,9 @@ class AGExperiment:
     bQC, bool 
         Flag if any type of QC has been requested. This will automatically trigger post-analysis PCA, print figures and save a pandas DataFrame with the results.
 
+    nOfEvents, int, default : None
+        Number of maximum events to be collected from each fcs file in experiment. Default is None, which means all events are read from the .fcs file.
+
     **Internal members**
 
     fcsList, list-like
@@ -1127,6 +1131,7 @@ class AGExperiment:
     flourochrome_area_filter=False
     QCbins=32
     HDF5Fileset=False
+    nOfEvents=None
     
     def __init__(self, experimentRoot, *args, **kwargs):
         if 'filters' in kwargs:
@@ -1188,7 +1193,17 @@ class AGExperiment:
                 raise TypeError("flourochrome_area_filter must be a bool (True/False).")
             else:
                 self.flourochrome_area_filter=[kwargs['flourochrome_area_filter']]
-            
+        
+        if 'nOfEvents' in kwargs:
+            if not isinstance(kwargs['nOfEvents'],int):
+                raise TypeError("nOfEvents has to be an integer.")
+            elif kwargs['nOfEvents'] <= 0:
+                raise TypeError("nOfEvents has to be a positive integer")
+            else:
+                if kwargs['nOfEvents'] < agconf.cellFilter:
+                    raise AliGaterError("In AGExperiment","Experiment object initialized with nOfEvents parameter less than the cellFilter specified in AGConfig")
+                self.nOfEvents=kwargs['nOfEvents']
+        
         if 'normaliseOn' in kwargs:
             if not isinstance(kwargs['normaliseOn'],str):
                 raise (TypeError("normaliseOn must be string"))
@@ -1237,11 +1252,9 @@ class AGExperiment:
                 raise (TypeError("experiment_name must be specified as string"))
             try:
                 self.exp_name = kwargs['experiment_name']
-                if agconf.ag_out[-1]=="/":
-                    self.output_folder=str(agconf.ag_out)+self.exp_name
-                else:
-                    self.output_folder=str(agconf.ag_out)+"/"+self.exp_name
-                os.makedirs(self.output_folder)
+                self.output_folder=str(agconf.ag_out)+"/"+self.exp_name
+                if check_filePath(self.output_folder) != "dir":
+                    os.makedirs(self.output_folder)
             except FileExistsError:
                 reportStr="WARNING: specified output directory ("+str(agconf.ag_out)+str(kwargs['experiment_name'])+") already exists, content in folder might be overwritten without warning\n"
                 sys.stderr.write(reportStr)
@@ -1254,14 +1267,10 @@ class AGExperiment:
         
         if self.output_folder is None:
             self.exp_name = 'AGexperiment_'+str(datetime.datetime.now().date()) + '_' + str(datetime.datetime.now().time()).replace(':', '_')
-            if agconf.ag_out[-1]=="/":
-                self.output_folder=str(agconf.ag_out)+self.exp_name
-            else:
-                self.output_folder=str(agconf.ag_out)+"/"+self.exp_name
+            self.output_folder=str(agconf.ag_out)+"/"+self.exp_name
             reportStr="No experiment name specified, generated name: "+self.exp_name+"\n"
             sys.stderr.write(reportStr)
-            if agconf.execMode == 'terminal':
-                #TODO, when to create output folder - likely first time something has to be written? Only in batch/terminal mode?
+            if check_filePath(self.output_folder) != "dir":
                 os.makedirs(self.output_folder)
         
         #Check that output folder path variable ends with a slash, no matter if its generated or manually specified
@@ -1322,8 +1331,6 @@ class AGExperiment:
         for fcs in self.fcsList:
             if 'ag_verbose' in kwargs:
                 agconf.ag_verbose = kwargs['ag_verbose']
-            else:
-                agconf.ag_verbose = True
             if self.HDF5Fileset:
                 sample = loadHDF5sample(fcs, sampling_resolution=self.QCbins)
             else:
@@ -1333,7 +1340,8 @@ class AGExperiment:
                     comp_matrix=None
                 if self.compensation_exceptions is not None:
                     comp_matrix=self.check_compensation_exception(fcs)
-                sample = loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=self.lMarkers, flourochrome_area_filter=self.flourochrome_area_filter, sampling_resolution=self.QCbins)
+
+                sample = loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=self.lMarkers, flourochrome_area_filter=self.flourochrome_area_filter, sampling_resolution=self.QCbins, nOfEvents = self.nOfEvents)
             if sample is None:
                 continue
             sys.stderr.write("Applying strategy\n")
@@ -1457,12 +1465,14 @@ class AGExperiment:
     
     def printExperiment(self, file=None, MFI_file=None):
         if file is None:
-            if "/" in self.exp_name:
-                fixed_exp_name=self.exp_name.split('/')[-1]
-            else:
-                fixed_exp_name=self.exp_name
-            file=self.output_folder+fixed_exp_name+".results.txt"
-        assert isinstance(file, str)
+            file=self.fallback_filepath()
+        else:
+            if not isinstance(file,str) or not (check_filePath(file) in ["dir_exists", "file"]):
+                #filepath should be string path to output file. Must either exist, or it's directory must exist
+                sys.stderr.write("Warning, in aligater.AliGaterExperiment.printExperiment: file filepath invalid, falling back to ag_out directory.")
+                file=self.fallback_filepath()
+        
+        
         if not all(isinstance(i, list) for i in [self.resultHeader, self.resultMatrix]):
             sys.stderr.write("Experiment data table empty, no results to print.\n")
             #No ratio/count data, but maybe MFI?
@@ -1487,22 +1497,25 @@ class AGExperiment:
             if len(self.result_MFI_DF) == 0:
                 sys.stderr.write("No MFI data to print.\n")
                 return None
-            if MFI_file is None:
-                if "/" in self.exp_name:
-                    fixed_exp_name=self.exp_name.split('/')[-1]
-                else:
-                    fixed_exp_name=self.exp_name
-                MFI_file=self.output_folder+fixed_exp_name+".MFI.txt"
-            assert isinstance(MFI_file, str)
-            sys.stderr.write(MFI_file)
-            sys.stderr.write("\n")
+                MFI_file=file=self.fallback_filepath(".MFI")
+            else:
+                if not isinstance(MFI_file,str) or not (check_filePath(MFI_file) in ["dir_exists", "file"]):
+                    #filepath should be string path to output file. Must either exist, or it's directory must exist
+                    sys.stderr.write("Warning, in aligater.AliGaterExperiment.printExperiment: MFI_file filepath invalid, falling back to ag_out directory.")
+                    MFI_file = self.fallback_filepath(".MFI")
+
             self.result_MFI_DF.to_csv(MFI_file, sep="\t")
-            
+          
+    def fallback_filepath(self, suffix=""):
+        fixed_exp_name=self.exp_name.split('/')[-1]
+        fallback_path = self.output_folder+fixed_exp_name+suffix+".results.txt"
+        return fallback_path
+    
     def parse_folder(self, strategy, folder, comp_matrix=None, *args, **kwargs):
+        #NOT USED/WORK IN PROGRESS
         if 'ag_verbose' in kwargs:
             agconf.ag_verbose = kwargs['ag_verbose']
-        else:
-            agconf.ag_verbose = True
+
         reportStr="Parsing plate: "+folder+" \n"
         sys.stderr.write(reportStr)
         fcs_in_folder = collectFiles(folder, lFilter=self.lFilter, lMask=self.lMask, lIgnoreTypes=self.lIgnoreTypes, HDF5 = self.HDF5Fileset)

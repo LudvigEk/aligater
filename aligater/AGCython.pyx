@@ -186,7 +186,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
     orientation, str, optional, default: 'vertical'
         If two markers are passed this parameter decies if the cut is made on the x- or y-axis.\n
         'vertical' corresponds to drawing a vertical line in the plot, i.e. cut-off is applied to the x-axis.
-        'horisontal' corresponds to drawing a horisontal line in the plot, i.e. cut-off is applied to the y-axis.
+        'horizontal' corresponds to drawing a horizontal line in the plot, i.e. cut-off is applied to the y-axis.
     population, str, optional, default: 'upper'
         This parameter determines which population should be returned.\n
         'upper' means any events with a value above the treshold are returned.\n
@@ -239,7 +239,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
         raise markerError("in gateThreshold, marker: '"+str(xCol)+"'")
     if population.lower() not in ["upper","lower"]:
         raise AliGaterError("Specify desired population, 'upper' or 'lower' in regard to set threshold","in gateThreshold: ")
-    if orientation.lower() not in ["horisontal","vertical"]:
+    if orientation.lower() not in ["horizontal","vertical"]:
         raise AliGaterError("Specify desired population, 'upper' or 'lower' in regard to set threshold","in gateThreshold: ") 
     if len(vI)<5:
         sys.stderr.write("WARNING, in gateThreshold: Passed parent population to "+str(name)+" contains too few events, returning empty gate.\n") 
@@ -273,7 +273,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
                 if value < t:
                     vOutput.append(index)
     if yCol is not None:
-        if orientation.lower() == "horisontal":
+        if orientation.lower() == "horizontal":
             data=getGatedVector(fcsDF, yCol, vI, return_type="nparray", dtype=np.float64)
             if population.lower()=="upper":
                 for i in range(0,nOfEvents,1):
@@ -366,16 +366,16 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
     originalvI=vI
     fcsDF=fcs()
     if has_ybound and not has_xbound:
-        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=startingGate,info=False)
-        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
+        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horizontal', population='upper',scale=scale, parentGate=startingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horizontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
     if has_xbound and not has_ybound:
         tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=tmpvI, info=False)
     if has_xbound and has_ybound:
         xtmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
         xstartingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=xtmpvI, info=False)
-        ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
-        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
+        ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horizontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horizontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
     #Switch from AGgate obj -> list from here
     vI=startingGate()
     cdef np.ndarray vX=getGatedVector(fcsDF, xCol, vI, return_type="nparray")
@@ -523,7 +523,7 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
 
 
 
-# def ___OLD___horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='negative',
+# def ___OLD___horizontalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='negative',
 #                  startY=None, list xboundaries=None, list yboundaries=None, bool leftRight=True , str direction='up', maxStep=5, phi=0,
 #                  int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True):
 #     if agconf.execMode in ["jupyter","ipython"]:
@@ -553,37 +553,37 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
 #             if len(xboundaries) ==0:
 #                 pass
 #             elif len(xboundaries) !=2:
-#                 reportStr="in horisontalPath: xboundaries must be list of two, found: "+str(len(xboundaries))+" entries."
+#                 reportStr="in horizontalPath: xboundaries must be list of two, found: "+str(len(xboundaries))+" entries."
 #                 raise ValueError(reportStr)
 #             else:
 #                 has_xbound=True
 #         else:
-#             raise AliGaterError("in horisontalPath: ","is xboundaries is passed it must be list.")
+#             raise AliGaterError("in horizontalPath: ","is xboundaries is passed it must be list.")
 
 #     if yboundaries is not None:
 #         if isinstance(yboundaries, list):
 #             if len(yboundaries) ==0:
 #                 pass
 #             elif len(yboundaries) !=2:
-#                 reportStr="in horisontalPath: yboundaries must be list of two, found: "+str(len(yboundaries))+" entries."
+#                 reportStr="in horizontalPath: yboundaries must be list of two, found: "+str(len(yboundaries))+" entries."
 #                 raise ValueError(reportStr)
 #             else:
 #                 has_ybound=True    
 #         else:
-#             raise AliGaterError("in horisontalPath: ","is yBoundaries is passed it must be list.")
+#             raise AliGaterError("in horizontalPath: ","is yBoundaries is passed it must be list.")
     
 #     originalvI=vI
 #     if has_ybound and not has_xbound:
-#         tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=startingGate,info=False)
-#         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
+#         tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horizontal', population='upper',scale=scale, parentGate=startingGate,info=False)
+#         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horizontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
 #     if has_xbound and not has_ybound:
 #         tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
 #         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=tmpvI, info=False)
 #     if has_xbound and has_ybound:
 #         xtmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
 #         xstartingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=xtmpvI, info=False)
-#         ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
-#         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
+#         ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horizontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
+#         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horizontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
 #     #Switch from AGgate obj -> list from here
 #     vI=startingGate()
 
@@ -686,7 +686,7 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
 #     return outputGate
 #@cython.wraparound(False)
 #@cython.boundscheck(False)
-def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='negative',
+def horizontalPath(fcs, str name, str xCol, str yCol, parentGate=None, population='negative',
                  startY=None, endY=None, list xboundaries=None, list yboundaries=None, bool leftRight=True , str direction='up', maxStep=5, phi=0,
                  int bins=300, float sigma=3, str scale='linear', int T=1000, bool plot=True):
     if agconf.execMode in ["jupyter","ipython"]:
@@ -699,12 +699,12 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     if parentGate is None:
         vI=fcs.full_index()
     elif not parentGate.__class__.__name__ == "AGgate":
-        raise AliGaterError("in horisontalPath","Passed parent population is an invalid AGgate object.")
+        raise AliGaterError("in horizontalPath","Passed parent population is an invalid AGgate object.")
     else:
         vI=parentGate()
         startingGate=parentGate
     if len(vI)<5:
-        sys.stderr.write("in horisontalPath: Passed parent population contains too few events, returning empty gate.\n") 
+        sys.stderr.write("in horizontalPath: Passed parent population contains too few events, returning empty gate.\n") 
         outputGate=AGgate([],parentGate,xCol,yCol,name)
         return outputGate
     #cdef int startbin
@@ -721,37 +721,37 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
             if len(xboundaries) ==0:
                 pass
             elif len(xboundaries) !=2:
-                reportStr="in horisontalPath: xboundaries must be list of two, found: "+str(len(xboundaries))+" entries."
+                reportStr="in horizontalPath: xboundaries must be list of two, found: "+str(len(xboundaries))+" entries."
                 raise ValueError(reportStr)
             else:
                 has_xbound=True
         else:
-            raise AliGaterError("in horisontalPath: ","is xboundaries is passed it must be list.")
+            raise AliGaterError("in horizontalPath: ","is xboundaries is passed it must be list.")
 
     if yboundaries is not None:
         if isinstance(yboundaries, list):
             if len(yboundaries) ==0:
                 pass
             elif len(yboundaries) !=2:
-                reportStr="in horisontalPath: yboundaries must be list of two, found: "+str(len(yboundaries))+" entries."
+                reportStr="in horizontalPath: yboundaries must be list of two, found: "+str(len(yboundaries))+" entries."
                 raise ValueError(reportStr)
             else:
                 has_ybound=True    
         else:
-            raise AliGaterError("in horisontalPath: ","is yBoundaries is passed it must be list.")
+            raise AliGaterError("in horizontalPath: ","is yBoundaries is passed it must be list.")
     
     originalvI=vI
     if has_ybound and not has_xbound:
-        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=startingGate,info=False)
-        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
+        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horizontal', population='upper',scale=scale, parentGate=startingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horizontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
     if has_xbound and not has_ybound:
         tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=tmpvI, info=False)
     if has_xbound and has_ybound:
         xtmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
         xstartingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=xtmpvI, info=False)
-        ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
-        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
+        ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horizontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horizontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
     #Switch from AGgate obj -> list from here
     if startingGate is not None:
         vI=startingGate()
@@ -764,7 +764,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     vX,vY = getGatedVectors(fcsDF=fcs(), gate1=xCol, gate2=yCol, vI=vI)
     #Note on the heatmap, from numpy docs, np.histogram2d
     #Please note that the histogram does not follow the Cartesian convention where x values are on the abscissa and y values on the ordinate axis. 
-    #Rather, x is histogrammed along the first dimension of the array (vertical), and y along the second dimension of the array (horisontal).
+    #Rather, x is histogrammed along the first dimension of the array (vertical), and y along the second dimension of the array (horizontal).
     heatmap, xedges, yedges = getHeatmap(vX=vX, vY=vY, scale=scale, normalize=True, xscale=scale, yscale=scale, T=T, bins=bins)
     #I.e. note here, in contrast to verticalPath the cost heatmap from np.histogram2d is NOT transposed!
     cdef np.ndarray[dtype_t, ndim=2] cost = gaussian_filter(heatmap.astype(float),sigma=sigma)
@@ -799,7 +799,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
             reportStr="startY value out of bounds. Using highest possible value instead.\n"
             sys.stderr.write(reportStr)
         else:    
-            raise AliGaterError("in horisontalPath","startY out of bounds")
+            raise AliGaterError("in horizontalPath","startY out of bounds")
     
     
     cdef int endBin
@@ -819,7 +819,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
             reportStr="endY value out of bounds. Using highest possible value instead.\n"
             sys.stderr.write(reportStr)
         else:
-            raise AliGaterError("in horisontalPath","endY out of bounds")
+            raise AliGaterError("in horizontalPath","endY out of bounds")
 
     cdef float LARGE_NUMBER = 10000000000000000.0
     
@@ -883,7 +883,7 @@ def horisontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
         path.append( [xedges[0], yedges[curBin]])
         
         
-    vOut=gatePointList(fcsDF=fcs(),xCol=xCol,yCol=yCol,vPL=path, population=population, bHorisontal=True, vI=originalvI)
+    vOut=gatePointList(fcsDF=fcs(),xCol=xCol,yCol=yCol,vPL=path, population=population, bhorizontal=True, vI=originalvI)
     reportGateResults(vI,vOut)
     
 
@@ -972,16 +972,16 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
     
     originalvI=vI
     if has_ybound and not has_xbound:
-        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=startingGate,info=False)
-        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
+        tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horizontal', population='upper',scale=scale, parentGate=startingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horizontal',population='lower',scale=scale,parentGate=tmpvI, info=False)
     if has_xbound and not has_ybound:
         tmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
         startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=tmpvI, info=False)
     if has_xbound and has_ybound:
         xtmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=xboundaries[0], orientation='vertical', population='upper',scale=scale, parentGate=startingGate,info=False)
         xstartingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=xboundaries[1], orientation='vertical',population='lower',scale=scale,parentGate=xtmpvI, info=False)
-        ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horisontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
-        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horisontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
+        ytmpvI=gateThreshold(fcs, name="tmpvI", xCol=xCol, yCol=yCol, thresh=yboundaries[0], orientation='horizontal', population='upper',scale=scale, parentGate=xstartingGate,info=False)
+        startingGate=gateThreshold(fcs,name="vI",xCol=xCol,yCol=yCol, thresh=yboundaries[1], orientation='horizontal',population='lower',scale=scale,parentGate=ytmpvI, info=False)
     #Switch from AGgate obj -> list from here
     if startingGate is not None:
         vI=startingGate()
@@ -1061,7 +1061,7 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
     else:
         path.append( [xedges[curBin], yedges[0]])
     
-    vOut=gatePointList(fcs(),xCol,yCol,path, population=population, vI=originalvI, bHorisontal=False)
+    vOut=gatePointList(fcs(),xCol,yCol,path, population=population, vI=originalvI, bhorizontal=False)
     reportGateResults(vI,vOut)
     
 
@@ -1240,7 +1240,7 @@ def test_minCost(cost, m, n, nRrow, nCol):
 
 #@cython.boundscheck(False)
 #@cython.wraparound(False)
-def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, bHorisontal=True, scale='linear', T=1000):
+def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, bhorizontal=True, scale='linear', T=1000):
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)==0:
@@ -1280,7 +1280,7 @@ def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, bHoris
     cdef int targetAxis = 1 #1 = y-sep, 0 = x-sep
     cdef int binAxis = 0 #0 = y-sep, 1 = x-sep
     
-    if bHorisontal:
+    if bhorizontal:
         targetAxis = 1
         binAxis = 0
     else:
@@ -1289,13 +1289,13 @@ def gatePointList(fcsDF, xCol, yCol, vPL, population='lower',vI=sentinel, bHoris
 
     #Create construct of [[x, y, index], [x,y,index], ...]
     events = np.dstack([vX, vY, vI])[0]
-    #sort events by separating coordinate (by x if separated by y (horisontal line))
+    #sort events by separating coordinate (by x if separated by y (horizontal line))
     sorted_events = sorted(events, key=itemgetter(binAxis))
     #Sort limit construct by non-separating coordinate (by y if separated by x (vertical line))
     sorted_vPL = sorted(vPL, key=itemgetter(binAxis))
     
     #Note on bUnhandled, if a give line does not span the full gating view... 
-    #then before/after the first/last point in that line, extented its limits in the correct direction (horisontally for horisontal lines, vis a vis vertical)
+    #then before/after the first/last point in that line, extented its limits in the correct direction (horizontally for horizontal lines, vis a vis vertical)
 
     i=0
     cdef int idx_vPL=0

@@ -660,8 +660,8 @@ def shortestPath(fcsDF, xCol, yCol, boundaries, vI=sentinel,maxStep=30, sigma=3,
     #by one dimensional valleyseeking in a set of points(default 5) between those two coordinates
     #i.e. it's a type of 1d gradient descent
     #should be faster than full blown dijkstra's or 2d gradient descent
-    tmpvI=gateThreshold(fcsDF,xCol, yCol,thresh=boundaries[0], orientation='horisontal', population='upper',scale=scale, vI=vI,info=False)
-    vI=gateThreshold(fcsDF,xCol,yCol, thresh=boundaries[1], orientation='horisontal',population='lower',scale=scale,vI=tmpvI, info=False)
+    tmpvI=gateThreshold(fcsDF,xCol, yCol,thresh=boundaries[0], orientation='horizontal', population='upper',scale=scale, vI=vI,info=False)
+    vI=gateThreshold(fcsDF,xCol,yCol, thresh=boundaries[1], orientation='horizontal',population='lower',scale=scale,vI=tmpvI, info=False)
     avgBinDepth=len(vI)/(bins*bins)
 
     vX=getGatedVector(fcsDF, xCol, vI)
@@ -701,7 +701,7 @@ def shortestPath(fcsDF, xCol, yCol, boundaries, vI=sentinel,maxStep=30, sigma=3,
         #What was the last yBin of this path?
         currentPathLeftY=paths[0][1][-1]
         #What are the avaible next steps for this path?
-        #We require it to only move in one direction, 'upwards' or horisontally
+        #We require it to only move in one direction, 'upwards' or horizontally
         #We also take into consideration the max amount of steps allowed for a jump
         maxAllowedStep=currentPathLeftY+maxStep
         if maxAllowedStep>bins:

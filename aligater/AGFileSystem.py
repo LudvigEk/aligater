@@ -23,6 +23,7 @@ import os
 import sys
 import copy #For deep copies of lists
 import h5py
+import json #for importing json with machine-specific scaling factors
 
 #AliGater imports
 from aligater.fscparser_api import parse
@@ -251,14 +252,16 @@ def loadHDF5sample(path, sampling_resolution=32):
     fcsDF = pd.read_hdf(path, key='fcs')
     metadata = pd.read_hdf(path, key='filenames')
     h5py_internal_name = metadata.iloc[1]
+    
     reportStr="Opening "+str(metadata[0])+" which is compressed from "+str(metadata[1])+"\n"
     sys.stderr.write(reportStr)
     rows = len(fcsDF)
-    sys.stderr.write("Loaded dataset with "+str(rows)+" events.\n")
+    if agconf.ag_verbose:
+        sys.stderr.write("Loaded dataset with "+str(rows)+" events.\n")
     return AGsample(fcsDF, h5py_internal_name, sampling_resolution=sampling_resolution)
 
 
-def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=None, marker_names='label',ignore_minCell_filter=False, flourochrome_area_filter=False, sampling_resolution=32):
+def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=None, marker_names='label',ignore_minCell_filter=False, flourochrome_area_filter=False, sampling_resolution=32, nOfEvents=None):
     """
     Loads an fcs file from given path into an aligater.AGClasses.AGSample object. \n
     Multiple settings dealing with compensation, checking for markers etc.
@@ -317,7 +320,10 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     if not isinstance(marker_names,str):
         raise AliGaterError("in loadFCS:","invalid dtype in marker_names, expected "+str(type(str))+" found "+str(type(marker_names)))
     if not marker_names.lower() in ['label','color']:
-        raise AliGaterError("in loadFCS:"," marker_names must be either of 'label' or 'color' found: "+str(marker_names))
+        raise AliGaterError("in loadFCS:","marker_names must be either of 'label' or 'color' found: "+str(marker_names))
+    if nOfEvents is not None:
+        if not isinstance(nOfEvents, int):
+            raise AliGaterError("in loadFCS:","nOfEvents must be integer or None, found: "+str(type(nOfEvents)))
     if markers is None:
         checkMarkers=False
     else:
@@ -336,9 +342,17 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     elif marker_names.lower()=='color':
         channel_naming='$PnN'
 
-    metaDict,fcsDF = parse(path,output_format='DataFrame',channel_naming=channel_naming)
+    metaDict,fcsDF = parse(path,output_format='DataFrame',channel_naming=channel_naming, nOfEvents=nOfEvents) #add optional n of events to read
     rows=fcsDF.shape[0] # n of events
-    assert int(metaDict['$TOT']) == int(rows)
+    if int(metaDict['$TOT']) != int(rows) and nOfEvents is not None:
+        if agconf.ag_verbose:
+            #Trimmed file
+            reportStr="Trimmed sample to "+str(nOfEvents)+"/"+str(metaDict["$TOT"])+" events.\n"
+            sys.stderr.write(reportStr)
+    elif int(metaDict['$TOT']) != int(rows):
+        raise AliGaterError("FCS file has fewer events than specified in metadata, possibly corrupt.")
+        
+    #Instead: print warning of how many events skipped & what was total
     
     #Update
     #Depending on choices by the operator on export, machine, and FCS standard there can be different number of preceding and subsequent columns from the actual flourochrome cols
@@ -371,8 +385,8 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     #if not all([scatter in ['FSC-A', 'FSC-H', 'SSC-A', 'SSC-H'] for scatter in scatter_cols]):
     #    sys.stderr.write("First four columns of fcs file are not foward and side scatters, skippping\n")
     #    return None
-    
-    sys.stderr.write("Loaded dataset with "+str(rows)+" events.\n")
+    if agconf.ag_verbose:
+        sys.stderr.write("Loaded dataset with "+str(rows)+" events.\n")
     if rows < agconf.cellFilter and not ignore_minCell_filter:
         if agconf.ag_verbose:
             sys.stderr.write("Sample has fewer events than cellFilter threshold, skipping\n")
@@ -402,10 +416,22 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
         raise AliGaterError('in loadFCS: ','ag_trimMeasurements must be float or int, found: '+str(type(agconf.ag_trimMeasurements)))
     if not isinstance(agconf.ag_maxMeasurement, (float, int)):
         raise AliGaterError('in loadFCS: ','ag_maxMeasurement must be float or int, found: '+str(type(agconf.ag_maxMeasurement)))
-    if not isinstance(agconf.ag_Divider, (int)):
-        raise AliGaterError('in loadFCS: ','ag_Divider must be int, found: '+str(type(agconf.ag_Divider)))
+        
+    #adding support for json instead of ag_divider
+    with open(agconf.ag_home+"/aligater/AGMachineDividers.json",'r') as json_filehandle:
+        divider_dict = json.load(json_filehandle)
+    #Loop over machines in divider_dict, check that 
+    if metaDict['$CYT'] in divider_dict.keys():
+        ag_Divider = int(divider_dict[metaDict['$CYT']])
+    else:
+        reportStr="WARNING: in loadFCS: unknown machine "+str(metaDict['$CYT'])+" encounter in sample, scaling factor might be wrong.\nPlease add it manually to AGMachineDividers.json\n"
+        sys.stderr.write(reportStr)
+        ag_Divider=1
+    #if not isinstance(agconf.ag_Divider, (int)):
+    #    raise AliGaterError('in loadFCS: ','ag_Divider must be int, found: '+str(type(agconf.ag_Divider)))
+        
     #Apply divider before pileup
-    fcsDF=fcsDF.apply(lambda x: x/agconf.ag_Divider)
+    fcsDF=fcsDF.apply(lambda x: x/ag_Divider)
     #Apply lower truncation
     fcsDF=fcsDF.apply(lambda x: np.where(x < agconf.ag_trimMeasurements, agconf.ag_trimMeasurements, x))
     #Apply upper truncation

@@ -45,6 +45,56 @@ sentinel = object()
 
 
 def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='linear', yscale='linear', thresh=1000, aspect='auto', **kwargs):
+    """
+    Core plotting function of AliGater. Mainly intended to be called internally, but may be called directly.
+    Only plots. No gating functionalities.
+    
+    **Parameters**
+    
+    fcsDF : pandas.DataFrame
+        Flow data loaded in a pandas DataFrame.
+    x, y : str
+        Marker labels.
+    vI : list-like, optional
+        list-like index of events in the fcsDF that correspond to the parent population.
+        Defaults to plotting all events in fcsDF.
+    bins : int, optional, default: 300
+        Resolution of the plotted heatmap.
+    scale : str, optional, default: 'linear'
+        Which scale to be used on both axes.
+    xscale : str, optional, default: 'linear'
+        Which scale to be used on the x-axis.
+    yscale : str, optional, default: 'linear'
+        Which scale to be used on the y-axis.
+    T : int, optional, default: 1000
+        If the threshold for linear-loglike transition for bilog or logicle scales.
+    aspect : str
+        Aspect of plotted heatmap. Passed on to matplotlib.pyplot.imshow()
+    
+    **Keyword arguments**
+    
+    cmap : matplotlib.colors.Colormap or str, default: 'jet'
+        Color map to use. 
+        Either string name of existing matplotlib colormap, or a colormap object.
+        
+    rcParams : matplotlib.rcParams
+        Overrides rcParams with the passed rcParams object.
+    
+    mask_where : float,int, default : 0
+        scalar of heatmap values to mask, these become white when plotted
+    
+    **Returns**
+
+    fig, matplotlib.pyplot.Figure
+        matplotlib Figure object
+        
+    ax. matplotlib.pyplot.Axes
+        matplotlib axes object
+        
+    **Examples**
+
+        None currently.
+    """
     if vI is sentinel:
         vI=fcsDF.index
     elif len(vI)<2:
@@ -319,7 +369,29 @@ def plot_flattened_heatmap(heatmap_array, nOfBins, mask=True):
 
 
 def transformWrapper(vX, T, scale):
-    #ToDo write documentation
+    """
+    General function for converting values or arrays of values to AliGater scales; bilog and logish.
+    See inverseTransformWrapper to convert the other way around.
+    
+    **Parameters**
+    
+    vX, list-like or float/int
+        value or values to convert.
+
+    T, int/float
+        Threshold for linear-log transition for bilog and logish scales
+    
+    scale, str
+        Scale to convert to; 'bilog' or 'logish'
+        
+    **Returns** 
+        If a scalar is passed, scalar
+        If list like is passed, list
+
+    **Examples**
+
+    None currently.
+    """
     result=None
     single_val=False
     #ToDo raise if more than 1 dim?
@@ -339,7 +411,6 @@ def transformWrapper(vX, T, scale):
         except:
             raise AliGaterError("in transformWrapper: ", "Couldn't coerce input vector to numpy array format")
 
-    
     if scale.lower() == 'logish':
         result = logishTransform(vInput, T)
     elif scale.lower() == 'bilog':
@@ -353,6 +424,29 @@ def transformWrapper(vX, T, scale):
     return result
 
 def inverseTransformWrapper(vX, T, scale):
+    """
+    General function for converting values or arrays of values from AliGater scales; bilog and logish back to linear values.
+    See transformWrapper to convert into AliGater scales.
+    
+    **Parameters**
+    
+    vX, list-like or float/int
+        value or values to convert.
+
+    T, int/float
+        Threshold for linear-log transition for bilog and logish scales
+    
+    scale, str
+        Scale to convert from; 'bilog' or 'logish'
+        
+    **Returns** 
+        If a scalar is passed, scalar
+        If list like is passed, list
+
+    **Examples**
+
+    None currently.
+    """
     result=None
     single_val=False
     if not isinstance(vX, (list, np.ndarray, tuple)):
@@ -567,6 +661,29 @@ def plot_gmm(fcsDF, xCol, yCol, vI, gmm, sigma, ax):
     return vEllipses
 
 def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',  T=1000, *args, **kwargs):
+    """
+    General function for converting values or arrays of values from AliGater scales; bilog and logish back to linear values.
+    See transformWrapper to convert into AliGater scales.
+    
+    **Parameters**
+    
+    vX, list-like or float/int
+        value or values to convert.
+    
+    T, int/float
+        Threshold for linear-log transition for bilog and logish scales
+    
+    scale, str
+        Scale to convert from; 'bilog' or 'logish'
+    
+    **Returns** 
+        If a scalar is passed, scalar
+        If list like is passed, list
+    
+    **Examples**
+    
+    None currently.
+    """
     if xCol not in fcsDF.columns:
         raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
     if vI is sentinel:
@@ -681,13 +798,13 @@ def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
     
 def imagePCA(imlist):
     """
-    Principal Component Analysis of heatmap images, plots results.
+    Perform Principal Component Analysis of downsampled heatmap images, plots results.
     Takes a list-like of heatmap images, flattens them and calls image_pca.
     
     **Parameters**
     
-    X, list-like
-        List-like matrix with training data stored as flattened arrays in rows.
+    X, list-like of list-like
+        Matrix with image data stored
         
     **Returns** 
    
@@ -715,13 +832,15 @@ def imagePCA(imlist):
 
 
 def image_pca(X):
+    #Based on Stack Overflow discussion and code here
+    #https://math.stackexchange.com/questions/409239/compute-pca-with-this-useful-trick
     """
-    Principal Component Analysis of heatmap images, main purpose is to be called internally by imagePCA
+    Principal Component Analysis of flattened heatmap images, main purpose is to be called internally by imagePCA
     
     **Parameters**
     
     X, list-like
-        List-like matrix with training data stored as flattened arrays in rows.
+        List-like matrix with image data stored as flattened arrays in rows.
         
    **Returns** 
    
@@ -738,11 +857,10 @@ def image_pca(X):
     """
 
     # get dimensions
-    #TODO: sloppy error handling
     try:
         num_data,dim = X.shape
     except ValueError:
-        sys.stderr.write("WARNING, in image_pca: input matrix seems invalid\n")
+        sys.stderr.write("WARNING in image_pca: input matrix invalid\n")
         return None,None,None
     # center data
     mean_X = X.mean(axis=0)
@@ -1512,7 +1630,7 @@ class SymmetricalLogLocator(Locator):
         # The domain is divided into three sections, only some of
         # which may actually be present.
         #
-        # <======== -t ==0== t ========>
+        # <======== -t == 0 == t ========>
         # aaaaaaaaa    bbbbb   ccccccccc
         #
         # a) and c) will have ticks at integral log positions.  The
