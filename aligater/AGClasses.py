@@ -1466,17 +1466,17 @@ class AGExperiment:
     def printExperiment(self, file=None, MFI_file=None):
         if file is None:
             file=self.fallback_filepath()
-        else:
-            if not isinstance(file,str) or not (check_filePath(file) in ["dir_exists", "file"]):
+        elif not isinstance(file,str) or not (check_filePath(file) in ["dir_exists", "file"]):
                 #filepath should be string path to output file. Must either exist, or it's directory must exist
                 sys.stderr.write("Warning, in aligater.AliGaterExperiment.printExperiment: file filepath invalid, falling back to ag_out directory.")
                 file=self.fallback_filepath()
         
         
         if not all(isinstance(i, list) for i in [self.resultHeader, self.resultMatrix]):
-            sys.stderr.write("Experiment data table empty, no results to print.\n")
+            sys.stderr.write("No count and/or ratio data to print.\n")
             #No ratio/count data, but maybe MFI?
             if not self.has_MFI:
+                sys.stderr.write("Experiment result tables are empty, no results to print.\n")
                 return None
         else:
             fhandle = open(file, 'w')
@@ -1497,9 +1497,9 @@ class AGExperiment:
             if len(self.result_MFI_DF) == 0:
                 sys.stderr.write("No MFI data to print.\n")
                 return None
-                MFI_file=file=self.fallback_filepath(".MFI")
-            else:
-                if not isinstance(MFI_file,str) or not (check_filePath(MFI_file) in ["dir_exists", "file"]):
+            if MFI_file is None:
+                MFI_file=self.fallback_filepath(".MFI")
+            elif not isinstance(MFI_file,str) or not (check_filePath(MFI_file) in ["dir_exists", "file"]):
                     #filepath should be string path to output file. Must either exist, or it's directory must exist
                     sys.stderr.write("Warning, in aligater.AliGaterExperiment.printExperiment: MFI_file filepath invalid, falling back to ag_out directory.")
                     MFI_file = self.fallback_filepath(".MFI")
