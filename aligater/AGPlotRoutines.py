@@ -16,6 +16,7 @@
 #
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
+#   Distributed under the MIT License
 
 import pandas as pd
 import numpy as np
@@ -39,7 +40,7 @@ import sys
 #AliGater imports
 import aligater.AGConfig as agconf
 from aligater.AGFileSystem import getGatedVector, AliGaterError
-from aligater.AGCythonUtils import __vectorLogishTransform, __vectorInverseLogishTransform, __vectorBilogTransform, __vectorInverseBilogTransform
+from aligater.AGCythonUtils import __vectorlogicleTransform, __vectorInverselogicleTransform, __vectorBilogTransform, __vectorInverseBilogTransform
 
 sentinel = object()
 
@@ -102,9 +103,9 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
         return None, None
     if not isinstance(bins,str) and len(vI)<bins:
         bins=len(vI)
-    if scale.lower()=='logish':
-        xscale='logish'
-        yscale='logish'
+    if scale.lower()=='logicle':
+        xscale='logicle'
+        yscale='logicle'
     if scale.lower()=='bilog':
         xscale='bilog'
         yscale='bilog'
@@ -118,8 +119,8 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
                 raise TypeError("Non float/int element encountered in xlim")
             else:
                 xscale_limits=kwargs['xlim']
-                if xscale.lower()=='logish':
-                    xscale_limits=logishTransform(xscale_limits,thresh)
+                if xscale.lower()=='logicle':
+                    xscale_limits=logicleTransform(xscale_limits,thresh)
                     bXlim=True
     if 'ylim' in kwargs:
             if not isinstance(kwargs['ylim'],list):
@@ -128,8 +129,8 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
                 raise TypeError("Non float/int element encountered in ylim")
             else:
                 yscale_limits=kwargs['ylim'] 
-                if yscale.lower()=='logish':
-                    yscale_limits=logishTransform(yscale_limits,thresh)
+                if yscale.lower()=='logicle':
+                    yscale_limits=logicleTransform(yscale_limits,thresh)
                     bYlim=True
     
         
@@ -199,14 +200,14 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
         cmap=plt.get_cmap()
     cmap.set_bad(color='white') #Zeroes should be white, not blue
 
-    if xscale.lower()=='logish':
+    if xscale.lower()=='logicle':
         ax=plt.gca()
-        ax.xaxis.set_major_locator(LogishLocator(linCutOff=thresh))
-        ax.xaxis.set_major_formatter(LogishFormatter(linCutOff=thresh))
-    if yscale.lower()=='logish':
+        ax.xaxis.set_major_locator(logicleLocator(linCutOff=thresh))
+        ax.xaxis.set_major_formatter(logicleFormatter(linCutOff=thresh))
+    if yscale.lower()=='logicle':
         ax=plt.gca()
-        ax.yaxis.set_major_locator(LogishLocator(linCutOff=thresh))
-        ax.yaxis.set_major_formatter(LogishFormatter(linCutOff=thresh))
+        ax.yaxis.set_major_locator(logicleLocator(linCutOff=thresh))
+        ax.yaxis.set_major_formatter(logicleFormatter(linCutOff=thresh))
     
     if xscale.lower()=='bilog':
         ax=plt.gca()
@@ -226,9 +227,9 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
 
 def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='linear', T=1000, normalize=False, xlim=None, ylim=None, range=None):
     if not any(isinstance(i,str) for i in [scale,xscale,yscale]):
-        raise TypeError("scale, xscale, yscale must be specified as string, such as: 'linear', 'logish'")
-    if not all(i.lower() in ['linear', 'logish', 'bilog'] for i in [scale,xscale,yscale]):
-        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish'")
+        raise TypeError("scale, xscale, yscale must be specified as string, such as: 'linear', 'logicle'")
+    if not all(i.lower() in ['linear', 'logicle', 'bilog'] for i in [scale,xscale,yscale]):
+        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logicle'")
     if not isinstance(bins,(int,str)):
         raise TypeError("bins can only be either of int or str")
     if range is not None:
@@ -325,15 +326,15 @@ def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='lin
     return np.histogram2d(vX,vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
     
     #-------------------------DEPRECATED below---------------------------
-    if scale=='logish' or (xscale == 'logish' and yscale == 'logish'):
-        xBinEdges=logishBin(vX,bins,T, xRange)
-        yBinEdges=logishBin(vY,bins,T, yRange)
+    if scale=='logicle' or (xscale == 'logicle' and yscale == 'logicle'):
+        xBinEdges=logicleBin(vX,bins,T, xRange)
+        yBinEdges=logicleBin(vY,bins,T, yRange)
         return np.histogram2d(vX, vY, [xBinEdges,yBinEdges], normed=normalize)
-    if xscale=='logish':
-        xBinEdges=logishBin(vX,bins,T, xRange)
+    if xscale=='logicle':
+        xBinEdges=logicleBin(vX,bins,T, xRange)
         return np.histogram2d(vX, vY, [xBinEdges,bins], normed=normalize)
-    if yscale=='logish':
-        yBinEdges=logishBin(vY,bins,T, yRange)
+    if yscale=='logicle':
+        yBinEdges=logicleBin(vY,bins,T, yRange)
         return np.histogram2d(vX, vY, [bins,yBinEdges], normed=normalize)
     if scale=='bilog' or (xscale == 'bilog' and yscale == 'bilog'):
         xBinEdges=bilogBin(vX,bins,T, xRange)
@@ -370,7 +371,7 @@ def plot_flattened_heatmap(heatmap_array, nOfBins, mask=True):
 
 def transformWrapper(vX, T, scale):
     """
-    General function for converting values or arrays of values to AliGater scales; bilog and logish.
+    General function for converting values or arrays of values to AliGater scales; bilog and logicle.
     See inverseTransformWrapper to convert the other way around.
     
     **Parameters**
@@ -379,10 +380,10 @@ def transformWrapper(vX, T, scale):
         value or values to convert.
 
     T, int/float
-        Threshold for linear-log transition for bilog and logish scales
+        Threshold for linear-log transition for bilog and logicle scales
     
     scale, str
-        Scale to convert to; 'bilog' or 'logish'
+        Scale to convert to; 'bilog' or 'logicle'
         
     **Returns** 
         If a scalar is passed, scalar
@@ -411,8 +412,8 @@ def transformWrapper(vX, T, scale):
         except:
             raise AliGaterError("in transformWrapper: ", "Couldn't coerce input vector to numpy array format")
 
-    if scale.lower() == 'logish':
-        result = logishTransform(vInput, T)
+    if scale.lower() == 'logicle':
+        result = logicleTransform(vInput, T)
     elif scale.lower() == 'bilog':
         result=bilogTransform(vInput, T)
     elif scale.lower() == 'linear':
@@ -425,7 +426,7 @@ def transformWrapper(vX, T, scale):
 
 def inverseTransformWrapper(vX, T, scale):
     """
-    General function for converting values or arrays of values from AliGater scales; bilog and logish back to linear values.
+    General function for converting values or arrays of values from AliGater scales; bilog and logicle back to linear values.
     See transformWrapper to convert into AliGater scales.
     
     **Parameters**
@@ -434,10 +435,10 @@ def inverseTransformWrapper(vX, T, scale):
         value or values to convert.
 
     T, int/float
-        Threshold for linear-log transition for bilog and logish scales
+        Threshold for linear-log transition for bilog and logicle scales
     
     scale, str
-        Scale to convert from; 'bilog' or 'logish'
+        Scale to convert from; 'bilog' or 'logicle'
         
     **Returns** 
         If a scalar is passed, scalar
@@ -464,8 +465,8 @@ def inverseTransformWrapper(vX, T, scale):
         except:
             raise AliGaterError("in inverseTransformWrapper: ", "Couldn't coerce input vector to numpy array format")
       
-    if scale.lower() == 'logish':
-        result = inverseLogishTransform(vInput, T)
+    if scale.lower() == 'logicle':
+        result = inverselogicleTransform(vInput, T)
     elif scale.lower() == 'bilog':
         result=inverseBilogTransform(vInput, T)
     elif scale.lower() == 'linear':
@@ -524,20 +525,20 @@ def inverseBilogTransform(a, T):
     #     a_idx+=1
     # return invA
 
-def logishBin(vX, bins, T, customRange=None):
+def logicleBin(vX, bins, T, customRange=None):
     if customRange is not None:
         defaultRange=customRange
     else:
         defaultRange=[min(vX),max(vX)]
-    transformedRange=logishTransform(defaultRange,T)
+    transformedRange=logicleTransform(defaultRange,T)
     transformedBinEdges=np.linspace(transformedRange[0],transformedRange[1],bins+1)
-    return inverseLogishTransform(transformedBinEdges, T)
+    return inverselogicleTransform(transformedBinEdges, T)
 
-def logishTransform(a, linCutOff):
+def logicleTransform(a, linCutOff):
     
     vA = np.asarray(a, dtype = np.float64, order='C')
     
-    tA=__vectorLogishTransform(vA, np.float64(linCutOff))
+    tA=__vectorlogicleTransform(vA, np.float64(linCutOff))
     
     return tA
 
@@ -552,10 +553,10 @@ def logishTransform(a, linCutOff):
     #     a_idx+=1
     #return tA
 
-def inverseLogishTransform(a, linCutOff):
+def inverselogicleTransform(a, linCutOff):
     
     vA = np.asarray(a, dtype = np.float64, order='C')
-    invA = __vectorInverseLogishTransform(vA, np.float64(linCutOff))
+    invA = __vectorInverselogicleTransform(vA, np.float64(linCutOff))
     
     return invA
     # old python implementation, moved to AGCythonUtils
@@ -573,15 +574,15 @@ def inverseLogishTransform(a, linCutOff):
 
 
 def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', xscale='linear', yscale='linear', T=1000):
-    if not all(i in ['linear', 'logish', 'bilog'] for i in [scale, xscale, yscale]):
-        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish', 'bilog'")
+    if not all(i in ['linear', 'logicle', 'bilog'] for i in [scale, xscale, yscale]):
+        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logicle', 'bilog'")
     if orientation.lower()=='vertical':
         if scale.lower() != 'linear' or xscale.lower() != 'linear':
             lims=ax.get_xlim()
             vmin = lims[0]
             vmax = lims[1]
-            if scale.lower() == 'logish' or xscale.lower() == 'logish':
-                pos = convertToLogishPlotCoordinate(pos,vmin,vmax,T)
+            if scale.lower() == 'logicle' or xscale.lower() == 'logicle':
+                pos = convertTologiclePlotCoordinate(pos,vmin,vmax,T)
             if scale.lower() == 'bilog' or xscale.lower() == 'bilog':
                 pos = convertToBiLogPlotCoordinate(pos,vmin,vmax,T)
         ax.axvline(pos, c='r')
@@ -590,21 +591,21 @@ def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', xscale='linear'
             lims=ax.get_ylim()
             vmin = lims[0]
             vmax = lims[1]
-            if scale=='logish' or yscale.lower() == 'logish':
-                pos = convertToLogishPlotCoordinate(pos,vmin,vmax,T)
+            if scale=='logicle' or yscale.lower() == 'logicle':
+                pos = convertTologiclePlotCoordinate(pos,vmin,vmax,T)
             if scale.lower() == 'bilog' or yscale.lower() == 'bilog':
                 pos = convertToBiLogPlotCoordinate(pos,vmin,vmax,T)
         ax.axhline(pos,  c='r')
     return fig
 
 def addLine(fig, ax, lStartCoordinate, lEndCoordinate, size=2, scale='linear', T=1000):
-    if not scale.lower() in ['linear', 'logish', 'bilog']:
-        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish', 'bilog'")
-    if scale.lower()=='logish':
+    if not scale.lower() in ['linear', 'logicle', 'bilog']:
+        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logicle', 'bilog'")
+    if scale.lower()=='logicle':
         view=ax.xaxis.get_view_interval()
-        xCoordinates=convertToLogishPlotCoordinates([lStartCoordinate[0],lEndCoordinate[0]], vmin=view[0], vmax=view[1], T=T)
+        xCoordinates=convertTologiclePlotCoordinates([lStartCoordinate[0],lEndCoordinate[0]], vmin=view[0], vmax=view[1], T=T)
         view=ax.yaxis.get_view_interval()
-        yCoordinates=convertToLogishPlotCoordinates([lStartCoordinate[1],lEndCoordinate[1]], vmin=view[0], vmax=view[1], T=T)
+        yCoordinates=convertTologiclePlotCoordinates([lStartCoordinate[1],lEndCoordinate[1]], vmin=view[0], vmax=view[1], T=T)
         lStartCoordinate=[xCoordinates[0],yCoordinates[0]]
         lEndCoordinate=[xCoordinates[1],yCoordinates[1]]
     if scale.lower()=='bilog':
@@ -662,7 +663,7 @@ def plot_gmm(fcsDF, xCol, yCol, vI, gmm, sigma, ax):
 
 def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',  T=1000, *args, **kwargs):
     """
-    General function for converting values or arrays of values from AliGater scales; bilog and logish back to linear values.
+    General function for converting values or arrays of values from AliGater scales; bilog and logicle back to linear values.
     See transformWrapper to convert into AliGater scales.
     
     **Parameters**
@@ -671,10 +672,10 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
         value or values to convert.
     
     T, int/float
-        Threshold for linear-log transition for bilog and logish scales
+        Threshold for linear-log transition for bilog and logicle scales
     
     scale, str
-        Scale to convert from; 'bilog' or 'logish'
+        Scale to convert from; 'bilog' or 'logicle'
     
     **Returns** 
         If a scalar is passed, scalar
@@ -691,8 +692,8 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     elif len(vI)==0:
         sys.stderr.write("Passed index contains no events\n")
         return None
-    if not all(i in ['linear', 'logish', 'bilog'] for i in [scale]):
-        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logish', 'bilog'")
+    if not all(i in ['linear', 'logicle', 'bilog'] for i in [scale]):
+        raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logicle', 'bilog'")
     if not isinstance(sigma,(float,int)): 
         raise AliGaterError("Sigma must be float or int, found: "+str(type(sigma)),"in plot_densityFunc")
     if 'sigma' in kwargs:
@@ -716,8 +717,8 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     else:
         raise AliGaterError("bins must be integer or string 'auto'","in plot_densityFunc")
     
-    if scale == 'logish':
-        BinEdges=logishBin(data,bins,T)
+    if scale == 'logicle':
+        BinEdges=logicleBin(data,bins,T)
         histo = np.histogram(data, BinEdges)
     elif scale == 'bilog':
         BinEdges=bilogBin(data,bins,T)
@@ -733,9 +734,9 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     if scale.lower()!='linear':
         ax=plt.gca()
         ax.set_xlim(left=min(data),right=max(data))
-        if scale.lower()=='logish':
-            ax.xaxis.set_major_locator(LogishLocator(linCutOff=T))
-            ax.xaxis.set_major_formatter(LogishFormatter(linCutOff=T))
+        if scale.lower()=='logicle':
+            ax.xaxis.set_major_locator(logicleLocator(linCutOff=T))
+            ax.xaxis.set_major_formatter(logicleFormatter(linCutOff=T))
         if scale.lower()=='bilog':
             ax.xaxis.set_major_locator(BiLogLocator(linCutOff=T))
             ax.xaxis.set_major_formatter(BiLogFormatter(linCutOff=T))            
@@ -963,11 +964,11 @@ def invertBiLogPlotcoordinate(plotTic, vmin, vmax, T):
     return result
 
         
-def convertToLogishPlotCoordinates(Ticlocs, vmin, vmax, T):
+def convertTologiclePlotCoordinates(Ticlocs, vmin, vmax, T):
     actualRange=vmax-vmin
-    tMinMax = logishTransform([vmin, vmax], T)
+    tMinMax = logicleTransform([vmin, vmax], T)
     transformedRange = tMinMax[1]-tMinMax[0]
-    tTiclocs=logishTransform(Ticlocs, T)
+    tTiclocs=logicleTransform(Ticlocs, T)
     plotTics=[]
     for tTic in tTiclocs:
         plotTic=(tTic-tMinMax[0])/transformedRange*actualRange+vmin
@@ -975,42 +976,42 @@ def convertToLogishPlotCoordinates(Ticlocs, vmin, vmax, T):
     assert len(tTiclocs)==len(Ticlocs)
     return plotTics
 
-def convertToLogishPlotCoordinate(Ticloc, vmin, vmax, T):
+def convertTologiclePlotCoordinate(Ticloc, vmin, vmax, T):
     actualRange=vmax-vmin
-    tMinMax = logishTransform([vmin, vmax], T)
+    tMinMax = logicleTransform([vmin, vmax], T)
     transformedRange = tMinMax[1]-tMinMax[0]
-    tTicloc=logishTransform([Ticloc], T)[0]
+    tTicloc=logicleTransform([Ticloc], T)[0]
     plotTic=(tTicloc-tMinMax[0])/transformedRange*actualRange+vmin
     return plotTic
 
-def invertLogishPlotcoordinates(plotTics, vmin, vmax, T):
+def invertlogiclePlotcoordinates(plotTics, vmin, vmax, T):
     actualRange=vmax-vmin
-    tMinMax = logishTransform([vmin, vmax], T)
+    tMinMax = logicleTransform([vmin, vmax], T)
     transformedRange = tMinMax[1]-tMinMax[0]
     invPlotTics=[]
     for tTic in plotTics:
         invPlotTic=(tTic-vmin)/actualRange*transformedRange+tMinMax[0]
         invPlotTics.append(invPlotTic)
-    result=inverseLogishTransform(invPlotTics, T)
+    result=inverselogicleTransform(invPlotTics, T)
     return result
 
-def invertLogishPlotcoordinate(plotTic, vmin, vmax, T):
+def invertlogiclePlotcoordinate(plotTic, vmin, vmax, T):
     actualRange=vmax-vmin
-    tMinMax = logishTransform([vmin, vmax], T)
+    tMinMax = logicleTransform([vmin, vmax], T)
     transformedRange = tMinMax[1]-tMinMax[0]
     invPlotTic=(plotTic-vmin)/actualRange*transformedRange+tMinMax[0]
-    result=inverseLogishTransform([invPlotTic], T)[0]
+    result=inverselogicleTransform([invPlotTic], T)[0]
     return result
 
 
 
-class LogishLocator(Locator):
+class logicleLocator(Locator):
     #Modified from matplotlibs LogLocator
     #https://matplotlib.org/3.1.1/_modules/matplotlib/ticker.html#LogLocator
     """
-    Determine the tick locations for logish axes based on LogLocator. Only locates and formats tics for the plot view.
+    Determine the tick locations for logicle axes based on LogLocator. Only locates and formats tics for the plot view.
     Transform of underlying data and heatmap is handled outside matplotlib.
-    Hacked version of LogLogator that covers normal usecases of the logish scale
+    Hacked version of LogLogator that covers normal usecases of the logicle scale
     Only defined with ticlocations for data in range -1 000 000 < x 
     """
                                             
@@ -1043,9 +1044,9 @@ class LogishLocator(Locator):
         self.numticks = numticks
  
         if linCutOff > 10000:
-            raise AliGaterError("in LogishLocator: ","linear-log scale threshold can max be 10000")
+            raise AliGaterError("in logicleLocator: ","linear-log scale threshold can max be 10000")
         if linCutOff <=0:
-            raise AliGaterError("in LogishLocator: ","linear-log scale threshold must be > 0")
+            raise AliGaterError("in logicleLocator: ","linear-log scale threshold must be > 0")
         self.T = linCutOff
         
     def set_params(self, subs=None, numdecs=4, numticks=None):
@@ -1154,10 +1155,10 @@ class LogishLocator(Locator):
         #ticklocs.extend(Ticlocs)    
         Ticlocs.extend(ticklocs) 
         clip_Ticlocs=np.sort(list(set(np.clip(Ticlocs,vmin, vmax))))
-        Ticlocs=convertToLogishPlotCoordinates(np.sort(clip_Ticlocs),vmin, vmax, self.T)
+        Ticlocs=convertTologiclePlotCoordinates(np.sort(clip_Ticlocs),vmin, vmax, self.T)
         #ADD HOC POSSIBLY
         Ticlocs=Ticlocs[1:-1]
-        #Ticlocs=convertToLogishPlotCoordinates(Ticlocs, vmin, vmax, self.T)
+        #Ticlocs=convertTologiclePlotCoordinates(Ticlocs, vmin, vmax, self.T)
         return self.raise_if_exceeds(np.asarray(Ticlocs))
 
     def view_limits(self, vmin=None, vmax=None):
@@ -1166,13 +1167,13 @@ class LogishLocator(Locator):
         return vmin, vmax
 
 
-class LogishFormatter(Formatter):
+class logicleFormatter(Formatter):
     #Modified from matplotlibs LogFormatter
     #https://matplotlib.org/3.1.1/_modules/matplotlib/ticker.html#LogFormatter
     """
-    Base class for formatting ticks on a logish scale. Only locates and formats tics for the plot view.
+    Base class for formatting ticks on a logicle scale. Only locates and formats tics for the plot view.
     Transform of underlying data and heatmap is handled outside matplotlib.
-    Modfied version of LogFormatter that covers normal usecases of the logish scale
+    Modfied version of LogFormatter that covers normal usecases of the logicle scale
     Only defined with formatting ticlabels for data in range -1 000 000 < x
     The passed parameters only affect plotting of the log-part of the scale
     
@@ -1247,7 +1248,7 @@ class LogishFormatter(Formatter):
             return '0'
         vmin, vmax = self.axis.get_view_interval()
 
-        tx=invertLogishPlotcoordinate(x,vmin,vmax,self._linthresh)
+        tx=invertlogiclePlotcoordinate(x,vmin,vmax,self._linthresh)
         
         if tx > self._linthresh+1:
             fx = math.log(tx) / math.log(10.0)

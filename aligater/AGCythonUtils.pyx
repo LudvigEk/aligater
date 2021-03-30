@@ -16,6 +16,7 @@
 #
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
+#   Distributed under the MIT License
 
 import numpy as np
 
@@ -34,7 +35,7 @@ ctypedef np.int32_t itype_t
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def __vectorLogishTransform(np.ndarray[dtype_t, ndim=1, mode="c"] a, double linCutOff):
+def __vectorlogicleTransform(np.ndarray[dtype_t, ndim=1, mode="c"] a, double linCutOff):
     
     cdef int a_idx = 0
     cdef int a_size = len(a)
@@ -52,7 +53,7 @@ def __vectorLogishTransform(np.ndarray[dtype_t, ndim=1, mode="c"] a, double linC
 @cython.cdivision(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def __vectorInverseLogishTransform(np.ndarray[dtype_t, ndim=1, mode="c"] a, double linCutOff):
+def __vectorInverselogicleTransform(np.ndarray[dtype_t, ndim=1, mode="c"] a, double linCutOff):
     
     cdef int a_idx = 0
     cdef int a_size = len(a)

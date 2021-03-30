@@ -16,9 +16,9 @@ class lazy_cythonize(list):
 def extensions():
     from Cython.Build import cythonize
     import numpy as np
-    sourcefiles = ['aligater/AGCython.pyx', 'aligater/AGc.cpp']
+    sourcefiles = ['aligater/AGCython.pyx']
     ext =Extension("aligater.AGCython", sourcefiles,libraries=["m"],language='c++', include_dirs=[np.get_include(),"./aligater"])
-    sourcefiles1 = ['aligater/AGCythonUtils.pyx', 'aligater/AGc.cpp']
+    sourcefiles1 = ['aligater/AGCythonUtils.pyx']
     ext1 =Extension("aligater.AGCythonUtils", sourcefiles1,libraries=["m"],language='c++', include_dirs=[np.get_include(),"./aligater"])
     return cythonize([ext,ext1])
 
@@ -26,7 +26,7 @@ def extensions():
 configuration = {
       'name': 'aligater',
       'version': '0.1.0',
-      'description': 'Semi automatic gating toolkit',
+      'description': 'Computer-assisted gating toolkit',
       'url': 'http://github.com/LudvigEk/aligater',
       'author': 'Ludvig Ekdahl',
       'author_email': 'ludvig.ekdahl@med.lu.se',

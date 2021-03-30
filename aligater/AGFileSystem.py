@@ -16,6 +16,7 @@
 #
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
+#   Distributed under the MIT License
 
 import numpy as np
 import pandas as pd

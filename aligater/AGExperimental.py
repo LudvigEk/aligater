@@ -16,6 +16,7 @@
 #
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
+#   Distributed under the MIT License
 
 import numpy as np
 import sys
@@ -25,7 +26,7 @@ from scipy.ndimage.filters import gaussian_filter1d
 #AliGater imports
 import aligater.AGConfig as agconf
 from aligater.AGCore import customQuadGate, getDensityFunc
-from aligater.AGPlotRoutines import getHeatmap, convertToLogishPlotCoordinate, logishTransform, bilogTransform, inverseLogishTransform, inverseBilogTransform, addLine, plotHeatmap, transformWrapper, inverseTransformWrapper
+from aligater.AGPlotRoutines import getHeatmap, convertTologiclePlotCoordinate, logicleTransform, bilogTransform, inverselogicleTransform, inverseBilogTransform, addLine, plotHeatmap, transformWrapper, inverseTransformWrapper
 from aligater.AGCython import gateThreshold, gatePointList
 from aligater.AGFileSystem import getGatedVector, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
 from aligater.AGClasses import AGgate, AGsample
@@ -66,7 +67,7 @@ def variableQuadGate(fcs, names, xCol, yCol, threshList, testRange, position, te
     scale : str, optional, default: 'linear'
         If plotting enabled, which scale to be used on both axis.
     T : int, optional, default: 1000
-        If plotting enabled and scale is logish, the threshold for linear-loglike transition.    
+        If plotting enabled and scale is logicle, the threshold for linear-loglike transition.    
     bins : int, optional, default: 300
         Defines the resolution of the heatmap.
     sigma : float, optional, default: 2
@@ -207,9 +208,9 @@ def heatmapRect(heatmap, xedges, yedges, xlim, ylim, orientation, scale='linear'
     xmax = max(xedges)
     ymin = min(yedges)
     ymax = max(yedges)
-    if scale.lower()=='logish':
-        xlim = convertToLogishPlotCoordinate(xlim, xmin, xmax, T)
-        ylim = convertToLogishPlotCoordinate(ylim, ymin, ymax, T)
+    if scale.lower()=='logicle':
+        xlim = convertTologiclePlotCoordinate(xlim, xmin, xmax, T)
+        ylim = convertTologiclePlotCoordinate(ylim, ymin, ymax, T)
     xBin = (xlim-xmin)/(xmax-xmin) * nBins
     xBin = int(round(xBin,0))
     if xBin<0:
@@ -305,7 +306,7 @@ def penaltyValleySeek(fcs, xCol, x0, xEnd=None, parentGate=None, direction='up',
     scale : str, optional, default: 'linear'
         If plotting enabled, which scale to be used on axis.
     T : int, optional, default: 1000
-        If plotting enabled and scale is logish, the threshold for linear-loglike transition
+        If plotting enabled and scale is logicle, the threshold for linear-loglike transition
 
     **Returns**
 
@@ -346,12 +347,12 @@ def penaltyValleySeek(fcs, xCol, x0, xEnd=None, parentGate=None, direction='up',
     if xEnd is not None:
         if not isinstance(xEnd,(float, int)):
             raise AliGaterError("in penaltyValleySeek: ", "xEnd had unexpected dtype, expected float/int, found: "+str(type(xEnd)))
-    if scale=='logish':
-        smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins, scale='logish',T=T)
-        searchSpace=logishTransform(binData,T)
-        x0=logishTransform([x0], T)[0]
+    if scale=='logicle':
+        smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins, scale='logicle',T=T)
+        searchSpace=logicleTransform(binData,T)
+        x0=logicleTransform([x0], T)[0]
         if xEnd is not None:
-            xEnd=logishTransform([xEnd], T)[0]
+            xEnd=logicleTransform([xEnd], T)[0]
     else:
         smoothedHisto, binData=getDensityFunc(fcsDF,xCol, vI, sigma, bins)
         searchSpace=binData
@@ -432,7 +433,7 @@ def densityDelimitation(fcs, xCol, parentGate=None, interval=['start','end'], si
     scale : str, optional, default: 'linear'
         If plotting enabled, which scale to be used on axis.
     T : int, optional, default: 1000
-        If plotting enabled and scale is logish, the threshold for linear-loglike transition
+        If plotting enabled and scale is logicle, the threshold for linear-loglike transition
 
     **Returns**
 
@@ -560,7 +561,7 @@ def halfNormalDistribution(fcs, xCol, mean, direction, parentGate=None, bins=300
         Which scale to be used on axis. \n
         **WARNING**: in contrast to many other functions, this actually affects more than plotting behaviour. See notes!
     T : int, optional, default: 1000
-        If scale is logish, the threshold for linear-loglike transition.
+        If scale is logicle, the threshold for linear-loglike transition.
         
     .. note::
             If a scale is changed from the default 'linear', the normal distribution is estimated on the transformed values (i.e. what you would see if plotting with this scale)\n
@@ -608,9 +609,9 @@ def halfNormalDistribution(fcs, xCol, mean, direction, parentGate=None, bins=300
                 distribution.append(x)
 
 
-    if scale.lower()=='logish':
-        distribution=list(logishTransform(distribution,T))
-        mean=logishTransform([mean],T)[0] 
+    if scale.lower()=='logicle':
+        distribution=list(logicleTransform(distribution,T))
+        mean=logicleTransform([mean],T)[0] 
     
     if scale.lower()=='bilog':
         distribution=list(bilogTransform(distribution,T))
@@ -820,7 +821,7 @@ def gateBezier(fcs, xCol, yCol, name, parentGate=None, points=None, xParam=0, yP
     yscale : str, optional, default: 'linear'
         Which scale to be used on y-axis.        
     T : int, optional, default: 1000
-        If scale is logish, the threshold for linear-loglike transition.
+        If scale is logicle, the threshold for linear-loglike transition.
     filePlot : str, optional, default: None
         Option to plot the gate to file to specified path. \n
         Warning: might overwrite stuff.
@@ -864,8 +865,8 @@ def gateBezier(fcs, xCol, yCol, name, parentGate=None, points=None, xParam=0, yP
         
     if not all(isinstance(x,str) for x in [scale, xscale, yscale]):
         raise AliGaterError("in gateBezier: ","scale, xscale and yscale must be str if specified")
-    if not all(x.lower() in ['linear','logish','bilog'] for x in [scale, xscale, yscale]):
-        raise AliGaterError("in gateBezier: ","scale, xscale and yscale must be either of 'linear', 'logish' or 'bilog'")
+    if not all(x.lower() in ['linear','logicle','bilog'] for x in [scale, xscale, yscale]):
+        raise AliGaterError("in gateBezier: ","scale, xscale and yscale must be either of 'linear', 'logicle' or 'bilog'")
     
     if not len(points) % 2 == 0:
         raise AliGaterError("in gateBezier: ","points must contain even sets of points for Bezier curves (2,4,6 etc)")

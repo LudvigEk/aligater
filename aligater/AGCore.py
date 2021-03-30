@@ -16,7 +16,7 @@
 #
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
-
+#   Distributed under the MIT License
 
 import pandas as pd
 import numpy as np
@@ -29,7 +29,7 @@ from scipy.ndimage.filters import gaussian_filter1d
 
 #AliGater imports
 import aligater.AGConfig as agconf
-from aligater.AGPlotRoutines import plotHeatmap, plot_gmm, addLine, addAxLine, transformWrapper, convertToLogishPlotCoordinates, convertToBiLogPlotCoordinates, logishBin, logishTransform, bilogBin, bilogTransform, inverseLogishTransform, inverseBilogTransform, inverseTransformWrapper, plot_densityFunc
+from aligater.AGPlotRoutines import plotHeatmap, plot_gmm, addLine, addAxLine, transformWrapper, convertTologiclePlotCoordinates, convertToBiLogPlotCoordinates, logicleBin, logicleTransform, bilogBin, bilogTransform, inverselogicleTransform, inverseBilogTransform, inverseTransformWrapper, plot_densityFunc
 from aligater.AGCython import gateEllipsoid, gateThreshold
 from aligater.AGClasses import AGgate, AGsample
 from aligater.AGFileSystem import getGatedVector, getGatedVectors, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
@@ -584,8 +584,8 @@ def getDensityFunc(fcsDF, xCol,vI=None, sigma=3, bins=300, scale='linear', T=100
     if vI is None:
         vI=fcsDF.full_index()
     data=getGatedVector(fcsDF, xCol, vI, return_type="nparray")
-    if scale.lower()=='logish':
-        BinEdges=logishBin(data,bins,T)
+    if scale.lower()=='logicle':
+        BinEdges=logicleBin(data,bins,T)
         histo = np.histogram(data, BinEdges)
     elif scale.lower()=='bilog':
         BinEdges=bilogBin(data, bins, T)
@@ -624,7 +624,7 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
     scale : str, optional, default: 'linear'
         If plotting enabled, which scale to be used on axis.
     T : int, optional, default: 1000
-        If plotting enabled and scale is logish, the threshold for linear-loglike transition
+        If plotting enabled and scale is logicle, the threshold for linear-loglike transition
 
     **Returns**
 
@@ -772,7 +772,7 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
         If plotting enabled, which scale to be used on both axis.
         
     T : int, optional, default: 1000
-        If plotting enabled and scale is logish, the threshold for linear-loglike transition
+        If plotting enabled and scale is logicle, the threshold for linear-loglike transition
 
     filePlot : str, optional, default: None
         Option to plot the gate to file to specified path.\n
@@ -899,7 +899,7 @@ def axisStats(fcsDF, xCol, vI=None,bins=300, sigma=3, scale='linear',T=1000):
         Number of bins in density histogram.
     scale : str, optional, default: 'linear'
         The returned values can be transformed to a plotting scale; \n
-        options: 'linear', 'logish'
+        options: 'linear', 'logicle'
         
     .. note::
         If a scale is changed from the default 'linear', \n
@@ -909,7 +909,7 @@ def axisStats(fcsDF, xCol, vI=None,bins=300, sigma=3, scale='linear',T=1000):
         When setting a treshold based on these values (such as mean+2*sigma), use transformed values and then invert.
     
     T : int, optional, default: 1000
-        If plotting enabled and scale is logish, the threshold for linear-loglike transition
+        If plotting enabled and scale is logicle, the threshold for linear-loglike transition
 
     **Returns**
 
@@ -942,8 +942,8 @@ def axisStats(fcsDF, xCol, vI=None,bins=300, sigma=3, scale='linear',T=1000):
 
     
     #*****fr plotroutines densityfunc
-    if scale == 'logish':
-        BinEdges=logishBin(x,bins,T)
+    if scale == 'logicle':
+        BinEdges=logicleBin(x,bins,T)
         histo = np.histogram(x, BinEdges)
     elif scale == 'bilog':
         BinEdges=bilogBin(x,bins,T)
@@ -967,8 +967,8 @@ def axisStats(fcsDF, xCol, vI=None,bins=300, sigma=3, scale='linear',T=1000):
     else:
         maxVal=(vHisto[maxIndex]+vHisto[maxIndex+1])/2
     
-    #if scale.lower()=='logish':
-    #    result=inverseLogishTransform([mean, sigma, maxVal],T)
+    #if scale.lower()=='logicle':
+    #    result=inverselogicleTransform([mean, sigma, maxVal],T)
     #    mean=result[0]
     #    sigma=abs(result[1])
     #    maxVal=result[2]
@@ -1087,7 +1087,7 @@ def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yO
     scale : str, optional, default: 'linear'
         If plotting enabled, which scale to be used on both axis.
     T : int, optional, default: 1000
-        If plotting enabled and scale is logish, the threshold for linear-loglike transition.    
+        If plotting enabled and scale is logicle, the threshold for linear-loglike transition.    
     filePlot : str, optional, default: None
         Option to plot the gate to file to specified path.\n
         Warning: might overwrite stuff.
@@ -1213,7 +1213,7 @@ def gateBox(fcs, name, xCol, yCol, xThreshRight, yThreshTop, xThreshLeft, yThres
     scale : str, optional, default: 'linear'
         If plotting enabled, which scale to be used on both axis.
     T : int, optional, default: 1000
-        If plotting enabled and scale is logish, the threshold for linear-loglike transition.    
+        If plotting enabled and scale is logicle, the threshold for linear-loglike transition.    
     filePlot : str, optional, default: None
         Option to plot the gate to file to specified path.\n
         Warning: might overwrite stuff.
@@ -1314,7 +1314,7 @@ def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='li
     scale : str, optional, default: 'linear'
         If plotting enabled, which scale to be used on both axis.
     T : int, optional, default: 1000
-        If plotting enabled and scale is logish, the threshold for linear-loglike transition.    
+        If plotting enabled and scale is logicle, the threshold for linear-loglike transition.    
     filePlot : str, optional, default: None
         Option to plot the gate to file to specified path. \n
         Warning: might overwrite stuff.
@@ -1465,7 +1465,7 @@ def backGate(fcs, xCol, yCol, population, background_population=None, markersize
     yscale : str, optional, default: 'linear'
         Which scale to be used on y-axis.        
     T : int, optional, default: 1000
-        If scale is logish, the threshold for linear-loglike transition.
+        If scale is logicle, the threshold for linear-loglike transition.
     filePlot : str, optional, default: None
         Option to plot the gate to file to specified path. \n
         Warning: might overwrite stuff.
@@ -1525,9 +1525,9 @@ def backGate(fcs, xCol, yCol, population, background_population=None, markersize
         fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
         
     x,y=getGatedVectors(fcsDF,xCol,yCol,backPop, return_type='nparray')
-    if scale=='logish':
-        xscale='logish'
-        yscale='logish'
+    if scale=='logicle':
+        xscale='logicle'
+        yscale='logicle'
     if scale=='bilog':
         xscale='bilog'
         yscale='bilog'
@@ -1535,16 +1535,16 @@ def backGate(fcs, xCol, yCol, population, background_population=None, markersize
         xview=ax.get_xlim()
         vmin=xview[0]
         vmax=xview[1]
-        if xscale=='logish':
-            x=convertToLogishPlotCoordinates(x,vmin,vmax,T)
+        if xscale=='logicle':
+            x=convertTologiclePlotCoordinates(x,vmin,vmax,T)
         if xscale=='bilog':
             x=convertToBiLogPlotCoordinates(x,vmin,vmax,T)
     if yscale!='linear':
         yview=ax.get_ylim()
         vmin=yview[0]
         vmax=yview[1]
-        if yscale=='logish':
-            y=convertToLogishPlotCoordinates(y,vmin,vmax,T)
+        if yscale=='logicle':
+            y=convertTologiclePlotCoordinates(y,vmin,vmax,T)
         if yscale=='bilog':
             y=convertToBiLogPlotCoordinates(y,vmin,vmax,T)
     ax.plot(x,y,'o',color=color,markersize=markersize)
@@ -1590,7 +1590,7 @@ def gateTiltedLine(fcs, xCol, yCol, theta, name, parentGate=None, startPoint=(No
     yscale : str, optional, default: 'linear'
         Which scale to be used on y-axis.        
     T : int, optional, default: 1000
-        If scale is logish, the threshold for linear-loglike transition.
+        If scale is logicle, the threshold for linear-loglike transition.
     filePlot : str, optional, default: None
         Option to plot the gate to file to specified path. \n
         Warning: might overwrite stuff.
@@ -1647,8 +1647,8 @@ def gateTiltedLine(fcs, xCol, yCol, theta, name, parentGate=None, startPoint=(No
         
     if not all(isinstance(x,str) for x in [scale, xscale, yscale]):
         raise AliGaterError("in gateTiltedLine: ","scale, xscale and yscale must be str if specified")
-    if not all(x.lower() in ['linear','logish','bilog'] for x in [scale, xscale, yscale]):
-        raise AliGaterError("in gateTiltedLine: ","scale, xscale and yscale must be either of 'linear', 'logish' or 'bilog'")
+    if not all(x.lower() in ['linear','logicle','bilog'] for x in [scale, xscale, yscale]):
+        raise AliGaterError("in gateTiltedLine: ","scale, xscale and yscale must be either of 'linear', 'logicle' or 'bilog'")
     """
     The gating problem can be divided into three sections. Line is given by y=kx+m.
     ---A--- ----B---- ----C---
@@ -1664,10 +1664,10 @@ def gateTiltedLine(fcs, xCol, yCol, theta, name, parentGate=None, startPoint=(No
         yscale = scale
     vX = getGatedVector(fcsDF, xCol, vI=vI, return_type="nparray")
     vY = getGatedVector(fcsDF, yCol, vI=vI, return_type="nparray")    
-    if xscale.lower()=='logish':
-        vX=logishTransform(vX, T)
-    if yscale.lower()=='logish':
-        vY=logishTransform(vY, T) 
+    if xscale.lower()=='logicle':
+        vX=logicleTransform(vX, T)
+    if yscale.lower()=='logicle':
+        vY=logicleTransform(vY, T) 
         
     if xscale.lower()=='bilog':
         vX=bilogTransform(vX, T)         

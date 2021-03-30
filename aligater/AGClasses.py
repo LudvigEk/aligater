@@ -16,7 +16,7 @@
 #
 #	Björn Nilsson & Ludvig Ekdahl 2016~
 #	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
-
+#   Distributed under the MIT License
 
 import numpy as np
 import pandas as pd
@@ -529,30 +529,24 @@ class AGsample:
         gate_Iterator = gate
         
         while not gate_Iterator.bNoparent:
-            iterator_name=gate_Iterator.name        
+            #iterator_name=gate_Iterator.name        
             iterator_parent_name = gate_Iterator.parentName
             if gate_Iterator.parent is None:
                 if not gate_Iterator.bNoparent:
                     #Don't raise
-                    #log warning and break
                     break
                     #raise AliGaterError("in collect_all_MFI:", "Couldn't collect MFI of "+str(iterator_name)+" due to parent population ("+str(iterator_parent_name)+") not found, is it labeled correctly in the update call?")
             gate_Iterator = self(name=iterator_parent_name)
             if not gate_Iterator: #Not found in AGSample
-                #Simply not true, first update call might not be a population with None as parent!
                 #Don't raise
-                #log warning and break
                 break
-                raise AliGaterError("in collect_all_MFI:", "Couldn't collect MFI of "+str(iterator_name)+" due to parent population ("+str(iterator_parent_name)+") not found, is it labeled correctly in the update call?")
+                #raise AliGaterError("in collect_all_MFI:", "Couldn't collect MFI of "+str(iterator_name)+" due to parent population ("+str(iterator_parent_name)+") not found, is it labeled correctly in the update call?")
             #Save parent gates x and y markers if they are not None
             if gate_Iterator.xCol is not None:
                 markers.append(gate_Iterator.xCol)
             if gate_Iterator.yCol is not None:
                 markers.append(gate_Iterator.yCol)
-            #Go to next parent
-            #gate_Iterator = gate_Iterator.parentName
-            #if gate_Iterator == 'total': #What a gate with no parent will be called
-            #    break
+
         #Prune the markers list to unique non FSC/SSC markers
         unique_markers = list(set(markers))
         #Use collect_extra_MFI to collect MFIs for all these markers for this population
@@ -613,7 +607,7 @@ class AGsample:
             else:
                 try:
                     os.makedirs(os.path.dirname(output))
-                except OSError as exc: # Guard against race condition
+                except OSError as exc: 
                     if exc.errno != errno.EEXIST:
                         raise
                 if header:
@@ -1454,9 +1448,7 @@ class AGExperiment:
                     reportStr = str(index)+"\t"+str(elem)+"\n"
                     sys.stderr.write(reportStr)
                 raise AliGaterError("Duplicated entry in MFI data.")
-            # for index,entry in non_dup_series.iteritems():
-            #     reportStr=str(index)+"\t"+str(entry)+"\n"
-            #     sys.stderr.write(reportStr)
+
             #Append
             self.result_MFI_DF = self.result_MFI_DF.append(non_dup_series)
         
