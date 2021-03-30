@@ -3,8 +3,11 @@ aligater/AGCython.cpython-38-x86_64-linux-gnu.so
 aligater/AGCythonUtils.cpp
 aligater/AGCythonUtils.cpython-38-x86_64-linux-gnu.so
 aligater/AGCythonUtils.html
+aligater/AGCython.html
 aligater/AGCython.cpp
 aligater/AGCython.html
 aligater/__pycache__
+aligater/customScale_test.py
+.gitignore
 build
 
