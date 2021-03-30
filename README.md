@@ -34,16 +34,21 @@ Install AliGater by running:
 
 	pip3 -e install .
 
-Contribute
-----------
+Contribute & Support
+---------------------
 
 - Issue Tracker: github.com/LudvigEk/Aligater/issues
 - Source Code: github.com/LudvigEk/Aligater
 
-Support
+Contact
 -------
 
 Lead dev; med-lue@med.lu.se
+
+Citation
+--------
+Paper in prep;
+AliGater: framework for computer-assisted analysis of large-scale flow-cytometry data. Ekdahl et. al.
 
 License
 -------
