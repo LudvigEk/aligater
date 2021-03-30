@@ -37,8 +37,8 @@ Install AliGater by running:
 Contribute
 ----------
 
-- Issue Tracker: github.com/LudvigEk/pyAligater/issues
-- Source Code: github.com/LudvigEk/pyAligater
+- Issue Tracker: github.com/LudvigEk/Aligater/issues
+- Source Code: github.com/LudvigEk/Aligater
 
 Support
 -------
