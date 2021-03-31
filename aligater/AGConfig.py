@@ -25,10 +25,10 @@ import os.path
 ag_home = os.path.dirname(os.path.dirname(__file__)) #AliGater Root folder, wherever it was
 
 #AliGater output dir, change if needed
-ag_out=os.path.join(ag.agconf.ag_home, "out")
+ag_out=os.path.join(ag_home, "out")
 
 #AliGater tempdir/scratch space (intermediate files such as downsampled images), change if needed
-ag_tmp=os.path.join(ag.agconf.ag_home, "temp")
+ag_tmp=os.path.join(ag_home, "temp")
 
 
 
