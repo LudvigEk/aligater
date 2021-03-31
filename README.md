@@ -5,7 +5,10 @@ AliGater is intended as a rapid application development environment for high-thr
 
 Typically you can explore and gate your data in a notebook environment then run thousands of gates using the same strategy. See sample notebooks (to be made) for examples.
 
-Jupyter templates for evaluating QC objects (downsampled image views) using clustering will be available.
+Jupyter templates for evaluating QC objects (downsampled image views) using clustering will be made available.
+
+Check out the documentation at
+https://aligater-documentation.readthedocs.io/en/latest/
 
 Features
 --------
@@ -34,16 +37,21 @@ Install AliGater by running:
 
 	pip3 -e install .
 
-Contribute
-----------
+Contribute & Support
+---------------------
 
-- Issue Tracker: github.com/LudvigEk/pyAligater/issues
-- Source Code: github.com/LudvigEk/pyAligater
+- Issue Tracker: github.com/LudvigEk/Aligater/issues
+- Source Code: github.com/LudvigEk/Aligater
 
-Support
+Contact
 -------
 
 Lead dev; med-lue@med.lu.se
+
+Citation
+--------
+Paper in prep;
+AliGater: framework for computer-assisted analysis of large-scale flow-cytometry data. Ekdahl et. al.
 
 License
 -------
