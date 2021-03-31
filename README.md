@@ -5,7 +5,10 @@ AliGater is intended as a rapid application development environment for high-thr
 
 Typically you can explore and gate your data in a notebook environment then run thousands of gates using the same strategy. See sample notebooks (to be made) for examples.
 
-Jupyter templates for evaluating QC objects (downsampled image views) using clustering will be available.
+Jupyter templates for evaluating QC objects (downsampled image views) using clustering will be made available.
+
+Check out the documentation at
+https://aligater-documentation.readthedocs.io/en/latest/
 
 Features
 --------
