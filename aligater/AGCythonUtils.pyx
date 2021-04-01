@@ -21,7 +21,7 @@
 import numpy as np
 
 from cpython cimport bool
-from libc.math cimport log10, log, exp
+#from libc.math cimport log10, log, exp
 
 #For cython optimisations with boundscheck, wraparound etc
 cimport cython
