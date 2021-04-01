@@ -19,7 +19,7 @@ def extensions():
     sourcefiles = ['aligater/AGCython.pyx']
     ext =Extension("aligater.AGCython", sourcefiles,libraries=["m"],language='c++', include_dirs=[np.get_include(),"./aligater"])
     sourcefiles1 = ['aligater/AGCythonUtils.pyx']
-    ext1 =Extension("aligater.AGCythonUtils", sourcefiles1,libraries=["m"],language='c++', include_dirs=[np.get_include(),"./aligater"])
+    ext1 =Extension("aligater.AGCythonUtils", sourcefiles1,libraries=["m"],language='c', include_dirs=[np.get_include(),"./aligater"])
     return cythonize([ext,ext1])
 
 

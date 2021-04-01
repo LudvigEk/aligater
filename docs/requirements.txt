@@ -1,3 +1,2 @@
 ipykernel
 nbsphinx
-libc6-dev
