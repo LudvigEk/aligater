@@ -42,9 +42,9 @@ def __vectorlogicleTransform(np.ndarray[dtype_t, ndim=1, mode="c"] a, double lin
     cdef np.ndarray[dtype_t, ndim=1, mode="c"] tA = np.empty_like(a).astype(float)
     while a_idx < a_size:
         if a[a_idx] >= linCutOff:
-           tA[a_idx] = log(10 * a[a_idx] / linCutOff)/log(10)
+           tA[a_idx] = np.log(10 * a[a_idx] / linCutOff)/np.log(10)
         else:
-            tA[a_idx] = (a[a_idx]/linCutOff + log(10.0) - 1)/log(10)
+            tA[a_idx] = (a[a_idx]/linCutOff + np.log(10.0) - 1)/np.log(10)
         a_idx+=1
     
     return tA
@@ -61,10 +61,10 @@ def __vectorInverselogicleTransform(np.ndarray[dtype_t, ndim=1, mode="c"] a, dou
     
     while a_idx < a_size:
         if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0 at T; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
-            invA[a_idx] = linCutOff*exp(log(10)*a[a_idx])/10
+            invA[a_idx] = linCutOff*np.exp(np.log(10)*a[a_idx])/10
             #invA[a_idx]= (np.exp(a[a_idx])+10)*linCutOff/10
         else:
-            invA[a_idx] = linCutOff*(log(10.0)*a[a_idx] - log(10.0) + 1)
+            invA[a_idx] = linCutOff*(np.log(10.0)*a[a_idx] - np.log(10.0) + 1)
         a_idx+=1
     
     return invA
@@ -81,11 +81,11 @@ def __vectorBilogTransform(np.ndarray[dtype_t, ndim=1, mode="c"] a, double T):
     
     while a_idx < a_size:
         if a[a_idx] >= T:
-           tA[a_idx] = log(10 * a[a_idx] / T)/log(10)
+           tA[a_idx] = np.log(10 * a[a_idx] / T)/np.log(10)
         elif a[a_idx] < T and a[a_idx] > -T:
-            tA[a_idx] = (a[a_idx]/T  + log(10) - 1) / log(10)
+            tA[a_idx] = (a[a_idx]/T  + np.log(10) - 1) / np.log(10)
         else:
-            tA[a_idx] = -log(10 * abs(a[a_idx]) / T) / log(10)+1.13141103619349642 #This shift ensures that the transformed coordinates are continous, important for bins and plotting
+            tA[a_idx] = -np.log(10 * abs(a[a_idx]) / T) / np.log(10)+1.13141103619349642 #This shift ensures that the transformed coordinates are continous, important for bins and plotting
         a_idx+=1
         
     return tA
@@ -102,11 +102,11 @@ def __vectorInverseBilogTransform(np.ndarray[dtype_t, ndim=1, mode="c"] a, doubl
     
     while a_idx < a_size:
         if a[a_idx] >= 1.0: #transformed linCutOff, always 1.0 at T; np.log(10 * linCutOff / linCutOff)/np.log(10) -> np.log(10)/np.log(10) = 1 
-            invA[a_idx] = T*exp(log(10)*a[a_idx])/10
+            invA[a_idx] = T*np.exp(np.log(10)*a[a_idx])/10
         elif a[a_idx] <= 0.13141103619349642: #This is (np.log(10)-2)/np.log(10) I.e. the linear scale value at X=-T
             tmpX=a[a_idx]-1.13141103619349642 #This shift ensures that the transformed coordinates are continous, important for bins and plotting
-            invA[a_idx] = -T*exp(log(10)*-tmpX)/10
+            invA[a_idx] = -T*np.exp(np.log(10)*-tmpX)/10
         else:
-            invA[a_idx] = T * (log(10)*a[a_idx] - log(10) + 1)
+            invA[a_idx] = T * (np.log(10)*a[a_idx] - np.log(10) + 1)
         a_idx+=1
     return invA    
