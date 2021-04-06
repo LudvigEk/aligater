@@ -1,6 +1,23 @@
 #!/usr/bin/env python3
 #Start installation
 from setuptools import setup, Extension, find_packages
+from os import environ
+
+if 'CFLAGS' in environ:
+  if isinstance(environ['CFLAGS'],tuple):
+    #Can this be a tuple?
+    raise TypeError
+  #Check if already list of flags
+  if isinstance(environ['CFLAGS'],list):
+    #If that's the case, just append
+    environ['CFLAGS'].append("-I. -include glibc_version_fix.h")
+  else:
+    #If not list, i.e string
+    environ['CFLAGS']=[environ['CFLAGS'],"-I. -include glibc_version_fix.h"]
+else:
+  #CFLAGS environ variable didn't exist
+  environ['CFLAGS']="-I. -include glibc_version_fix.h"
+
 
 class lazy_cythonize(list):
     def __init__(self, callback):
@@ -24,8 +41,7 @@ def extensions():
     ext1 =Extension("aligater.AGCythonUtils", 
       sourcefiles1,
       language='c++', 
-      include_dirs=[np.get_include(),"./aligater"],
-      extra_compile_args=["-I. -include glibc_version_fix.h"])
+      include_dirs=[np.get_include(),"./aligater"])
     return cythonize([ext,ext1])
 
 
