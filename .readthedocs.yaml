@@ -6,13 +6,10 @@ version: 2
 sphinx:
    configuration: docs/conf.py
 
-
-conda:
-  environment: docs/environment.yml
-
 python:
-   version: 3.8
+   version: 3.7
    install:
    - method: setuptools
      path: .
+   - requirements: docs/requirements.txt
    system_packages: true
