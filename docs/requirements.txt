@@ -1,3 +1,2 @@
 ipykernel
 nbsphinx
-numpy --install-option=-"--no-binary"
