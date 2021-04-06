@@ -8,7 +8,7 @@ Typically you can explore and gate your data in a notebook environment then run 
 Jupyter templates for evaluating QC objects (downsampled image views) using clustering will be made available.
 
 Check out the documentation at
-https://aligater-documentation.readthedocs.io/en/latest/
+https://aligater.readthedocs.io/en/latest/
 
 Features
 --------
