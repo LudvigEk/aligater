@@ -161,6 +161,9 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     
     vX=getGatedVector(fcsDF, x, vI, return_type="nparray")
     vY=getGatedVector(fcsDF, y, vI, return_type="nparray")
+    if len(vX)<2 or len(vY)<2:
+        sys.stderr.write("Passed index contains no events\n")
+        return None, None
     plt.clf()
     if custom_rcParams:
         plt.rcParams=rcParams
@@ -296,23 +299,28 @@ def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='lin
     #attempt at fix, still some redundancy...
     t_xbin_edges = t_ybin_edges = None
     if scale.lower()!='linear' or (xscale.lower()!='linear' and yscale.lower()!='linear'):
+        #Solve case where scale != linear but xscale/yscale = linear
+        if xscale.lower() == 'linear' and scale.lower()!='linear':
+            xscale=scale
         t_vX = transformWrapper(vX, scale=xscale, T=T)
         t_xbin_edges=np.histogram_bin_edges(t_vX,bins=bins)
         xbin_edges = inverseTransformWrapper(t_xbin_edges, scale=xscale, T=T)
         
+        if yscale.lower() == 'linear' and scale.lower()!='linear':
+            yscale=scale
         t_vY = transformWrapper(vY, scale=yscale, T=T)
         t_ybin_edges=np.histogram_bin_edges(t_vY,bins=bins)      
         ybin_edges = inverseTransformWrapper(t_ybin_edges, scale=yscale, T=T)
         return np.histogram2d(vX,vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
     
-    if xscale.lower()!='linear':
+    if xscale.lower()!='linear' and scale.lower() == 'linear':
         t_vX = transformWrapper(vX, scale=xscale, T=T)
         t_xbin_edges=np.histogram_bin_edges(t_vX,bins=bins)
         xbin_edges = inverseTransformWrapper(t_xbin_edges, scale=xscale, T=T)
         
         ybin_edges = np.histogram_bin_edges(vY, bins=bins)
         
-    if yscale.lower()!='linear':
+    if yscale.lower()!='linear' and scale.lower() == 'linear':
         t_vY = transformWrapper(vY, scale=yscale, T=T)
         t_ybin_edges=np.histogram_bin_edges(t_vY,bins=bins)
         ybin_edges = inverseTransformWrapper(t_ybin_edges, scale=yscale, T=T)

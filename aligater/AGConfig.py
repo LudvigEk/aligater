@@ -5,11 +5,11 @@
 #Make sure to review and set up these filters to reasonable values for your flow cytometry setup
 
 #If a population has less cells than this threshold, any population defined with this population as parent will be flagged invalid
-minCells=100000
+minCells=300
 
 #The cellFilter threshold is the _initial_ required number of events per sample and is checked when the sample is loaded
 #If lower than this, the entire sample is skipped and strategy never applied
-cellFilter=300
+cellFilter=100000
 
 #Truncate intensities below this treshold i.e. if any measured value is lower than this, the value is piled up at this level instead. 
 #Set with generous margin but might affect viewability of plots if too generous.

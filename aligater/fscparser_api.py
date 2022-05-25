@@ -2,7 +2,7 @@
 # Eugene Yurtsev 07/20/2013
 # Distributed under the MIT License
 # Channel name identification modified by Kerstin Johnsson 05/21/2016
-# Possibility to limit number of events read from file by Ludvig Ekdahl 22/03/2021
+# Possibility to limit number of events read from files, possibility for both UTF-8 and iso-8859-1 by Ludvig Ekdahl 22/03/2021
 
 # Thanks to:
 # - Ben Roth : adding a fix for Accuri C6 fcs files.
@@ -160,7 +160,11 @@ class FCSParser(object):
         # There are some differences in how the 
         file_handle.seek(header['text start'], 0)
         raw_text = file_handle.read(header['text end'] - header['text start'] + 1)
-        raw_text = raw_text.decode('utf-8')
+        try:
+            raw_text = raw_text.decode('utf-8')
+        except UnicodeDecodeError:
+            sys.stderr.write("Non UTF-8 encoding encountered in fcs file, attempting western iso-8859-1\n")
+            raw_text = raw_text.decode('iso-8859-1')
 
         #####
         # Parse the TEXT segment of the FCS file into a python dictionary

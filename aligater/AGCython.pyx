@@ -534,6 +534,7 @@ def horizontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
         raise TypeError("invalid AGsample object")
     if parentGate is None:
         vI=fcs.full_index()
+        startingGate=None
     elif not parentGate.__class__.__name__ == "AGgate":
         raise AliGaterError("in horizontalPath","Passed parent population is an invalid AGgate object.")
     else:
@@ -593,9 +594,8 @@ def horizontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
         vI=startingGate()
     else:
         vI=fcs.full_index()
-#*********************************************************************************************************
 
-
+    #****************************************************************************************************************************************************************************************
 
     vX,vY = getGatedVectors(fcsDF=fcs(), gate1=xCol, gate2=yCol, vI=vI)
     #Note on the heatmap, from numpy docs, np.histogram2d
@@ -970,7 +970,7 @@ def _minCostPath(np.ndarray[dtype_t, ndim=2] cost, int nCols, int nRows, int max
 
 
     return pathMatrix
- 
+
 def _minCostPath_nextStep(curRow, nextRow, int curPos, int maxStep, float phi=0, str direction='right'):
     #TODO: Possibly introduce way to estimate phi by looking at medium density of hisotgram density
     

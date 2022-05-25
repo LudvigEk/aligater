@@ -227,8 +227,9 @@ class AGgate:
         
     def __call__(self):
         if self.bInvalid:
-            #Invalid flag
-            sys.stderr.write("WARNING: Call to AGGate object ("+self.name+") that has had its invalid flag set\n")
+            if agconf.ag_verbose:
+                #Invalid flag
+                sys.stderr.write("WARNING: Call to AGGate object ("+self.name+") that has had its invalid flag set\n")
         if not isinstance(self.current, list):
             #Invalid dtype
             raise AliGaterError("This AGGate object ("+self.name+") had a non-list current member\n")
@@ -258,6 +259,10 @@ class AGgate:
     
     def downSample(self, fcsDF, bins, xlim, ylim, scale='linear', xscale='linear', yscale='linear', T=1000):
         vX, vY = getGatedVectors(fcsDF, self.xCol, self.yCol, vI=self.parent, return_type="nparray")
+        if len(vX)<2 or len(vY)<2:
+            self.m_downSample=None
+            return None
+            #None
         #flaggedIndicies=[]
         for i in np.arange(0,len(vX),1):
             if vX[i]<xlim[0]:
@@ -484,8 +489,7 @@ class AGsample:
         #******************************************************************************
         self.vGates.append(gate)
         if QC:
-            if not gate.bInvalid:                
-                gate.downSample(self.fcsDF, self._downsamplingBins, xlim, ylim, scale, xscale, yscale, T=T)
+            gate.downSample(self.fcsDF, self._downsamplingBins, xlim, ylim, scale, xscale, yscale, T=T)
     
     def collect_current_MFI(self, gate):
         if gate.xCol is not None:
@@ -733,7 +737,19 @@ class AGQC:
                 return
         flattenedArr=gate.m_downSample.flatten()
         arr=np.append(arr,flattenedArr)
-        np.save(file,arr)        
+        try:
+            np.save(file,arr)
+        except:
+            #Internal error in np.save for some reason, traceback below
+                #in printDownSample
+                #np.save(file,arr)        
+                #File "<__array_function__ internals>", line 6, in save
+                #File "/home/ludvig/anaconda3/lib/python3.7/site-packages/numpy/lib/npyio.py", line 553, in save 
+                #pickle_kwargs=pickle_kwargs)
+                #File "/home/ludvig/anaconda3/lib/python3.7/site-pa
+            reportStr="Error while saving downsampled gate: "+str(name)+"\n"
+            sys.stderr.write(reportStr)
+            return
         return
     
     def reportPCs(self,folder):
@@ -1289,7 +1305,7 @@ class AGExperiment:
         else:
             sys.stderr.write("Experiment initialised with file list. Checking entries...\n")
             file_list=check_exists(experimentRoot)
-            lFlaggedIndicies=applyFilter(file_list, self.lFilter,self.lMask, self.lIgnoreTypes)
+            lFlaggedIndicies=applyFilter(file_list, self.lFilter,self.lMask, self.lIgnoreTypes,self.HDF5Fileset)
             lOutput = [i for j, i in enumerate(file_list) if j not in lFlaggedIndicies]
             sOutputString="Collected "+str(len(lOutput))+" files, "+str(len(lFlaggedIndicies))+" files did not pass filter(s) and mask(s).\n"
             sys.stderr.write(sOutputString)
@@ -1631,6 +1647,7 @@ class AGExperiment:
         reportStr="Checking metadata for all "+str(len(self.fcsList))+" fcs files in experiment:\n"
         sys.stderr.write(reportStr)
         lFlagged=[]
+        nOfEventsArray=[]
         progress_counter=0
         for fcs in self.fcsList:
             progress_counter+=1
@@ -1642,9 +1659,21 @@ class AGExperiment:
             bOk=self.check_metadata_internal(fcs,fcsDF,lFlagged,metadata)
             if not bOk:
                 metadata_warnings+=1
+                
+            if bOk: #count events
+                nOfEventsArray.append(len(fcsDF))
+            elif not bOk and lFlagged[-1] == "No compensation data available":
+                #if just missing compensation, still count events
+                nOfEventsArray.append(len(fcsDF))
             if progress_counter%10==0:
                 progress=progress_counter/len(self.fcsList)
                 update_progress(progress)
+                
+        #Calculate statistics
+        mean=np.mean(nOfEventsArray)
+        median=np.median(nOfEventsArray)
+        min_events = np.min(nOfEventsArray)
+        max_events = np.max(nOfEventsArray)
         update_progress(1.0)
         reportStr=str(metadata_warnings)+" files had metadata flags\n"
         sys.stderr.write(reportStr)   
@@ -1655,6 +1684,8 @@ class AGExperiment:
                 for i in np.arange(1,len(sample),1):
                     reportStr=sample[i]+"\n"
                     sys.stderr.write(reportStr)
+        reportStr="Event statistics of valid samples (including samples with missing compensation):\nmean: "+str(mean)+"\nmedian: "+str(median)+"\nmin: "+str(min_events)+"\nmax_events: "+str(max_events)+"\n"
+        sys.stderr.write(reportStr)
         return lFlagged            
     
     def check_compensation_exception(self, fcs):

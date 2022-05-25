@@ -69,7 +69,7 @@ def compensateDF(fcsDF, metaDict, fsc_ssc_count, *args, **kwargs):
     spill_matrix=metaDict[spill_keyword].split(',')
     n = int(spill_matrix[0]) #number of colors
     if not (n == len(fcsDF.columns)-fsc_ssc_count):
-        raise AliGaterError("in LoadFCS, compensateDF: ", "unexpected number of channels. If your FCS are exported with Area+width+height values for each flourochrome the flourochrome_area_filter needs to be set to True.")
+        raise AliGaterError("in LoadFCS, compensateDF: ", "unexpected number of channels. If your FCS are exported with Area+width+height values for each flourochrome the flourochrome_area_filter needs to be set to True.\nThis error could also be related to older fcs files with both compensated and uncompensated data, which is unsupported.")
     #Depending on version FCS different number of cols-per-flourochrome will be reported(A-W-H vs just A) , and different number of columns preceding and subsequent the flourchrome columns
     #NOTE: AliGater assumes first columns are FSC/SSC
     colNames=fcsDF.columns[fsc_ssc_count:(n+fsc_ssc_count)]
@@ -344,6 +344,7 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
         channel_naming='$PnN'
 
     metaDict,fcsDF = parse(path,output_format='DataFrame',channel_naming=channel_naming, nOfEvents=nOfEvents) #add optional n of events to read
+
     rows=fcsDF.shape[0] # n of events
     if int(metaDict['$TOT']) != int(rows) and nOfEvents is not None:
         if agconf.ag_verbose:
@@ -377,6 +378,7 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
                 continue
         else:
             fsc_ssc_count += 1
+
     fcsDF.drop(fcsDF.columns[indicies_to_drop], axis=1, inplace=True)
     cols = fcsDF.columns
     #cols=fcsDF.columns[4:-1]
@@ -389,8 +391,7 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     if agconf.ag_verbose:
         sys.stderr.write("Loaded dataset with "+str(rows)+" events.\n")
     if rows < agconf.cellFilter and not ignore_minCell_filter:
-        if agconf.ag_verbose:
-            sys.stderr.write("Sample has fewer events than cellFilter threshold, skipping\n")
+        sys.stderr.write("Sample has fewer events than cellFilter threshold, skipping\n")
         return None
     
     if agconf.ag_verbose:
@@ -490,8 +491,8 @@ def check_exists(sSrc):
         else:
             if not len(item) > 4:
                 raise
-            file_ending = item[-4:]
-            if not file_ending == ".fcs":
+            #file_ending = item[-4:]
+            if not item[-4:] == ".fcs" and not item[-3:] == ".h5":
                 not_fcs.append(item)
     if len(invalid_paths) == 0:
         sys.stderr.write("All file paths exists.\n")
