@@ -441,6 +441,58 @@ class AGsample:
                 return False
         
     def update(self, gate, xlim=[0,500000], ylim=[0,500000], QC=False, scale='linear', xscale='linear', yscale='linear', T=1000, MFI=False, MFI_type="current", extra_MFI=None):
+        """ 
+        ***Overview***
+
+        Core function of the AGSample that should be used to save the results of a gate, e.g. CD3 positives out of CD45 positives. 
+        The only mandatory argument is an aligater.AGGate object.
+
+        ***Keyword arguments***
+        
+        QC, bool, optional, default: False
+            If set, a downsampled view of the gate will be stored for later image-segmentation analysis.
+            The gating view gets stored in flattened numpy.array format. The view limits are always fixed and can be set
+            using the ylim and xlim arguments.
+
+        ylim, list, optional, default: [0, 500000]
+            Fixed y-limit of downsampled views of this gate, only relevant if QC is True
+
+        xlim, list, optional, default: [0, 500000]
+            Fixed x-limit of downsampled views of this gate, only relevant if QC is True
+
+        scale, str, optional, default: 'linear'
+            The scale used in the gating view, relevant for downsampled image views if QC is set to True.
+            This argument sets both axis, but can be overriden by xscale or yscale for the specific axis.
+
+        xscale, str, optional, default: 'linear'
+            The scale used in the gating view's x-axis, relevant for downsampled image views if QC is set to True.
+            This will override the option set in scale
+
+        yscale, str, optional, default: 'linear'
+            The scale used in the gating view's y-axis, relevant for downsampled image views if QC is set to True.
+            This will override the option set in scale
+
+        T, int, optional, default: 1000
+            The threshold for the linear-logarithmic transition used in logicle scales.
+
+        MFI, bool, optional, default: False
+            Flag indicating that MFIs should be stored for this gate. See MFI_type for modifying behavior.
+
+        MFI_type, str, optional, default: 'current'
+            If MFI is stored, which type should be saved, options are; 'current', 'all', 'all_with_scatter'
+
+                'current' saves MFIs for the current gating axis. Including scatter columns if they are used.
+
+                'all' saves MFIs for the current axis, then this gate's parent's axis and continuing up the hierarchy until no parent gate is found. 
+                Forward and side scatter columns are ignored.
+
+                'all_with_scatter' similar to 'all', but includes MFI of scatter columns
+
+        extra_MFI, list, optional, default: None
+            List of str names of markers to save MFIs of. Must match exactly, case sensitive.
+
+
+        """
         if not isinstance(gate,AGgate):
             raise invalidAGgateError("in AGsample.update: ")
         if gate.xCol not in self.fcsDF.columns:
@@ -475,9 +527,11 @@ class AGsample:
                     if not any([MFI_type.lower() in ['current', 'all']]): #Option is to just remove the all option
                         raise AliGaterError("in update: ","MFI_type must be None or string: 'current' or 'all'")
                     if MFI_type.lower() == 'current':
-                        self.collect_current_MFI(gate=gate)                        
+                        self.collect_current_MFI(gate=gate, include_scatter_cols=True)
                     elif MFI_type.lower() == 'all':
-                        self.collect_all_MFI(gate=gate) #This probably doesn't work atm (after MFI fix reversal)
+                        self.collect_all_MFI(gate=gate) 
+                    elif MFI_type.lower() == "all_with_scatter":
+                        self.collect_all_MFI(gate=gate, include_scatter_cols=True)
                 else:
                     raise AliGaterError("in update: ","MFI_type must be None or string: 'current' or 'all'")
 
@@ -491,32 +545,41 @@ class AGsample:
         if QC:
             gate.downSample(self.fcsDF, self._downsamplingBins, xlim, ylim, scale, xscale, yscale, T=T)
     
-    def collect_current_MFI(self, gate):
+    def collect_current_MFI(self, gate, include_scatter_cols=False):
         if gate.xCol is not None:
-            self.collect_MFI(gate=gate, marker=gate.xCol)
+            self.collect_MFI(gate=gate, marker=gate.xCol, include_scatter_cols=include_scatter_cols)
         if gate.yCol is not None:
-            self.collect_MFI(gate=gate, marker=gate.yCol)
+            self.collect_MFI(gate=gate, marker=gate.yCol, include_scatter_cols=include_scatter_cols)
         return None
     
-    def collect_MFI(self, gate, marker):
-        if "FSC" in marker or "SSC" in marker:
+    def collect_MFI(self, gate, marker, include_scatter_cols=False):
+        if ("FSC" in marker or "SSC" in marker) and not include_scatter_cols:
             return None
         #Collect MFI of a single marker for an AGGate object
         vX = getGatedVector(self.fcsDF, gate = marker, vI=gate(), return_type='nparray')
-        x_mean = np.mean(vX)
+
+        if len(vX) < 1:
+            x_mean = np.nan
+        else:
+            x_mean = np.mean(vX)
+
         x_mean_MFI_label = gate.name +"_" + marker + "_mean"
         
-        x_median = np.median(vX)
+        if len(vX) < 1:
+            x_median = np.nan
+        else:
+            x_median = np.median(vX)
+
         x_median_MFI_label = gate.name +"_" + marker + "_median"
         
         self.MFI_Series = self.MFI_Series.append(pd.Series(data=[x_mean, x_median], index=[x_mean_MFI_label,  x_median_MFI_label], name=self.sample))
         return None
 
-    def collect_all_MFI(self, gate):
+    def collect_all_MFI(self, gate, include_scatter_cols=False):
         #Just sanity check for empty list in self
         if self.vGates is None or len(self.vGates) == 0: 
             #In that case just collect current
-            self.collect_current_MFI(gate)
+            self.collect_current_MFI(gate, include_scatter_cols=include_scatter_cols)
             return None
         
         #Collect MFI of markers in current gate and that of all parent gates except FSC/SSC channels
@@ -562,7 +625,7 @@ class AGsample:
         markers_in_df = self.fcsDF.columns.tolist()
         for marker in MFIs_to_collect:
             if marker in markers_in_df:
-                self.collect_MFI(gate, marker)
+                self.collect_MFI(gate, marker, include_scatter_cols=True)
             else:
                 reportStr = "Requested MFI for marker "+str(marker)+" for population "+str(gate.name)+" which doesn't exists in the sample ("+self.sample+").\n"
                 sys.stderr.write(reportStr)

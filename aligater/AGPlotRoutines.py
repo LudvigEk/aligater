@@ -647,7 +647,8 @@ def draw_ellipse(position, covariance, sigma=2, ax=None, **kwargs):
         width,height = np.sqrt(s)*sigma
     else:
         angle = 0
-        width, height = np.sqrt(covariance)*sigma
+        width = height = np.sqrt(covariance)*sigma
+
     #Note width, height here is the full width and height and not the semiaxis length
     # Draw the Ellipse
     if plot:

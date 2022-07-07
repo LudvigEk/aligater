@@ -515,12 +515,15 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
         center=getHighestDensityPoint(fcs, xCol, yCol, parentGate, scale=scale, T=T)
     elif center.lower() == 'centroid':
         center=None
+    elif center.lower() == "custom":
+        center=customCenter
     else:
-        if scale.lower() != 'linear':
-            center=customCenter
-        else:
-            center=transformWrapper(customCenter, T, scale)
+        raise AliGaterError("in gatePC","center has to be one of 'custom', 'centroid' or 'density'")
         
+    #if scale is not linear, convert center
+    if scale.lower() != 'linear':
+        center=transformWrapper(customCenter, T, scale)
+
     if plot or filePlot is not None:
         fig, ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale, thresh=T, return_plot_objects=True)
 

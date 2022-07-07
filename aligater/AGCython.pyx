@@ -238,7 +238,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
     if population.lower() not in ["upper","lower"]:
         raise AliGaterError("Specify desired population, 'upper' or 'lower' in regard to set threshold","in gateThreshold: ")
     if orientation.lower() not in ["horizontal","vertical"]:
-        raise AliGaterError("Specify desired population, 'upper' or 'lower' in regard to set threshold","in gateThreshold: ") 
+        raise AliGaterError("Specify desired orientation, 'horizontal' or 'vertical' in regard to set threshold","in gateThreshold: ")
     if len(vI)<5:
         sys.stderr.write("WARNING, in gateThreshold: Passed parent population to "+str(name)+" contains too few events, returning empty gate.\n") 
         outputGate=AGgate([],parentGate,xCol,yCol,name)       

@@ -450,25 +450,25 @@ def densityDelimitation(fcs, xCol, parentGate=None, interval=['start','end'], si
     None currently.
     """
     if not isinstance(fcs,AGsample):
-        raise invalidSampleError("in valleySeek:")
+        raise invalidSampleError("in densityDelimitation:")
     if parentGate is None:
         vI=fcs.full_index()
     elif not isinstance(parentGate,AGgate):
-        raise invalidAGgateParentError('in valleySeek:')
+        raise invalidAGgateParentError('in densityDelimitation:')
     else:
         vI=parentGate()
     fcsDF=fcs()
     if len(vI)<5:
-        sys.stderr.write("WARNING, in valleySeek: Passed index contains too few events, defaulting to mid-interval\n")  
+        sys.stderr.write("WARNING, in densityDelimitation: Passed index contains too few events, defaulting to mid-interval\n")  
         return (interval[0]+interval[1])/2
     if xCol not in fcsDF.columns:
-        raise AliGaterError("in valleySeek: ","Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
+        raise AliGaterError("in densityDelimitation: ","Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
     if type(interval) is not list:
-        raise AliGaterError("in valleySeek: ","Interval must be specified as list of two: [x,y].\nInterval can be half open to either side, i.e. ['start',y] or [x,'end'].")
+        raise AliGaterError("in densityDelimitation: ","Interval must be specified as list of two: [x,y].\nInterval can be half open to either side, i.e. ['start',y] or [x,'end'].")
     if len(interval)!=2:
-        raise AliGaterError("in valleySeek: ","Interval must be specified as list of two: [x,y].\nInterval can be half open to either side, i.e. ['start',y] or [x,'end'].")
+        raise AliGaterError("in densityDelimitation: ","Interval must be specified as list of two: [x,y].\nInterval can be half open to either side, i.e. ['start',y] or [x,'end'].")
     if not any(isinstance(i,(float,int, str)) for i in interval):
-        raise(AliGaterError("in valleySeek: ","Interval element had an unexpected type"))
+        raise(AliGaterError("in densityDelimitation: ","Interval element had an unexpected type"))
 
     vX = getGatedVector(fcsDF, gate=xCol, vI=vI,return_type="nparray")
 
@@ -476,12 +476,12 @@ def densityDelimitation(fcs, xCol, parentGate=None, interval=['start','end'], si
         if interval[0].lower() in ['start', 'first']:
             interval[0]=min(vX) 
         else:
-            raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'first' or 'start', found "+interval[0].lower())
+            raise AliGaterError("in densityDelimitation: ","limit specified as string but option unrecognized, expected 'first' or 'start', found "+interval[0].lower())
     if type(interval[1]) is str:
         if interval[1].lower() in ['end', 'last']:
             interval[1]=max(vX) 
         else:
-            raise AliGaterError("in valleySeek: ","limit specified as string but option unrecognized, expected 'last' or 'end', found "+interval[1].lower())
+            raise AliGaterError("in densityDelimitation: ","limit specified as string but option unrecognized, expected 'last' or 'end', found "+interval[1].lower())
 
     final_vX=[]
     for x in vX:
@@ -552,6 +552,9 @@ def halfNormalDistribution(fcs, xCol, mean, direction, parentGate=None, bins=300
         Marker labels.
     mean : float
         Mean for the normal distribution that should be estimated.
+    direction : str
+        Direction to estimate the normal distribution.
+        Options are "left" "right"
     parentGate : AGgate object, optional, default: None
         Parent population to apply the gating to. 
         If no AGgate object is passed gating is applied to the ungated data frame.
