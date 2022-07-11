@@ -1515,19 +1515,9 @@ class AGExperiment:
         #****Check/Add MFI*****
         if len(fcs.MFI_Series) > 0:
             #Make sure duplicate entries are dropped (can happen if extra MFIs are applied etc)
-            non_dup_series=fcs.MFI_Series.drop_duplicates()
+            non_dup_series = fcs.MFI_Series[~fcs.MFI_Series.index.duplicated(keep='first')] #equal MFI's allowed but not equal mfi index
             #Make sure the series has the correct name
-            non_dup_series.name=fcs.sample
-            
-            dups = non_dup_series[non_dup_series.index.duplicated()]
-            if len(dups) > 0:
-                #This will cause a worse pandas error if allowed ('cannot reindex from duplicate axis') 
-                sys.stderr.write("Duplicated entry in MFI data, have you incorrectly labeled some position? Printing offending labels:\n")
-                for index,elem in dups.iteritems():
-                    reportStr = str(index)+"\t"+str(elem)+"\n"
-                    sys.stderr.write(reportStr)
-                raise AliGaterError("Duplicated entry in MFI data.")
-
+            non_dup_series.name = fcs.sample
             #Append
             self.result_MFI_DF = self.result_MFI_DF.append(non_dup_series)
         
