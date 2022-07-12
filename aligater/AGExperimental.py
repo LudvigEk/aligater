@@ -740,12 +740,12 @@ def shortestPath(fcsDF, xCol, yCol, boundaries, vI=sentinel,maxStep=30, sigma=3,
 
     if plot:
         heatmap=np.ma.masked_where(smoothedHeatmap == 0, smoothedHeatmap)
-        plt.clf()
-        fig, ax = plt.subplots()
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
         extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
-        plt.imshow(heatmap.T, extent=extent, origin='lower',aspect='equal')
-        plt.xlabel(xCol)
-        plt.ylabel(yCol)
+        ax.imshow(heatmap.T, extent=extent, origin='lower',aspect='equal')
+        ax.xlabel(xCol)
+        ax.ylabel(yCol)
         cmap=plt.get_cmap()
         cmap.set_bad(color='white')
         
@@ -764,17 +764,16 @@ def shortestPath(fcsDF, xCol, yCol, boundaries, vI=sentinel,maxStep=30, sigma=3,
             fig,ax = addLine(fig,ax,previousCoord,coord)
         previousCoord=coord
         count+=1
-        
-    if plot:
-        plt.show()
-    
+
     #Gate on originalvI
     vOut=gatePointList(fcsDF,xCol,yCol,vPL, vI=originalvI)
     reportGateResults(originalvI,vOut)
     if plot:
-        plt.clf()
-        plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
         plt.show()
+        plt.close(fig)
+        fig, ax = plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
+        plt.show()
+        plt.close(fig)
     return vOut
 
 
@@ -981,12 +980,11 @@ def gateBezier(fcs, xCol, yCol, name, parentGate=None, points=None, xParam=0, yP
 
         if filePlot is not None:
             plt.savefig(filePlot)
-            if not plot:
-                plt.close(fig)
         if plot:
             plt.show()
-            plt.close()
-            plotHeatmap(fcsDF, xCol, yCol, result_vI, scale=scale, thresh=T)
+
+            fig2, ax2 = plotHeatmap(fcsDF, xCol, yCol, result_vI, scale=scale, thresh=T)
             plt.show()
-            
+            plt.close(fig2)
+        plt.close(fig)
     return outputGate

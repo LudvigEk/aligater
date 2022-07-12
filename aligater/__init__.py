@@ -19,7 +19,6 @@ except ImportError as e:
 from aligater.AGFileSystem import *
 from aligater.AGPlotRoutines import *
 from aligater.AGClasses import *
-
 #Another Cython import wrapper
 try:
 	from aligater.AGCython import *
