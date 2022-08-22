@@ -32,7 +32,7 @@ Download AliGater by running below:
 
 After downloading, install AliGater by running in the aligater root directory:
 
-	pip3 install .
+	pip3 install -e .
 
 Contribute & Support
 ---------------------
