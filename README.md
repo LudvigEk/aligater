@@ -29,13 +29,10 @@ Download AliGater by running below:
 
 	git clone https://github.com/LudvigEk/aligater
 
-The repo contains pre-built shared objects for x64 linux (ubuntu), if you want to build from source - run:
 
-	python3 setup.py build_ext --inplace
+After downloading, install AliGater by running in the aligater root directory:
 
-Install AliGater by running:
-
-	pip3 -e install .
+	pip3 install .
 
 Contribute & Support
 ---------------------
@@ -46,7 +43,7 @@ Contribute & Support
 Contact
 -------
 
-Lead dev; med-lue@med.lu.se
+Lead dev; ludvig.ekdahl@med.lu.se
 
 Citation
 --------
