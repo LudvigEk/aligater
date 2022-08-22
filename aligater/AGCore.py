@@ -525,7 +525,7 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
         raise AliGaterError("in gatePC","center has to be one of 'custom', 'centroid' or 'density'")
         
     #if scale is not linear, convert center
-    if scale.lower() != 'linear':
+    if scale.lower() != 'linear' and center is not None:
         center=transformWrapper(customCenter, T, scale)
         
     if plot or filePlot is not None:
