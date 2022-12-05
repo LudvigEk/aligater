@@ -518,14 +518,17 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
     if center.lower() == 'density':
         center=getHighestDensityPoint(fcs, xCol, yCol, parentGate, scale=scale, T=T)
     elif center.lower() == 'centroid':
+        # Default behavior of the underlying scipy PC method is centroid based.
+        # Setting center to None achieves default behavior.
         center=None
     elif center.lower() == "custom":
         center=customCenter
     else:
-        raise AliGaterError("in gatePC","center has to be one of 'custom', 'centroid' or 'density'")
+        raise AliGaterError("in gatePC", "center has to be one of 'custom', 'centroid' or 'density'")
         
     #if scale is not linear, convert center
-    if scale.lower() != 'linear':
+    if scale.lower() != 'linear' and center is not None:
+        # Don't try to convert None.
         center=transformWrapper(customCenter, T, scale)
         
     if plot or filePlot is not None:
@@ -541,12 +544,12 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
     if 'adjustAngle' in kwargs:
         #Collect requested adjustment
         adjustAngle=kwargs['adjustAngle']
-        assert isinstance(adjustAngle,(float, int))
+        assert isinstance(adjustAngle, (float, int))
         #Recalculate eigen 1
         adjustAngle=math.radians(adjustAngle)
         angle=angle+adjustAngle
 
-        new_eigen1=calculateNormVector([0,0], angle)
+        new_eigen1=calculateNormVector([0, 0], angle)
         #Recalculate eigen 2
         secondAngle=calculateAngle(center, PC2)
         secondAngle=secondAngle+adjustAngle

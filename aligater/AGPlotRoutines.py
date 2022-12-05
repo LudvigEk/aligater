@@ -21,16 +21,6 @@
 import pandas as pd
 import numpy as np
 
-import matplotlib
-matplotlib.use('Agg') #Solves tkinter backend problems using ray multithreading - maybe bad in jupyter?
-
-from matplotlib import pyplot as plt
-import matplotlib.colors
-from matplotlib.patches import Ellipse, Arrow
-from matplotlib.ticker import Locator, Formatter
-from matplotlib import transforms as mtransforms
-from matplotlib import rcParams
-
 import math
 import six
 from scipy.ndimage.filters import gaussian_filter1d
@@ -44,6 +34,20 @@ import sys
 import aligater.AGConfig as agconf
 from aligater.AGFileSystem import getGatedVector, AliGaterError
 from aligater.AGCythonUtils import __vectorlogicleTransform, __vectorInverselogicleTransform, __vectorBilogTransform, __vectorInverseBilogTransform
+
+import matplotlib
+if agconf.execMode == "jupyter":
+    # Use default backend/Let matplotlib decide
+    pass
+else:
+    matplotlib.use('Agg')  # Solves tkinter backend problems using ray multithreading - gives some problems in notebooks though
+
+from matplotlib import pyplot as plt
+import matplotlib.colors
+from matplotlib.patches import Ellipse, Arrow
+from matplotlib.ticker import Locator, Formatter
+from matplotlib import transforms as mtransforms
+from matplotlib import rcParams
 
 sentinel = object()
 

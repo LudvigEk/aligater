@@ -1499,12 +1499,17 @@ class AGExperiment:
                         sys.stderr.write(reportStr)
                         sample_ref_list = [self.load_sample(self.fcsList[i]) for i in
                                            range(fcs_index, fcs_index + n_processes)]
+                        #Check for failed loads
+                        for i, sample_ref in enumerate(sample_ref_list):
+                            if sample_ref is None:
+                                reportStr="Sample "+self.fcsList[i+fcs_index]+" failed loading, skipping\n"
+                                sys.stderr.write(reportStr)
                         # Distribute
                         reportStr = "Applying strategy to sample " + str(fcs_index) + " to " + str(
                             fcs_index + n_processes) + "\n"
                         sys.stderr.write(reportStr)
                         futures = [executor.submit(self.fcs_apply_strategy, sample_ref, strategy, *args, **kwargs) for
-                                   sample_ref in sample_ref_list]
+                                   sample_ref in sample_ref_list if sample_ref is not None]
 
                     results = []
                     for future in as_completed(futures):
