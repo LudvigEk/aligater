@@ -55,7 +55,7 @@ configuration = {
       'license': 'MIT',
       'packages': find_packages('aligater'),
       'setup_requires': ['numpy','Cython'],
-      'install_requires': ['numpy', 'scipy', 'sklearn','pandas', 'matplotlib','Cython','h5py', 'pillow>=6.2.0'],
+      'install_requires': ['numpy', 'scipy', 'sklearn','pandas', 'matplotlib','Cython','h5py'],
       'ext_modules': lazy_cythonize(extensions),
       'package_dir' : {'.': 'aligater'},
       'data_files': [('.', [])],
