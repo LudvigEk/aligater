@@ -1,3 +1,4 @@
 ipykernel
 nbsphinx
 pillow>=6.2.0
+sklearn
