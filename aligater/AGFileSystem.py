@@ -46,7 +46,7 @@ class AliGaterError(ExceptionTemplate): pass
 #Some reoccuring, common ones
 invalidAGgateError=AliGaterError('passed gate is not a valid AGgate object')
 invalidAGgateParentError=AliGaterError('Invalid AGgate object passed as parentGate')
-invalidSampleError=AliGaterError('Invalid AGsample object')
+invalidSampleError=AliGaterError('Invalid AGSample object')
 filePlotError=AliGaterError("If plotting to file is requested filePlot must be string filename")
 markerError=AliGaterError("not present in sample, check spelling or control your dataframe.columns labels")
 
@@ -247,7 +247,7 @@ def loadHDF5sample(path, sampling_resolution=32):
     """
     #********Lazy loading of*************
     # could move to AGClasses and avoid, kind of makes sense.
-    from aligater.AGClasses import AGsample
+    from aligater.AGClasses import AGSample
     #************************************
     
     fcsDF = pd.read_hdf(path, key='fcs')
@@ -259,7 +259,7 @@ def loadHDF5sample(path, sampling_resolution=32):
     rows = len(fcsDF)
     if agconf.ag_verbose:
         sys.stderr.write("Loaded dataset with "+str(rows)+" events.\n")
-    return AGsample(fcsDF, h5py_internal_name, sampling_resolution=sampling_resolution)
+    return AGSample(fcsDF, h5py_internal_name, sampling_resolution=sampling_resolution)
 
 
 def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type="index", markers=None, marker_names='label',ignore_minCell_filter=False, flourochrome_area_filter=False, sampling_resolution=32, nOfEvents=None):
@@ -312,12 +312,12 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     """
     #********Lazy loading of*************
     # could move to AGClasses and avoid, kind of makes sense.
-    from aligater.AGClasses import AGsample
+    from aligater.AGClasses import AGSample
     #************************************
     if not isinstance(return_type, str):
-        raise TypeError("return_type must be specified as string and either of 'AGsample' or 'index'")
+        raise TypeError("return_type must be specified as string and either of 'AGSample' or 'index'")
     if not return_type.lower() in ['agsample', 'index']:
-        raise ValueError("return_type must be specified as string and either of 'AGsample' or 'index'")
+        raise ValueError("return_type must be specified as string and either of 'AGSample' or 'index'")
     if not isinstance(marker_names,str):
         raise AliGaterError("in loadFCS:","invalid dtype in marker_names, expected "+str(type(str))+" found "+str(type(marker_names)))
     if not marker_names.lower() in ['label','color']:
@@ -441,12 +441,12 @@ def loadFCS(path, compensate=True, metadata=False, comp_matrix=None, return_type
     
     if metadata:
         if return_type.lower()=='agsample':
-            return metaDict, AGsample(fcsDF,path, sampling_resolution=sampling_resolution)
+            return metaDict, AGSample(fcsDF, path, sampling_resolution=sampling_resolution)
         else:
             return metaDict, fcsDF
     else:
         if return_type.lower()=='agsample':
-            return AGsample(fcsDF,path, sampling_resolution=sampling_resolution)
+            return AGSample(fcsDF, path, sampling_resolution=sampling_resolution)
         else:
             return fcsDF
 
@@ -565,11 +565,11 @@ def getFileName(sSrc):
 def __loadH5FCS(path, sampling_resolution=32):
     #********Lazy loading of*************
     # could move to AGClasses and avoid, kind of makes sense.
-    from aligater.AGClasses import AGsample
+    from aligater.AGClasses import AGSample
     #************************************    
     with h5py.File(path,'r') as hf:
             sa2 = hf['intensities'][:]
             filePath = hf['filePath']
     fcsDF = pd.DataFrame(sa2)
-    fcs = AGsample(fcsDF, filePath, sampling_resolution=sampling_resolution)
+    fcs = AGSample(fcsDF, filePath, sampling_resolution=sampling_resolution)
     return fcs

@@ -31,12 +31,12 @@ from scipy.ndimage.filters import gaussian_filter1d
 import aligater.AGConfig as agconf
 from aligater.AGPlotRoutines import plotHeatmap, plot_gmm, addLine, addAxLine, transformWrapper, convertTologiclePlotCoordinates, convertToBiLogPlotCoordinates, logicleBin, logicleTransform, bilogBin, bilogTransform, inverselogicleTransform, inverseBilogTransform, inverseTransformWrapper, plot_densityFunc
 from aligater.AGCython import gateEllipsoid, gateThreshold
-from aligater.AGClasses import AGgate, AGsample
+from aligater.AGClasses import AGgate, AGSample
 from aligater.AGFileSystem import getGatedVector, getGatedVectors, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
 
 def heatmap(fcs, xmarker, ymarker, population, *args, **kwargs):
     #User friendly wrapper for plotHeatmap
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in heatmap:")
     if not isinstance(population,AGgate):
         raise AliGaterError('in heatmap:','population had an unexpected type, expected AGClasses.AGgate, found '+str(type(population)))
@@ -131,7 +131,7 @@ def gmm2D(fcs, xCol, yCol, nOfComponents, parentGate=None, scale='linear', T=100
         sys.stderr.write("WARNING, in gmm2D: Too few events, cannot fit mixture model, returning unfitted GMM object.\n")         
         return GaussianMixture(n_components=nOfComponents,*args,**kwargs) 
     
-    if not isinstance(fcs, AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in gmm2D: ")
     else:
         fcsDF=fcs()
@@ -192,7 +192,7 @@ def gateGMM(fcs, name, xCol, yCol, gmm, parentGate=None, sigma=1, widthScale=1, 
         vI=parentGate()
     if not isinstance(gmm, GaussianMixture):
         raise TypeError("gmm argument must be a sklearn.mixture.GaussianMixture object")
-    if not isinstance(fcs, AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in gateGMM: ")
     else:
         fcsDF=fcs()    
@@ -410,7 +410,7 @@ def getHighestDensityPoint(fcs, xCol, yCol, parentGate=None, bins=300, scale='li
 
     None currently.
     """
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in getHighestDensityPoint:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -650,7 +650,7 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
 
     None currently.
     """
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in valleySeek:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -809,7 +809,7 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
         plot=True
     else:
         plot=False
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in quadGate:")
     if filePlot is not None:
         if not isinstance(filePlot,str):
@@ -990,7 +990,7 @@ def EllipseGate(fcs, name, xCol, yCol, center, width, parentGate=None, height=No
         plot=True
     else:
         plot=False    
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in EllipseGate:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -1115,7 +1115,7 @@ def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yO
         plot=True
     else:
         plot=False    
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in gateCorner:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -1240,7 +1240,7 @@ def gateBox(fcs, name, xCol, yCol, xThreshRight, yThreshTop, xThreshLeft, yThres
         plot=True
     else:
         plot=False    
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in gateCorner:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -1345,7 +1345,7 @@ def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='li
         raise invalidAGgateParentError("in customQuadGate: ")
     else:
         vI=parentGate()
-    if not isinstance(fcs, AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in customQuadGate: ")
     else:
         fcsDF=fcs()
@@ -1491,7 +1491,7 @@ def backGate(fcs, xCol, yCol, population, background_population=None, markersize
         plot=True
     else:
         plot=False
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in backGate:")
         
     if not isinstance(population,AGgate):
@@ -1617,7 +1617,7 @@ def gateTiltedLine(fcs, xCol, yCol, theta, name, parentGate=None, startPoint=(No
         raise invalidAGgateParentError("in gateTiltedLine: ")
     else:
         vI=parentGate()
-    if not isinstance(fcs, AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in gateTiltedLine: ")
     else:
         fcsDF=fcs()

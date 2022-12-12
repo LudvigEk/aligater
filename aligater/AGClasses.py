@@ -312,7 +312,7 @@ class AGgate:
             return outputStr
 
 
-class AGsample:
+class AGSample:
     """
     **Overview**
 
@@ -491,7 +491,7 @@ class AGsample:
             List of str names of markers to save MFIs of. Must match exactly, case sensitive.
         """
         if not isinstance(gate,AGgate):
-            raise invalidAGgateError("in AGsample.update: ")
+            raise invalidAGgateError("in AGSample.update: ")
         if gate.xCol not in self.fcsDF.columns:
             raise AliGaterError("in update: ","x marker label ("+str(gate.xCol)+") doesn't exist in the sample")
         if gate.xCol not in self.fcsDF.columns:

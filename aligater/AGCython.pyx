@@ -37,7 +37,7 @@ from operator import itemgetter
 import aligater.AGConfig as agconf
 from aligater.AGFileSystem import getGatedVector, getGatedVectors, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
 from aligater.AGPlotRoutines import addLine, addAxLine, getHeatmap, logicleTransform, inverselogicleTransform, plotHeatmap, plot_densityFunc, convertTologiclePlotCoordinate, logicleLocator, logicleFormatter, BiLogLocator, BiLogFormatter, transformWrapper
-from aligater.AGClasses import AGsample,AGgate
+from aligater.AGClasses import AGSample,AGgate
 
 #For cython optimisations with boundscheck and wraparound
 cimport cython
@@ -216,7 +216,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
         plot=True
     else:
         plot=False
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in gateThreshold:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -324,8 +324,8 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
     else:
         plot=False
     cdef list vI, originalvI
-    if not fcs.__class__.__name__=="AGsample":
-        raise TypeError("invalid AGsample object")
+    if not fcs.__class__.__name__=="AGSample":
+        raise TypeError("invalid AGSample object")
     if parentGate is None:
         vI=fcs.full_index()
         startingGate=None
@@ -526,8 +526,8 @@ def horizontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     else:
         plot=False
     cdef list vI, originalvI
-    if not fcs.__class__.__name__=="AGsample":
-        raise TypeError("invalid AGsample object")
+    if not fcs.__class__.__name__=="AGSample":
+        raise TypeError("invalid AGSample object")
     if parentGate is None:
         vI=fcs.full_index()
         startingGate=None
@@ -758,8 +758,8 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
     else:
         plot=False
     cdef list vI, originalvI
-    if not fcs.__class__.__name__=="AGsample":
-        raise TypeError("invalid AGsample object")
+    if not fcs.__class__.__name__=="AGSample":
+        raise TypeError("invalid AGSample object")
     #TODO HANDLE START/END X TYPES
     if parentGate is None:
         vI=fcs.full_index()

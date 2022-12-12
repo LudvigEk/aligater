@@ -29,7 +29,7 @@ from aligater.AGCore import customQuadGate, getDensityFunc
 from aligater.AGPlotRoutines import getHeatmap, convertTologiclePlotCoordinate, logicleTransform, bilogTransform, inverselogicleTransform, inverseBilogTransform, addLine, plotHeatmap, transformWrapper, inverseTransformWrapper
 from aligater.AGCython import gateThreshold, gatePointList
 from aligater.AGFileSystem import getGatedVector, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
-from aligater.AGClasses import AGgate, AGsample
+from aligater.AGClasses import AGgate, AGSample
 
 sentinel = object()
 from scipy.ndimage.filters import gaussian_filter
@@ -110,7 +110,7 @@ def variableQuadGate(fcs, names, xCol, yCol, threshList, testRange, position, te
         plot=True
     else:
         plot=False    
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in variableQuadGate:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -449,7 +449,7 @@ def densityDelimitation(fcs, xCol, parentGate=None, interval=['start','end'], si
 
     None currently.
     """
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in densityDelimitation:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -585,7 +585,7 @@ def halfNormalDistribution(fcs, xCol, mean, direction, parentGate=None, bins=300
         raise AliGaterError("Parameter direction had an invalid type, found "+str(type(direction))+" expected "+str(type(str)),"in halfNormalDistribution: ")
     if direction.lower() not in ["left","right"]:
         raise AliGaterError("Specify direction as 'left' or 'right'","in halfNormalDistribution: ")
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in halfNormalDistribution: ")
     if parentGate is None:
         vI=fcs.full_index()
@@ -847,7 +847,7 @@ def gateBezier(fcs, xCol, yCol, name, parentGate=None, points=None, xParam=0, yP
         raise invalidAGgateParentError("in gateBezier: ")
     else:
         vI=parentGate()
-    if not isinstance(fcs, AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in gateBezier: ")
     else:
         fcsDF=fcs()

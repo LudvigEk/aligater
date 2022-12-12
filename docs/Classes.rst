@@ -4,7 +4,7 @@ Classes
 .. autoclass:: AGClasses.AGExperiment
     :members:
 
-.. autoclass:: AGClasses.AGsample
+.. autoclass:: AGClasses.AGSample
     :members:
 
 .. autoclass:: AGClasses.AGgate
