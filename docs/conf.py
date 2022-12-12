@@ -12,15 +12,15 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-import os
-import sys
-sys.path.append(os.path.abspath('../aligater'))
-sys.path.append(os.path.abspath('..'))
+import sys, os
+sys.path.insert(0, os.path.abspath(".."))
+sys.path.insert(0, os.path.abspath("../aligater"))
+
 
 # -- Project information -----------------------------------------------------
 
 project = 'AliGater'
-copyright = '2021, Ludvig Ekdahl'
+copyright = '2023, Ludvig Ekdahl'
 author = 'Ludvig Ekdahl'
 
 # The short X.Y version

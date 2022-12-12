@@ -1,4 +1,6 @@
+-e .[docs]
 ipykernel
 nbsphinx
+cython>=0.28
 pillow>=6.2.0
-scikit-learn
+aligater
