@@ -21,13 +21,6 @@
 import pandas as pd
 import numpy as np
 
-import matplotlib.pyplot as plt
-import matplotlib.colors
-from matplotlib.patches import Ellipse, Arrow
-from matplotlib.ticker import Locator, Formatter
-from matplotlib import transforms as mtransforms
-from matplotlib import rcParams
-
 import math
 import six
 from scipy.ndimage.filters import gaussian_filter1d
@@ -41,6 +34,20 @@ import sys
 import aligater.AGConfig as agconf
 from aligater.AGFileSystem import getGatedVector, AliGaterError
 from aligater.AGCythonUtils import __vectorlogicleTransform, __vectorInverselogicleTransform, __vectorBilogTransform, __vectorInverseBilogTransform
+
+import matplotlib
+if agconf.execMode == "jupyter":
+    # Use default backend/Let matplotlib decide
+    pass
+else:
+    matplotlib.use('Agg')  # Solves tkinter backend problems using ray multithreading - gives some problems in notebooks though
+
+from matplotlib import pyplot as plt
+import matplotlib.colors
+from matplotlib.patches import Ellipse, Arrow
+from matplotlib.ticker import Locator, Formatter
+from matplotlib import transforms as mtransforms
+from matplotlib import rcParams
 
 sentinel = object()
 
@@ -164,7 +171,6 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
     if len(vX)<2 or len(vY)<2:
         sys.stderr.write("Passed index contains no events\n")
         return None, None
-    plt.clf()
     if custom_rcParams:
         plt.rcParams=rcParams
     else:
@@ -182,50 +188,43 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
         
     heatmap=np.ma.masked_where(heatmap <= mask_value, heatmap)
 
-    plt.clf()
-
-    fig, ax = plt.subplots()
-    plt.imshow(heatmap.T, extent=extent, origin='lower',aspect=aspect, cmap=cmap)
-
-    
-    #CLOSES ALL OPEN FIGURES ON CALL - PERHAPS BAD ?
-    plt.close('all')
-    fig = plt.figure()
-    ax = plt.gca()
+    figure = plt.figure()
+    axes = figure.add_subplot(111)
     #matplotlib 3.2.x changed behaviour of interpolation
     #see https://github.com/matplotlib/matplotlib/issues/17722
     #and https://matplotlib.org/3.2.1/api/api_changes.html#default-image-interpolation
-    plt.imshow(heatmap.T, extent=extent, origin='lower',aspect=aspect, interpolation='none')
-
-    plt.xlabel(x)
-    plt.ylabel(y)
     if collect_default:
         cmap=plt.get_cmap()
     cmap.set_bad(color='white') #Zeroes should be white, not blue
 
+    axes.imshow(heatmap.T, extent=extent, origin='lower',aspect=aspect, interpolation='none', cmap=cmap)
+
+    axes.set_xlabel(x)
+    axes.set_ylabel(y)
+
     if xscale.lower()=='logicle':
-        ax=plt.gca()
-        ax.xaxis.set_major_locator(logicleLocator(linCutOff=thresh))
-        ax.xaxis.set_major_formatter(logicleFormatter(linCutOff=thresh))
+        axes.xaxis.set_major_locator(logicleLocator(linCutOff=thresh))
+        axes.xaxis.set_major_formatter(logicleFormatter(linCutOff=thresh))
+
     if yscale.lower()=='logicle':
-        ax=plt.gca()
-        ax.yaxis.set_major_locator(logicleLocator(linCutOff=thresh))
-        ax.yaxis.set_major_formatter(logicleFormatter(linCutOff=thresh))
+        axes.yaxis.set_major_locator(logicleLocator(linCutOff=thresh))
+        axes.yaxis.set_major_formatter(logicleFormatter(linCutOff=thresh))
     
     if xscale.lower()=='bilog':
-        ax=plt.gca()
-        ax.xaxis.set_major_locator(BiLogLocator(linCutOff=thresh))
-        ax.xaxis.set_major_formatter(BiLogFormatter(linCutOff=thresh))
+        axes.xaxis.set_major_locator(BiLogLocator(linCutOff=thresh))
+        axes.xaxis.set_major_formatter(BiLogFormatter(linCutOff=thresh))
+
     if yscale.lower()=='bilog':
-        ax=plt.gca()
-        ax.yaxis.set_major_locator(BiLogLocator(linCutOff=thresh))
-        ax.yaxis.set_major_formatter(BiLogFormatter(linCutOff=thresh))
+        axes.yaxis.set_major_locator(BiLogLocator(linCutOff=thresh))
+        axes.yaxis.set_major_formatter(BiLogFormatter(linCutOff=thresh))
     
     if bXlim:
-        ax.xaxis.set_xlim(left=xscale_limits[0], right=xscale_limits[1])
+        axes.xaxis.set_xlim(left=xscale_limits[0], right=xscale_limits[1])
+
     if bYlim:
-        ax.yaxis.set_xlim(left=yscale_limits[0], right=yscale_limits[1])
-    return fig,ax
+        axes.yaxis.set_xlim(left=yscale_limits[0], right=yscale_limits[1])
+
+    return figure, axes
     
 
 def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='linear', T=1000, normalize=False, xlim=None, ylim=None, range=None):
@@ -363,17 +362,17 @@ def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='lin
 def plot_flattened_heatmap(heatmap_array, nOfBins, mask=True):
     
     reshaped_array = heatmap_array.reshape(nOfBins, nOfBins)
-    fig, ax = plt.subplots()
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
     if mask:
         heatmap=np.ma.masked_where(reshaped_array == 0, reshaped_array)
         cmap=plt.get_cmap()
         cmap.set_bad(color='white')
     else:
         heatmap=reshaped_array
-    plt.imshow(heatmap.T[::-1])
+    ax.imshow(heatmap.T[::-1])
     plt.show()
-    plt.clf()
-    
+    plt.close(fig)
     return None
 
 
@@ -623,7 +622,7 @@ def addLine(fig, ax, lStartCoordinate, lEndCoordinate, size=2, scale='linear', T
         yCoordinates=convertToBiLogPlotCoordinates([lStartCoordinate[1],lEndCoordinate[1]], vmin=view[0], vmax=view[1], T=T)
         lStartCoordinate=[xCoordinates[0],yCoordinates[0]]
         lEndCoordinate=[xCoordinates[1],yCoordinates[1]]
-    plt.plot([lStartCoordinate[0], lEndCoordinate[0]], [lStartCoordinate[1], lEndCoordinate[1]], color='r', linestyle='-', linewidth=size,figure=fig)
+    ax.plot([lStartCoordinate[0], lEndCoordinate[0]], [lStartCoordinate[1], lEndCoordinate[1]], color='r', linestyle='-', linewidth=size,figure=fig)
     return fig, ax
 
 def addArrow(fig, ax, lStartCoordinate, lEndCoordinate, size=5000):
@@ -648,7 +647,6 @@ def draw_ellipse(position, covariance, sigma=2, ax=None, **kwargs):
     else:
         angle = 0
         width = height = np.sqrt(covariance)*sigma
-
     #Note width, height here is the full width and height and not the semiaxis length
     # Draw the Ellipse
     if plot:
@@ -736,21 +734,19 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
         histo=np.histogram(data, bins)
     vHisto=np.linspace(min(histo[1]),max(histo[1]),bins)
     smoothedHisto=gaussian_filter1d(histo[0].astype(float),sigma)
-    plt.clf()
-    fig,ax = plt.subplots()
-    ax.plot(vHisto,smoothedHisto, label="pdf for "+str(xCol)+"\nsigma: "+str(sigma))
-    plt.legend(loc='upper right', shadow=True, fontsize='medium')
+    figure = plt.figure()
+    axes = figure.add_subplot(111)
+    axes.plot(vHisto,smoothedHisto, label="pdf for "+str(xCol)+"\nsigma: "+str(sigma))
+    axes.legend(loc='upper right', shadow=True, fontsize='medium')
     if scale.lower()!='linear':
-        ax=plt.gca()
-        ax.set_xlim(left=min(data),right=max(data))
+        axes.set_xlim(left=min(data),right=max(data))
         if scale.lower()=='logicle':
-            ax.xaxis.set_major_locator(logicleLocator(linCutOff=T))
-            ax.xaxis.set_major_formatter(logicleFormatter(linCutOff=T))
+            axes.xaxis.set_major_locator(logicleLocator(linCutOff=T))
+            axes.xaxis.set_major_formatter(logicleFormatter(linCutOff=T))
         if scale.lower()=='bilog':
-            ax.xaxis.set_major_locator(BiLogLocator(linCutOff=T))
-            ax.xaxis.set_major_formatter(BiLogFormatter(linCutOff=T))            
-    #plt.show()
-    return fig,ax
+            axes.xaxis.set_major_locator(BiLogLocator(linCutOff=T))
+            axes.xaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
+    return figure, axes
 
 def __autoBinCount(data):
     #Internal function that mimics numpus numpy.histogram_bin_edges functionality to guess appropriate number of bins

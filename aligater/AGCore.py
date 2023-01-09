@@ -31,12 +31,12 @@ from scipy.ndimage.filters import gaussian_filter1d
 import aligater.AGConfig as agconf
 from aligater.AGPlotRoutines import plotHeatmap, plot_gmm, addLine, addAxLine, transformWrapper, convertTologiclePlotCoordinates, convertToBiLogPlotCoordinates, logicleBin, logicleTransform, bilogBin, bilogTransform, inverselogicleTransform, inverseBilogTransform, inverseTransformWrapper, plot_densityFunc
 from aligater.AGCython import gateEllipsoid, gateThreshold
-from aligater.AGClasses import AGgate, AGsample
+from aligater.AGClasses import AGgate, AGSample
 from aligater.AGFileSystem import getGatedVector, getGatedVectors, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
 
 def heatmap(fcs, xmarker, ymarker, population, *args, **kwargs):
     #User friendly wrapper for plotHeatmap
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in heatmap:")
     if not isinstance(population,AGgate):
         raise AliGaterError('in heatmap:','population had an unexpected type, expected AGClasses.AGgate, found '+str(type(population)))
@@ -131,7 +131,7 @@ def gmm2D(fcs, xCol, yCol, nOfComponents, parentGate=None, scale='linear', T=100
         sys.stderr.write("WARNING, in gmm2D: Too few events, cannot fit mixture model, returning unfitted GMM object.\n")         
         return GaussianMixture(n_components=nOfComponents,*args,**kwargs) 
     
-    if not isinstance(fcs, AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in gmm2D: ")
     else:
         fcsDF=fcs()
@@ -192,7 +192,7 @@ def gateGMM(fcs, name, xCol, yCol, gmm, parentGate=None, sigma=1, widthScale=1, 
         vI=parentGate()
     if not isinstance(gmm, GaussianMixture):
         raise TypeError("gmm argument must be a sklearn.mixture.GaussianMixture object")
-    if not isinstance(fcs, AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in gateGMM: ")
     else:
         fcsDF=fcs()    
@@ -205,6 +205,8 @@ def gateGMM(fcs, name, xCol, yCol, gmm, parentGate=None, sigma=1, widthScale=1, 
     
     if plot:
         fig,ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale, thresh=T, aspect='auto')
+        plt.show()
+        plt.close(fig)
     else:
         ax=None
     vEllipses = plot_gmm(fcsDF,xCol, yCol, vI, gmm, sigma, ax)
@@ -229,6 +231,8 @@ def gateGMM(fcs, name, xCol, yCol, gmm, parentGate=None, sigma=1, widthScale=1, 
     outputGate=AGgate(vResult, parentGate, xCol, yCol, name)
     if plot:
         fig, ax = plotHeatmap(fcsDF, xCol, yCol, vResult, scale=scale, thresh=T)
+        plt.show()
+        plt.close(fig)
     return outputGate
     
     
@@ -406,7 +410,7 @@ def getHighestDensityPoint(fcs, xCol, yCol, parentGate=None, bins=300, scale='li
 
     None currently.
     """
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in getHighestDensityPoint:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -514,16 +518,19 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
     if center.lower() == 'density':
         center=getHighestDensityPoint(fcs, xCol, yCol, parentGate, scale=scale, T=T)
     elif center.lower() == 'centroid':
+        # Default behavior of the underlying scipy PC method is centroid based.
+        # Setting center to None achieves default behavior.
         center=None
     elif center.lower() == "custom":
         center=customCenter
     else:
-        raise AliGaterError("in gatePC","center has to be one of 'custom', 'centroid' or 'density'")
+        raise AliGaterError("in gatePC", "center has to be one of 'custom', 'centroid' or 'density'")
         
     #if scale is not linear, convert center
-    if scale.lower() != 'linear':
+    if scale.lower() != 'linear' and center is not None:
+        # Don't try to convert None.
         center=transformWrapper(customCenter, T, scale)
-
+        
     if plot or filePlot is not None:
         fig, ax = plotHeatmap(fcsDF, xCol, yCol, vI, scale=scale, thresh=T, return_plot_objects=True)
 
@@ -537,12 +544,12 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
     if 'adjustAngle' in kwargs:
         #Collect requested adjustment
         adjustAngle=kwargs['adjustAngle']
-        assert isinstance(adjustAngle,(float, int))
+        assert isinstance(adjustAngle, (float, int))
         #Recalculate eigen 1
         adjustAngle=math.radians(adjustAngle)
         angle=angle+adjustAngle
 
-        new_eigen1=calculateNormVector([0,0], angle)
+        new_eigen1=calculateNormVector([0, 0], angle)
         #Recalculate eigen 2
         secondAngle=calculateAngle(center, PC2)
         secondAngle=secondAngle+adjustAngle
@@ -561,14 +568,13 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
         #addLine(fig, ax, center, PC2)
         ax.add_patch(Ellipse(center, 2*width, 2*height, np.degrees(angle), fill=False, edgecolor='#FF0000', linestyle='dashed'))
         if filePlot is not None:
-            plt.savefig(filePlot)
-            if not plot:
-                plt.close(fig)
+            fig.savefig(filePlot)
         if plot:
             plt.show()
-            plotHeatmap(fcsDF, xCol, yCol, result, scale=scale, thresh=T)
+            fig2, ax2 = plotHeatmap(fcsDF, xCol, yCol, result, scale=scale, thresh=T)
             plt.show()
-            plt.clf()
+            plt.close(fig2)
+        plt.close(fig)
     if parentGate is not None:
         outputGate=AGgate(result, parentGate, xCol, yCol, name)
     else:
@@ -644,7 +650,7 @@ def valleySeek(fcs, xCol, parentGate=None, interval=['start','end'], sigma=3, bi
 
     None currently.
     """
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in valleySeek:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -803,7 +809,7 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
         plot=True
     else:
         plot=False
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in quadGate:")
     if filePlot is not None:
         if not isinstance(filePlot,str):
@@ -859,7 +865,7 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
     
     if plot or filePlot is not None:
         if scale!='linear':
-            fig,ax=plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)    
+            fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)
         else:
             fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
         addAxLine(fig,ax,xThresh,'vertical',scale=scale, T=T)
@@ -868,9 +874,7 @@ def quadGate(fcs, names, xCol, yCol, xThresh, yThresh, parentGate=None, scale='l
         if plot:
             plt.show()    
         if filePlot is not None:
-            plt.savefig(filePlot)
-            if not plot:
-                plt.close(fig)
+            fig.savefig(filePlot)
         plt.close(fig)  
     
     TopLeft=AGgate(vTopLeft, parentGate, xCol, yCol, names[0])
@@ -986,7 +990,7 @@ def EllipseGate(fcs, name, xCol, yCol, center, width, parentGate=None, height=No
         plot=True
     else:
         plot=False    
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in EllipseGate:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -1049,14 +1053,13 @@ def EllipseGate(fcs, name, xCol, yCol, center, width, parentGate=None, height=No
         #addLine(fig, ax, center, PC2)
         ax.add_patch(Ellipse(center, 2*width, 2*height, np.degrees(angle), fill=False, edgecolor='#FF0000', linestyle='dashed'))
         if filePlot is not None:
-            plt.savefig(filePlot)
-            if not plot:
-                plt.close(fig)
+            fig.savefig(filePlot)
         if plot:
             plt.show()
-            plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale, thresh=T)
+            fig2, ax2 = plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale, thresh=T)
             plt.show()
-            plt.clf()
+            plt.close(fig2)
+        plt.close(fig)
     if parentGate is not None:
         outputGate=AGgate(vOut, parentGate, xCol, yCol, name)
     else:
@@ -1112,7 +1115,7 @@ def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yO
         plot=True
     else:
         plot=False    
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in gateCorner:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -1172,14 +1175,13 @@ def gateCorner(fcs, name, xCol, yCol, xThresh, yThresh, xOrientation='upper', yO
                 addLine(fig,ax, [xThresh,yThresh], [xmin, yThresh],scale=scale, T=T)
                 addLine(fig,ax, [xThresh,yThresh], [xThresh, ymin],scale=scale, T=T)
         if filePlot is not None:
-            plt.savefig(filePlot)
-            if not plot:
-                plt.close(fig)
+            fig.savefig(filePlot)
         if plot:
             plt.show()
-            plt.clf()
-            plotHeatmap(fcsDF, xCol, yCol, vOutput,bins=bins, scale=scale, thresh=T)
+            fig2,ax2 = plotHeatmap(fcsDF, xCol, yCol, vOutput,bins=bins, scale=scale, thresh=T)
             plt.show()
+            plt.close(fig2)
+        plt.close(fig)
 
         
     if parentGate is not None:
@@ -1238,7 +1240,7 @@ def gateBox(fcs, name, xCol, yCol, xThreshRight, yThreshTop, xThreshLeft, yThres
         plot=True
     else:
         plot=False    
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in gateCorner:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -1277,15 +1279,13 @@ def gateBox(fcs, name, xCol, yCol, xThreshRight, yThreshTop, xThreshLeft, yThres
         addLine(fig,ax, [xThreshLeft,yThreshTop], [xThreshRight, yThreshTop],scale=scale, T=T)
 
         if filePlot is not None:
-            plt.savefig(filePlot)
-            if not plot:
-                plt.close(fig)
+            fig.savefig(filePlot)
         if plot:
             plt.show()
-            plt.clf()
-            plotHeatmap(fcsDF, xCol, yCol, vOutput,bins=bins, scale=scale, thresh=T)
+            fig2, ax2 = plotHeatmap(fcsDF, xCol, yCol, vOutput,bins=bins, scale=scale, thresh=T)
             plt.show()
-
+            plt.close(fig2)
+        plt.close(fig)
         
     if parentGate is not None:
         outputGate=AGgate(vOutput, parentGate, xCol, yCol, name)
@@ -1345,7 +1345,7 @@ def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='li
         raise invalidAGgateParentError("in customQuadGate: ")
     else:
         vI=parentGate()
-    if not isinstance(fcs, AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in customQuadGate: ")
     else:
         fcsDF=fcs()
@@ -1416,7 +1416,7 @@ def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='li
         return None
     if plot or filePlot is not None:
         if scale.lower()!='linear':
-            fig,ax=plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)    
+            fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)
         else:
             fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
         xlim = ax.get_xlim()
@@ -1430,10 +1430,10 @@ def customQuadGate(fcs, names, xCol, yCol,threshList, parentGate=None, scale='li
             addLine(fig,ax,[xTopThresh,ylim[1]],[xTopThresh,yLeftThresh],scale=scale, T=T)
             addLine(fig,ax,[xBottomThresh,ylim[0]],[xBottomThresh,yLeftThresh],scale=scale, T=T)
         if filePlot is not None:
-            plt.savefig(filePlot)
+            fig.savefig(filePlot)
         if plot:
             plt.show()
-        plt.close()
+        plt.close(fig)
     TopLeft=AGgate(vTopLeft, parentGate, xCol, yCol, names[0])
     TopRight=AGgate(vTopRight, parentGate, xCol, yCol, names[1])
     BottomRight=AGgate(vBottomRight, parentGate, xCol, yCol, names[2])
@@ -1491,7 +1491,7 @@ def backGate(fcs, xCol, yCol, population, background_population=None, markersize
         plot=True
     else:
         plot=False
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in backGate:")
         
     if not isinstance(population,AGgate):
@@ -1522,8 +1522,8 @@ def backGate(fcs, xCol, yCol, population, background_population=None, markersize
             
     #backPop = population to highlight
     #vI = background population
-    if scale!='linear':
-        fig,ax=plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)    
+    if scale != 'linear':
+        fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='auto', scale=scale, thresh=T)
     else:
         fig, ax = plotHeatmap(fcsDF, xCol, yCol,vI,aspect='equal')
         
@@ -1552,10 +1552,10 @@ def backGate(fcs, xCol, yCol, population, background_population=None, markersize
             y=convertToBiLogPlotCoordinates(y,vmin,vmax,T)
     ax.plot(x,y,'o',color=color,markersize=markersize)
     if filePlot is not None:
-        plt.savefig(filePlot)
-        plt.close()
+        fig.savefig(filePlot)
     if plot:
-        plt.show()
+        plt.show(fig)
+    plt.close(fig)
     return None
 
 def gateTiltedLine(fcs, xCol, yCol, theta, name, parentGate=None, startPoint=(None,None), endLimits=(None,None), population='upper', scale='linear', xscale='linear', yscale='linear', T=1000, filePlot=None):
@@ -1617,7 +1617,7 @@ def gateTiltedLine(fcs, xCol, yCol, theta, name, parentGate=None, startPoint=(No
         raise invalidAGgateParentError("in gateTiltedLine: ")
     else:
         vI=parentGate()
-    if not isinstance(fcs, AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in gateTiltedLine: ")
     else:
         fcsDF=fcs()
@@ -1820,12 +1820,10 @@ def gateTiltedLine(fcs, xCol, yCol, theta, name, parentGate=None, startPoint=(No
         addLine(fig,ax, inverseTransformWrapper([B_endx, B_endy], scale=scale, T=T), inverseTransformWrapper([x_max,B_endy], scale=scale, T=T), scale=scale, T=T)
         if filePlot is not None:
             plt.savefig(filePlot)
-            if not plot:
-                plt.close(fig)
         if plot:
             plt.show()
-            plt.clf()
-            plotHeatmap(fcsDF, xCol, yCol, result_vI, scale=scale, thresh=T)
+            fig2, ax2 = plotHeatmap(fcsDF, xCol, yCol, result_vI, scale=scale, thresh=T)
             plt.show()
-            
+            plt.close(fig2)
+        plt.close(fig)
     return outputGate

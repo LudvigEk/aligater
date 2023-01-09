@@ -7,7 +7,7 @@
 #               /^^\
 #   /^^\_______/0  \_
 #  (                 `~+++,,_________,,++~^^^^^^^
-#..V^V^V^V^V^V^\.................................
+# ..V^V^V^V^V^V^\.................................
 #
 #
 #	Parsing flow data with fcsparser from Eugene Yurtsevs FlowCytometryTools (very slightly modified)
@@ -18,32 +18,39 @@
 #	https://www.med.lu.se/labmed/hematologi_och_transfusionsmedicin/forskning/bjoern_nilsson
 #   Distributed under the MIT License
 
+import datetime  # For creating output folder names
+import errno
+import os
+import sys
+import time
+import signal
+# These are for i/o operations used by the AGQC object to store downsampled images
+import tempfile
+# Multithreading
+from aligater.delayedinterrupt import DelayedInterrupt
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from shutil import copyfile
+
+import h5py
 import numpy as np
 import pandas as pd
-import sys, os, errno
-import datetime #For creating output folder names
 
-#These are for i/o operations used by the AGQC object to store downsampled images
-import tempfile
-from shutil import copyfile
-import h5py
-from matplotlib.pyplot import close as close_pyplot_figures
-
-#AliGater imports
+# AliGater imports
 import aligater.AGConfig as agconf
-from aligater.check_exec_mode import check_filePath
+from aligater.AGFileSystem import getGatedVector, getGatedVectors, getFileName, getParent, collectFiles, listDir, \
+    loadFCS, getCompensationMatrix, AliGaterError, invalidAGgateError, check_exists, applyFilter, loadHDF5sample
 from aligater.AGPlotRoutines import getHeatmap, imagePCA_cluster, plot_flattened_heatmap
-from aligater.AGFileSystem import getGatedVector, getGatedVectors, getFileName, getParent, collectFiles, listDir, loadFCS, getCompensationMatrix, AliGaterError, invalidAGgateError, check_exists, applyFilter, loadHDF5sample
-#API to the FlowCytometryTools parser
+from aligater.check_exec_mode import check_filePath
+# API to the FlowCytometryTools parser
 from aligater.fscparser_api import parse
 
-sentinel=object()   
+sentinel = object()
 
 
 def update_progress(progress):
-#Imported StackOverflow progressbar method. Credit to user Brian Khuu.
-#https://stackoverflow.com/questions/3160699/python-progress-bar/15860757#15860757
-    barLength = 20 # Modify this to change the length of the progress bar
+    # Imported StackOverflow progressbar method. Credit to user Brian Khuu.
+    # https://stackoverflow.com/questions/3160699/python-progress-bar/15860757#15860757
+    barLength = 20  # Modify this to change the length of the progress bar
     status = ""
     if isinstance(progress, int):
         progress = float(progress)
@@ -56,23 +63,25 @@ def update_progress(progress):
     if progress >= 1:
         progress = 1
         status = "Done...\r\n"
-    block = int(round(barLength*progress))
-    text = "\rPercent: [{0}] {1}% {2}".format( "#"*block + "-"*(barLength-block), format(progress*100,'.2f'), status)
+    block = int(round(barLength * progress))
+    text = "\rPercent: [{0}] {1}% {2}".format("#" * block + "-" * (barLength - block), format(progress * 100, '.2f'),
+                                              status)
     sys.stderr.write(text)
     sys.stderr.flush()
 
 
 def gateIndexWrapper(func, gateObj):
-    #Deprecated
+    # Deprecated
     if gateObj is None:
         return None
     if not isinstance(gateObj, AGgate):
-        reportStr='Invalid AGgate obj encountered in: '+func+", expected AGClasses.AGgate, found "+str(type(gateObj))+"\n"
+        reportStr = 'Invalid AGgate obj encountered in: ' + func + ", expected AGClasses.AGgate, found " + str(
+            type(gateObj)) + "\n"
         raise TypeError(reportStr)
     else:
         return gateObj.current()
 
-    
+
 class AGgate:
     """
     **Overview**
@@ -160,146 +169,150 @@ class AGgate:
 
     None currently.
     """
-    current=[]
-    parent=[]
-    xCol=None
-    yCol=None
-    name=None
-    parentName=None
-    m_downSample=None
-    bInvalid=False
-    bNoparent=False
-    bQC=False
-    bRatioGate=False
-    bIgnoreCellLimit=False
-    
+    current = []
+    parent = []
+    xCol = None
+    yCol = None
+    name = None
+    parentName = None
+    m_downSample = None
+    bInvalid = False
+    bNoparent = False
+    bQC = False
+    bRatioGate = False
+    bIgnoreCellLimit = False
+
     def __init__(self, gate, parentGate, xCol, yCol, name=None, RatioGate=False, IgnoreCellLimit=False):
         if not isinstance(gate, AGgate):
-            if not isinstance(gate,list):
+            if not isinstance(gate, list):
                 raise AliGaterError("Invalid init of AGClasses.AGgate object.")
             else:
-                self.current=gate
+                self.current = gate
                 if name is None or not isinstance(name, str):
-                    raise AliGaterError("Invalid init of AGClasses.AGgate object. If gate argument is list-like, a valid name has to be provided.")
-                self.name=name
+                    raise AliGaterError(
+                        "Invalid init of AGClasses.AGgate object. If gate argument is list-like, a valid name has to be provided.")
+                self.name = name
         else:
-            self.current=gate()
+            self.current = gate()
             if name is None or not isinstance(name, str):
-                if gate.name is None or not isinstance(gate.name, str) :
-                    raise AliGaterError("Invalid init of AGClasses.AGgate object, passed gate object has an invalid name and no overwriting name was passed.")
+                if gate.name is None or not isinstance(gate.name, str):
+                    raise AliGaterError(
+                        "Invalid init of AGClasses.AGgate object, passed gate object has an invalid name and no overwriting name was passed.")
                 else:
-                    self.name=gate.name
+                    self.name = gate.name
             else:
                 self.name = name
 
-            
-        if not isinstance(RatioGate,bool):
-            raise TypeError("unexpected type of bRatioGate. Expected bool, found: "+str(type(RatioGate)))
-        self.bRatioGate=RatioGate
-        if not isinstance(IgnoreCellLimit,bool):
-            raise TypeError("unexpected type of IgnoreCellLimit. Expected bool, found: "+str(type(IgnoreCellLimit)))
-        self.bIgnoreCellLimit=IgnoreCellLimit
+        if not isinstance(RatioGate, bool):
+            raise TypeError("unexpected type of bRatioGate. Expected bool, found: " + str(type(RatioGate)))
+        self.bRatioGate = RatioGate
+        if not isinstance(IgnoreCellLimit, bool):
+            raise TypeError("unexpected type of IgnoreCellLimit. Expected bool, found: " + str(type(IgnoreCellLimit)))
+        self.bIgnoreCellLimit = IgnoreCellLimit
         # if name is None or not isinstance(name, str):
         #     raise ValueError("No, or invalid, name specified for gate")
         # self.name=name
         if not isinstance(parentGate, AGgate):
             if parentGate is not None:
-                raise AliGaterError("Invalid init of AGClasses.AGgate object, parentGate must either be AGClasses.AGgate or None.")
+                raise AliGaterError(
+                    "Invalid init of AGClasses.AGgate object, parentGate must either be AGClasses.AGgate or None.")
             else:
-                self.parent=None
-                self.parentName="total"    
-                self.bNoparent=True
+                self.parent = None
+                self.parentName = "total"
+                self.bNoparent = True
         else:
-            self.parent=parentGate()
-            self.parentName=parentGate.name
+            self.parent = parentGate()
+            self.parentName = parentGate.name
         if not isinstance(xCol, str):
-            self.xCol=None
+            self.xCol = None
         else:
-            self.xCol=xCol
+            self.xCol = xCol
         if not isinstance(yCol, str):
-            self.yCol=None
+            self.yCol = None
         else:
-            self.yCol=yCol
-        #Flag gate if parent has fewer cells than minCells    
+            self.yCol = yCol
+        # Flag gate if parent has fewer cells than minCells
         if not self.bRatioGate and not self.bNoparent and not self.bIgnoreCellLimit:
             if (len(self.parent) < agconf.minCells):
-                self.bInvalid=True
-        
+                self.bInvalid = True
+
     def __call__(self):
         if self.bInvalid:
             if agconf.ag_verbose:
-                #Invalid flag
-                sys.stderr.write("WARNING: Call to AGGate object ("+self.name+") that has had its invalid flag set\n")
+                # Invalid flag
+                sys.stderr.write(
+                    "WARNING: Call to AGGate object (" + self.name + ") that has had its invalid flag set\n")
         if not isinstance(self.current, list):
-            #Invalid dtype
-            raise AliGaterError("This AGGate object ("+self.name+") had a non-list current member\n")
+            # Invalid dtype
+            raise AliGaterError("This AGGate object (" + self.name + ") had a non-list current member\n")
         if not list(self.current):
-            #Empty
+            # Empty
             return []
         return self.current
-    
+
     def changeParent(self, parent=sentinel, name=None):
         if parent is sentinel:
-            self.parent=None
-            self.parentName="total"
-            self.bNoparent=True
+            self.parent = None
+            self.parentName = "total"
+            self.bNoparent = True
             return
         if not isinstance(parent, AGgate):
-            raise TypeError("Error in changeParent call: Passed parent population to AGgate object "+self.name+" is not a AGClasses.AGgate object")
-        self.parent=parent()
-        self.parentName=parent.name
-        self.bNoparent=False
+            raise TypeError(
+                "Error in changeParent call: Passed parent population to AGgate object " + self.name + " is not a AGClasses.AGgate object")
+        self.parent = parent()
+        self.parentName = parent.name
+        self.bNoparent = False
         return
-    
+
     def getParent(self):
         if not list(self.parent):
-            reportStr="This AGGate object does not contain any parent data\nIf you want the full index, access it through the AGClasses.AGgate object"
-            raise ValueError(reportStr) 
+            reportStr = "This AGGate object does not contain any parent data\nIf you want the full index, access it through the AGClasses.AGgate object"
+            raise ValueError(reportStr)
         return self.parent
-    
+
     def downSample(self, fcsDF, bins, xlim, ylim, scale='linear', xscale='linear', yscale='linear', T=1000):
         vX, vY = getGatedVectors(fcsDF, self.xCol, self.yCol, vI=self.parent, return_type="nparray")
-        if len(vX)<2 or len(vY)<2:
-            self.m_downSample=None
+        if len(vX) < 2 or len(vY) < 2:
+            self.m_downSample = None
             return None
-            #None
-        #flaggedIndicies=[]
-        for i in np.arange(0,len(vX),1):
-            if vX[i]<xlim[0]:
-                vX[i]=xlim[0]
-            if vX[i]>xlim[1]:
-                vX[i]=xlim[1]
-            if vY[i]<ylim[0]:
-                vY[i]=ylim[0]
-            if vY[i]>ylim[1]:
-                vY[i]=ylim[1]
-        heatmapRange=[xlim, ylim]
-        #vX=np.delete(vX, flaggedIndicies)
-        #vY=np.delete(vY, flaggedIndicies)
+            # None
+        # flaggedIndicies=[]
+        for i in np.arange(0, len(vX), 1):
+            if vX[i] < xlim[0]:
+                vX[i] = xlim[0]
+            if vX[i] > xlim[1]:
+                vX[i] = xlim[1]
+            if vY[i] < ylim[0]:
+                vY[i] = ylim[0]
+            if vY[i] > ylim[1]:
+                vY[i] = ylim[1]
+        heatmapRange = [xlim, ylim]
+        # vX=np.delete(vX, flaggedIndicies)
+        # vY=np.delete(vY, flaggedIndicies)
         self.m_downSample = getHeatmap(vX, vY, bins, scale, xscale, yscale, T=T, normalize=True, range=heatmapRange)[0]
-        self.bQC=True
-        
+        self.bQC = True
+
     def setInvalid(self):
-        self.bInvalid=True
-    
+        self.bInvalid = True
+
     def reportStats(self):
         if not list(self.current):
-            raise AliGaterError("This AGGate object ("+self.name+") does not contain any data")
+            raise AliGaterError("This AGGate object (" + self.name + ") does not contain any data")
         elif not list(self.parent):
-            sys.stderr.write("This AGGate object ("+self.name+") does not have any parent, only reporting current\n")
+            sys.stderr.write(
+                "This AGGate object (" + self.name + ") does not have any parent, only reporting current\n")
             return str(len(self.current))
         else:
             nOfcurrent = float(len(self.current))
             nOfparent = float(len(self.parent))
-            if any([nOfcurrent==0, nOfparent==0]):
-                sys.stderr.write("This AGGate object ("+self.name+") have reached 0 population (no gated events)\n")
-                return str(nOfparent)+"\t"+str(nOfcurrent)+"\t0"
-            outputStr=str(nOfparent)+"\t"+str(nOfcurrent)+"\t"+str(nOfcurrent/nOfparent)
+            if any([nOfcurrent == 0, nOfparent == 0]):
+                sys.stderr.write("This AGGate object (" + self.name + ") have reached 0 population (no gated events)\n")
+                return str(nOfparent) + "\t" + str(nOfcurrent) + "\t0"
+            outputStr = str(nOfparent) + "\t" + str(nOfcurrent) + "\t" + str(nOfcurrent / nOfparent)
             return outputStr
-    
-    
 
-class AGsample:
+
+class AGSample:
     """
     **Overview**
 
@@ -389,15 +402,15 @@ class AGsample:
     This can have a significant performance impact depending on how many events have been recorded in each sample and has **thus been left out by design**.
 
     """
-    #vGate intended as list of tuple(name, gate)
-    vGates=None
-    sample=None
-    filePath=None
-    fcsDF=None
-    _downsamplingBins=None
-    MFI_Series=pd.Series()
-    
-    def __init__(self, fcsDF, filePath, sampleName = sentinel, sampling_resolution=32):
+    # vGate intended as list of tuple(name, gate)
+    vGates = None
+    sample = None
+    filePath = None
+    fcsDF = None
+    _downsamplingBins = None
+    MFI_Series = pd.Series()
+
+    def __init__(self, fcsDF, filePath, sampleName=sentinel, sampling_resolution=32):
         if not isinstance(fcsDF, pd.DataFrame):
             raise
         if not isinstance(filePath, str):
@@ -408,18 +421,18 @@ class AGsample:
             if not isinstance(sampleName, str):
                 raise
         else:
-            #If no name specified, set it to the filename without extension
-            datename=getFileName(getParent(getParent(filePath)))
-            platename=getFileName(getParent(filePath))
-            sampleName=datename+"/"+platename+"/"+getFileName(filePath)
-            
-        self.fcsDF=fcsDF
-        self.sample=sampleName
+            # If no name specified, set it to the filename without extension
+            datename = getFileName(getParent(getParent(filePath)))
+            platename = getFileName(getParent(filePath))
+            sampleName = datename + "/" + platename + "/" + getFileName(filePath)
+
+        self.fcsDF = fcsDF
+        self.sample = sampleName
         self.MFI_Series.name = sampleName
-        self.vGates=[]
-        self.filePath=filePath
-        self._downsamplingBins=sampling_resolution
-    
+        self.vGates = []
+        self.filePath = filePath
+        self._downsamplingBins = sampling_resolution
+
     def __call__(self, name=sentinel):
         if name is sentinel:
             if not isinstance(self.fcsDF, pd.DataFrame):
@@ -428,73 +441,57 @@ class AGsample:
             return self.fcsDF
         else:
             if not isinstance(name, str):
-                raise AliGaterError("TypeError in AGSample call,","name argument must be string")
+                raise AliGaterError("TypeError in AGSample call,", "name argument must be string")
             else:
                 if not self.vGates:
                     sys.stderr.write("sample does not contain any gates\n")
                     return None
                 for index, gate in enumerate(self.vGates):
-                    if gate.name==name:
+                    if gate.name == name:
                         return gate
-                reportStr=name+" not in sample name list\n"
+                reportStr = name + " not in sample name list\n"
                 sys.stderr.write(reportStr)
                 return False
-        
+
     def update(self, gate, xlim=[0,500000], ylim=[0,500000], QC=False, scale='linear', xscale='linear', yscale='linear', T=1000, MFI=False, MFI_type="current", extra_MFI=None):
         """ 
         ***Overview***
-
         Core function of the AGSample that should be used to save the results of a gate, e.g. CD3 positives out of CD45 positives. 
         The only mandatory argument is an aligater.AGGate object.
-
         ***Keyword arguments***
         
         QC, bool, optional, default: False
             If set, a downsampled view of the gate will be stored for later image-segmentation analysis.
             The gating view gets stored in flattened numpy.array format. The view limits are always fixed and can be set
             using the ylim and xlim arguments.
-
         ylim, list, optional, default: [0, 500000]
             Fixed y-limit of downsampled views of this gate, only relevant if QC is True
-
         xlim, list, optional, default: [0, 500000]
             Fixed x-limit of downsampled views of this gate, only relevant if QC is True
-
         scale, str, optional, default: 'linear'
             The scale used in the gating view, relevant for downsampled image views if QC is set to True.
             This argument sets both axis, but can be overriden by xscale or yscale for the specific axis.
-
         xscale, str, optional, default: 'linear'
             The scale used in the gating view's x-axis, relevant for downsampled image views if QC is set to True.
             This will override the option set in scale
-
         yscale, str, optional, default: 'linear'
             The scale used in the gating view's y-axis, relevant for downsampled image views if QC is set to True.
             This will override the option set in scale
-
         T, int, optional, default: 1000
             The threshold for the linear-logarithmic transition used in logicle scales.
-
         MFI, bool, optional, default: False
             Flag indicating that MFIs should be stored for this gate. See MFI_type for modifying behavior.
-
         MFI_type, str, optional, default: 'current'
             If MFI is stored, which type should be saved, options are; 'current', 'all', 'all_with_scatter'
-
                 'current' saves MFIs for the current gating axis. Including scatter columns if they are used.
-
                 'all' saves MFIs for the current axis, then this gate's parent's axis and continuing up the hierarchy until no parent gate is found. 
                 Forward and side scatter columns are ignored.
-
                 'all_with_scatter' similar to 'all', but includes MFI of scatter columns
-
         extra_MFI, list, optional, default: None
             List of str names of markers to save MFIs of. Must match exactly, case sensitive.
-
-
         """
         if not isinstance(gate,AGgate):
-            raise invalidAGgateError("in AGsample.update: ")
+            raise invalidAGgateError("in AGSample.update: ")
         if gate.xCol not in self.fcsDF.columns:
             raise AliGaterError("in update: ","x marker label ("+str(gate.xCol)+") doesn't exist in the sample")
         if gate.xCol not in self.fcsDF.columns:
@@ -724,7 +721,6 @@ class AGsample:
             outputCounter+=1
         return result
 
-     
 
 class AGQC:
     """
@@ -754,131 +750,131 @@ class AGQC:
 
     None currently.
     """
-    tmpFiles=[]
-    downSamplingBins=32
-    lGate_names=[]
-    sourceFilePath=None
-    h5py_filehandle=None
-    image_list=[]
-    sample_list=[]
-    source=None
-    
+    tmpFiles = []
+    downSamplingBins = 32
+    lGate_names = []
+    sourceFilePath = None
+    h5py_filehandle = None
+    image_list = []
+    sample_list = []
+    source = None
+
     def __init__(self, downSamplingBins=32, *args, **kwargs):
-        self.downSamplingBins=downSamplingBins
-    
+        self.downSamplingBins = downSamplingBins
+
     def __call__(self, fcs, *args, **kwargs):
-        if len(self.tmpFiles)==0:
+        if len(self.tmpFiles) == 0:
             sys.stderr.write("Initiating QC files\n")
         for gate in fcs.vGates:
             if gate.bQC:
                 tf = self.returnTempFile(gate)
                 self.printDownSample(tf, gate, fcs.sample)
-    
-    #Files are opened in r+w mode as per default. Call seek(0) to access for read when complete
-    #Creates a tempfile for the gate if it doesn't already exists
-    #Then returns that filehandle
+
+    # Files are opened in r+w mode as per default. Call seek(0) to access for read when complete
+    # Creates a tempfile for the gate if it doesn't already exists
+    # Then returns that filehandle
     def returnTempFile(self, gate):
-        if not str(gate.name+gate.parentName) in [tmpFile[2] for tmpFile in self.tmpFiles]:
-            tmpFileDir=str(agconf.ag_tmp)
+        if not str(gate.name + gate.parentName) in [tmpFile[2] for tmpFile in self.tmpFiles]:
+            tmpFileDir = str(agconf.ag_tmp)
             tf = tempfile.NamedTemporaryFile(prefix="AG", dir=tmpFileDir)
-            name=tf.name
-            gates=str(gate.name+gate.parentName)
+            name = tf.name
+            gates = str(gate.name + gate.parentName)
             self.tmpFiles.append([tf, name, gates])
             return tf
         else:
-            index = [tmpFile[2] for tmpFile in self.tmpFiles].index(str(gate.name+gate.parentName))
+            index = [tmpFile[2] for tmpFile in self.tmpFiles].index(str(gate.name + gate.parentName))
             return self.tmpFiles[index][0]
-      
+
     def printDownSample(self, file, gate, name):
-        arr=np.array([name, str(self.downSamplingBins)])
+        arr = np.array([name, str(self.downSamplingBins)])
         if gate.m_downSample is None:
             if gate.bQC:
-                reportStr="WARNING: QC requested but no downsampled data for gate "+gate.name+", skipping\n"
+                reportStr = "WARNING: QC requested but no downsampled data for gate " + gate.name + ", skipping\n"
                 sys.stderr.write(reportStr)
                 return
             else:
                 return
-        flattenedArr=gate.m_downSample.flatten()
-        arr=np.append(arr,flattenedArr)
+        flattenedArr = gate.m_downSample.flatten()
+        arr = np.append(arr, flattenedArr)
         try:
-            np.save(file,arr)
+            np.save(file, arr)
         except:
-            #Internal error in np.save for some reason, traceback below
-                #in printDownSample
-                #np.save(file,arr)        
-                #File "<__array_function__ internals>", line 6, in save
-                #File "/home/ludvig/anaconda3/lib/python3.7/site-packages/numpy/lib/npyio.py", line 553, in save 
-                #pickle_kwargs=pickle_kwargs)
-                #File "/home/ludvig/anaconda3/lib/python3.7/site-pa
-            reportStr="Error while saving downsampled gate: "+str(name)+"\n"
+            # Internal error in np.save for some reason, traceback below
+            # in printDownSample
+            # np.save(file,arr)
+            # File "<__array_function__ internals>", line 6, in save
+            # File "/home/ludvig/anaconda3/lib/python3.7/site-packages/numpy/lib/npyio.py", line 553, in save
+            # pickle_kwargs=pickle_kwargs)
+            # File "/home/ludvig/anaconda3/lib/python3.7/site-pa
+            reportStr = "Error while saving downsampled gate: " + str(name) + "\n"
             sys.stderr.write(reportStr)
             return
         return
-    
-    def reportPCs(self,folder):
-        for elem in self.tmpFiles:    
-            destStr=str(folder)+str(elem[2])+".AGQC.txt"
+
+    def reportPCs(self, folder):
+        for elem in self.tmpFiles:
+            destStr = str(folder) + str(elem[2]) + ".AGQC.txt"
             copyfile(elem[1], destStr)
-        reportStr= "Copied all downsampled files to: "+folder+"\n"
+        reportStr = "Copied all downsampled files to: " + folder + "\n"
         sys.stderr.write(reportStr)
-            
+
         for file in self.tmpFiles:
-            #Create/reset list to contain images and sample names
-            imlist=[]
-            samplelist=[]
-            #Reset file to read from beginning
-            fhandle=open(file[1],"rb")
+            # Create/reset list to contain images and sample names
+            imlist = []
+            samplelist = []
+            # Reset file to read from beginning
+            fhandle = open(file[1], "rb")
             fhandle.seek(0)
-            #Read all images in the file
+            # Read all images in the file
             while True:
                 try:
-                    image=np.load(fhandle)
+                    image = np.load(fhandle)
                 except OSError:
                     break
-                arr=image[2:].astype(float)
-                sampleName=image[0]
-                downSambleBins=image[1]
+                arr = image[2:].astype(float)
+                sampleName = image[0]
+                downSambleBins = image[1]
                 imlist.append(arr)
                 samplelist.append(sampleName)
-    
+
     def saveHDF5_QC_obj(self, destFilePath, experiment_name):
         sys.stderr.write("Creating HDF5 QC object\n")
 
-
         with h5py.File(destFilePath, 'w') as h5pyfile:
-        
+
             for file in self.tmpFiles:
                 population_name = file[2]
-                population_sample_names = population_name+"_samples"
-                #Create/reset list to contain images and sample names
-                population_array=[]
-                sample_names=[]
-                #Reset file to read from beginning
-                fhandle=open(file[1],"rb")
+                population_sample_names = population_name + "_samples"
+                # Create/reset list to contain images and sample names
+                population_array = []
+                sample_names = []
+                # Reset file to read from beginning
+                fhandle = open(file[1], "rb")
                 fhandle.seek(0)
-                #Read all images in the file
+                # Read all images in the file
                 while True:
                     try:
-                        image=np.load(fhandle, allow_pickle=True) #CAVE: https://stackoverflow.com/questions/60191681/cannot-load-file-containing-pickled-data-python-npy-i-o
+                        image = np.load(fhandle,
+                                        allow_pickle=True)  # CAVE: https://stackoverflow.com/questions/60191681/cannot-load-file-containing-pickled-data-python-npy-i-o
                     except OSError:
                         break
-                    #Image data is from third element and onwards
-                    arr=image[2:].astype(float)
+                    # Image data is from third element and onwards
+                    arr = image[2:].astype(float)
                     population_array.append(arr)
-                    #Resolution (int) is at position 2
-                    downSamplingBins=image[1].astype(int)
-                    #Sample name is at position 0, we recode to UTF-8 for H5py compatibility
-                    sample_name=image[0].encode('UTF-8')
+                    # Resolution (int) is at position 2
+                    downSamplingBins = image[1].astype(int)
+                    # Sample name is at position 0, we recode to UTF-8 for H5py compatibility
+                    sample_name = image[0].encode('UTF-8')
                     sample_names.append(sample_name)
 
                 dataset = h5pyfile.create_dataset(population_name, data=population_array)
-                dataset.attrs['resolution']=downSamplingBins
+                dataset.attrs['resolution'] = downSamplingBins
                 dt = h5py.special_dtype(vlen=str)
                 dataset = h5pyfile.create_dataset(population_sample_names, data=sample_names, dtype=dt)
-                
-        reportStr="Saved QC data to: "+str(destFilePath)+"\n"
+
+        reportStr = "Saved QC data to: " + str(destFilePath) + "\n"
         sys.stderr.write(reportStr)
-    
+
     def load_QC_file(self, sourceFilePath):
         self.sourceFilePath = sourceFilePath
         with h5py.File(sourceFilePath, 'r') as h5pyfile:
@@ -886,35 +882,35 @@ class AGQC:
             for key in all_keys:
                 if not key[-8:] == '_samples':
                     self.lGate_names.append(key)
-            reportStr="Loaded metadata for QC file with "+str(len(self.lGate_names))+" gates:\n"
+            reportStr = "Loaded metadata for QC file with " + str(len(self.lGate_names)) + " gates:\n"
             sys.stderr.write(reportStr)
             for gate_name in self.lGate_names:
                 sys.stderr.write(gate_name)
                 sys.stderr.write("\n")
             sys.stderr.write("Load a specific population for QC with select_population\n")
             self.h5py_filehandle = h5pyfile
-    
+
     def image_viewer(self, sample_data=None, image_data=None, name=None, rand_select=None, mask_zero=False):
         if sample_data is None:
             sample_data = self.sample_list
         if image_data is None:
             image_data = self.image_list
         assert len(sample_data) == len(image_data)
-        #Check if a name is given first
+        # Check if a name is given first
         if name is not None:
-            if not isinstance(name,str):
+            if not isinstance(name, str):
                 raise AliGaterError("in AGQC.image_viewer", "name must be str")
-            for i in np.arange(0,len(sample_data),1):
+            for i in np.arange(0, len(sample_data), 1):
                 if name.lower() == sample_data[i].lower():
-                    index=i
+                    index = i
                     break
             else:
-                reportStr="sample "+str(name)+" not found in passed arrays."
+                reportStr = "sample " + str(name) + " not found in passed arrays."
                 sys.stderr.write(reportStr)
                 return None
             plot_flattened_heatmap(image_data[index], self.downSamplingBins, mask=mask_zero)
         elif rand_select is not None:
-            if not isinstance(rand_select,int):
+            if not isinstance(rand_select, int):
                 raise AliGaterError("in AGQC.image_viewer", "rand_select must be int")
             if rand_select >= len(image_data):
                 sys.stderr.write("WARNING: random selection larger than there is available images")
@@ -925,16 +921,16 @@ class AGQC:
                 plot_flattened_heatmap(image_data[i], self.downSamplingBins, mask=mask_zero)
             return None
         else:
-            for index in np.arange(0,len(image_data),1):
+            for index in np.arange(0, len(image_data), 1):
                 print(sample_data[index])
-                plot_flattened_heatmap(image_data[index], self.downSamplingBins, mask=mask_zero)   
+                plot_flattened_heatmap(image_data[index], self.downSamplingBins, mask=mask_zero)
         return None
-    
+
     def select_population(self, population, return_type="list"):
-        if not return_type.lower() in ['nparray','list']:
-            raise AliGaterError("in select_population"," return type must be either 'list' or 'nparray'")
+        if not return_type.lower() in ['nparray', 'list']:
+            raise AliGaterError("in select_population", " return type must be either 'list' or 'nparray'")
         if self.sourceFilePath is None:
-            reportStr="No QC object is loaded!\nRun load_QC_file first\n"
+            reportStr = "No QC object is loaded!\nRun load_QC_file first\n"
             sys.stderr.write(reportStr)
             return None
         with h5py.File(self.sourceFilePath, 'r') as h5pyfile:
@@ -942,18 +938,20 @@ class AGQC:
             for key in all_keys:
                 if key.lower() == population.lower():
                     match = key
-                    match_samples = match+"_samples"
+                    match_samples = match + "_samples"
                     break
             else:
-                reportStr="population not found in QC obj: "+str(population)+"\nYou can view available gates in currently loaded QC obj with <QCOBJ>.lGate_names\n"
+                reportStr = "population not found in QC obj: " + str(
+                    population) + "\nYou can view available gates in currently loaded QC obj with <QCOBJ>.lGate_names\n"
                 sys.stderr.write(reportStr)
                 return None
             image_data = h5pyfile[match][:]
             sample_data = h5pyfile[match_samples][:]
             self.downSamplingBins = h5pyfile[match].attrs['resolution']
-            if not len(image_data)==len(sample_data):
-                raise AliGaterError("invalid AGQC file"," not equal number of sample names and sample images")
-            reportStr="Loaded data for "+str(population)+" containing "+str(len(sample_data))+" ("+str(self.downSamplingBins)+","+str(self.downSamplingBins)+") images\n"
+            if not len(image_data) == len(sample_data):
+                raise AliGaterError("invalid AGQC file", " not equal number of sample names and sample images")
+            reportStr = "Loaded data for " + str(population) + " containing " + str(len(sample_data)) + " (" + str(
+                self.downSamplingBins) + "," + str(self.downSamplingBins) + ") images\n"
             sys.stderr.write(reportStr)
             self.sample_list = sample_data
             self.image_list = [x.reshape(self.downSamplingBins, self.downSamplingBins) for x in image_data]
@@ -967,28 +965,28 @@ class AGQC:
 
     def select_images(self, imlist):
         if self.sample_list is None:
-            reportStr="No population is selected!\nRun select_population first\n"
+            reportStr = "No population is selected!\nRun select_population first\n"
             sys.stderr.write(reportStr)
             return None
         if not isinstance(imlist, (list, np.ndarray)):
-            raise AliGaterError("in AGQC::select_images","passed imlist must be list of str sample names")
+            raise AliGaterError("in AGQC::select_images", "passed imlist must be list of str sample names")
             if not all(isinstance(x, str) for x in imlist):
-                raise AliGaterError("in AGQC::select_images","passed imlist must be list of str sample names")
-        output_images=[]
-        output_samples=[]
-        not_found=[]
-        nFound=0
-        for i in np.arange(0,len(imlist),1):
-            for ix in np.arange(0,len(self.sample_list),1):
+                raise AliGaterError("in AGQC::select_images", "passed imlist must be list of str sample names")
+        output_images = []
+        output_samples = []
+        not_found = []
+        nFound = 0
+        for i in np.arange(0, len(imlist), 1):
+            for ix in np.arange(0, len(self.sample_list), 1):
                 if imlist[i].lower() == self.sample_list[ix].lower():
                     output_images.append(self.image_list[ix])
                     output_samples.append(self.sample_list[ix])
-                    nFound+=1
+                    nFound += 1
                     break
             else:
                 not_found.append(imlist[i])
         if len(not_found) > 0 and len(not_found) != len(imlist):
-            reportStr=str(len(not_found))+" image(s) not found in currently loaded population:\n"
+            reportStr = str(len(not_found)) + " image(s) not found in currently loaded population:\n"
             sys.stderr.write(reportStr)
             for missing_samp in not_found:
                 sys.stderr.write(missing_samp)
@@ -996,88 +994,90 @@ class AGQC:
         if len(not_found) == len(imlist):
             sys.stderr.write("No images found\n")
         return output_samples, output_images
-        
+
     def define_training_sets(self, lSamplelists, shuffle=True):
         if self.sample_list is None:
-            reportStr="No population is selected!\nRun select_population first\n"
+            reportStr = "No population is selected!\nRun select_population first\n"
             sys.stderr.write(reportStr)
             return None
-        if not isinstance(lSamplelists,(list, np.ndarray)):
-            raise AliGaterError("in AGQC::define_training_sets","passed lSamplelists must be list/numpy array")
-        if not all(isinstance(x,(list,np.ndarray)) for x in lSamplelists):
-            raise AliGaterError("in AGQC::define_training_sets","lSamplelists must contain >2 lists/numpy arrays with sample names")
-        
+        if not isinstance(lSamplelists, (list, np.ndarray)):
+            raise AliGaterError("in AGQC::define_training_sets", "passed lSamplelists must be list/numpy array")
+        if not all(isinstance(x, (list, np.ndarray)) for x in lSamplelists):
+            raise AliGaterError("in AGQC::define_training_sets",
+                                "lSamplelists must contain >2 lists/numpy arrays with sample names")
+
         curClass = 0
-        full_train_array=[]
+        full_train_array = []
         for training_set in lSamplelists:
             current_set_samples = self.select_images(training_set)
-            current_train_array=[]
+            current_train_array = []
             for i in np.arange(0, len(current_set_samples[0]), 1):
-                current_train_array.append([curClass,current_set_samples[0][i],current_set_samples[1][i]])
+                current_train_array.append([curClass, current_set_samples[0][i], current_set_samples[1][i]])
             full_train_array = full_train_array + current_train_array
-            curClass+=1
-        
+            curClass += 1
+
         if shuffle:
             np.random.shuffle(full_train_array)
         target_array = [x[0] for x in full_train_array]
         name_array = [x[1] for x in full_train_array]
         im_array = [x[2] for x in full_train_array]
-        
+
         return name_array, target_array, im_array
-        
-    def loadDownSampleNumpyArr(self,file):
-        #Create/reset list to contain images and sample names
-        imlist=[]
-        samplelist=[]
-        #Reset file to read from beginning
-        fhandle=open(file[1],"rb")
+
+    def loadDownSampleNumpyArr(self, file):
+        # Create/reset list to contain images and sample names
+        imlist = []
+        samplelist = []
+        # Reset file to read from beginning
+        fhandle = open(file[1], "rb")
         fhandle.seek(0)
-        #Read all images in the file
+        # Read all images in the file
         while True:
             try:
-                image=np.load(fhandle)
+                image = np.load(fhandle)
             except OSError:
                 break
-            arr=image[2:].astype(float)
-            sampleName=image[0]
+            arr = image[2:].astype(float)
+            sampleName = image[0]
             imlist.append(arr)
             samplelist.append(sampleName)
         return [samplelist, imlist]
-    
-    
+
     def run_QC(self, population, filter_samples=[], n_components=2):
         if self.sourceFilePath is None:
-            reportStr="No QC object is loaded!\nRun load_QC_file first\n"
+            reportStr = "No QC object is loaded!\nRun load_QC_file first\n"
             sys.stderr.write(reportStr)
             return None
-        samplist,imlist = self.select_population(population, return_type="nparray")
-        if not isinstance(n_components,int):
-            raise AliGaterError("in AGQC::run_QC", "n_components must be int, found"+str(type(n_components)))
-        if not isinstance(filter_samples,list):
-            raise AliGaterError("in AGQC::run_QC", "filter_samples must be list of str, found"+str(type(n_components)))
-        if not all([isinstance(x,str) for x in filter_samples]):
-            raise AliGaterError("in AGQC::run_QC", "filter_samples must be list of str, the list contained non-str entries")
-        if len(filter_samples)>=1:
-            include_indicies=[]
-            removed_samples=[]
-            for i in np.arange(0,len(samplist),1):
-                #if samplist[i] in filter_samples:
-                str_samp=str(samplist[i]) #str comparison for below to work, CAVE: might be slow
+        samplist, imlist = self.select_population(population, return_type="nparray")
+        if not isinstance(n_components, int):
+            raise AliGaterError("in AGQC::run_QC", "n_components must be int, found" + str(type(n_components)))
+        if not isinstance(filter_samples, list):
+            raise AliGaterError("in AGQC::run_QC",
+                                "filter_samples must be list of str, found" + str(type(n_components)))
+        if not all([isinstance(x, str) for x in filter_samples]):
+            raise AliGaterError("in AGQC::run_QC",
+                                "filter_samples must be list of str, the list contained non-str entries")
+        if len(filter_samples) >= 1:
+            include_indicies = []
+            removed_samples = []
+            for i in np.arange(0, len(samplist), 1):
+                # if samplist[i] in filter_samples:
+                str_samp = str(samplist[i])  # str comparison for below to work, CAVE: might be slow
                 if any([str(samp_to_filter) in str_samp for samp_to_filter in filter_samples]):
                     removed_samples.append(samplist[i])
                 else:
                     include_indicies.append(i)
             filtered_samplist = samplist[include_indicies]
             filtered_imlist = imlist[include_indicies]
-            PC_DF = imagePCA_cluster(samplelist=filtered_samplist,imlist=filtered_imlist, nOfComponents=n_components)
-            reportStr="After filtering, "+str(len(removed_samples))+" were removed (filter size: "+str(len(filter_samples))+").\n"
+            PC_DF = imagePCA_cluster(samplelist=filtered_samplist, imlist=filtered_imlist, nOfComponents=n_components)
+            reportStr = "After filtering, " + str(len(removed_samples)) + " were removed (filter size: " + str(
+                len(filter_samples)) + ").\n"
             sys.stderr.write(reportStr)
         else:
-            PC_DF = imagePCA_cluster(samplelist=samplist,imlist=imlist, nOfComponents=n_components)
+            PC_DF = imagePCA_cluster(samplelist=samplist, imlist=imlist, nOfComponents=n_components)
         return PC_DF
-    
 
-    
+
 class AGExperiment:
     """
     **Overview**
@@ -1180,137 +1180,138 @@ class AGExperiment:
  
     
     """
-    fcsList=[]              #LIST (str filepaths)
-    normaliseLevel=None     #STR
-    nOfPlates=0             #INT    
-    normalise=None          #BOOL
-    plateList=[]            #LIST (str filepaths)
-    sampleList=[]           #LIST OF AGSample OBJECTS
-    lFilter=None
-    lMask=None
-    lIgnoreTypes=None
-    lMarkers=None
-    comp_matrix=None
-    man_comp=False
-    compensation_exceptions=None
-    flaggedSamples=[]       #List of tuple (path, flagged pop)
-    resultHeader=None
-    resultMatrix=None
+    fcsList = []  # LIST (str filepaths)
+    normaliseLevel = None  # STR
+    nOfPlates = 0  # INT
+    normalise = None  # BOOL
+    plateList = []  # LIST (str filepaths)
+    sampleList = []  # LIST OF AGSample OBJECTS
+    lFilter = None
+    lMask = None
+    lIgnoreTypes = None
+    lMarkers = None
+    comp_matrix = None
+    man_comp = False
+    compensation_exceptions = None
+    flaggedSamples = []  # List of tuple (path, flagged pop)
+    resultHeader = None
+    resultMatrix = None
     result_MFI_DF = None
     has_MFI = False
-    output_folder=None
-    exp_name=None
-    bQC=False
-    flourochrome_area_filter=False
-    QCbins=32
-    HDF5Fileset=False
-    nOfEvents=None
-    
+    output_folder = None
+    exp_name = None
+    bQC = False
+    flourochrome_area_filter = False
+    QCbins = 32
+    HDF5Fileset = False
+    nOfEvents = None
+
     def __init__(self, experimentRoot, *args, **kwargs):
         if 'filters' in kwargs:
-            if not isinstance(kwargs['filters'],str):
-                if not isinstance(kwargs['filters'],list):
+            if not isinstance(kwargs['filters'], str):
+                if not isinstance(kwargs['filters'], list):
                     raise TypeError("if filters is passed, it must be a string or list of strings")
                 else:
                     for item in kwargs['filters']:
-                        if not isinstance(item,str):
+                        if not isinstance(item, str):
                             raise TypeError("non-string element in filters")
-                    self.lFilter=kwargs['filters']
+                    self.lFilter = kwargs['filters']
             else:
-                self.lFilter=[kwargs['filters']]
-            reportStr=str(len(self.lFilter))+" filter(s) defined\n"
+                self.lFilter = [kwargs['filters']]
+            reportStr = str(len(self.lFilter)) + " filter(s) defined\n"
             sys.stderr.write(reportStr)
-            
+
         if 'mask' in kwargs:
-            if not isinstance(kwargs['mask'],str):
-                if not isinstance(kwargs['mask'],list):
+            if not isinstance(kwargs['mask'], str):
+                if not isinstance(kwargs['mask'], list):
                     raise TypeError("if mask is passed, it must be a string or list of strings")
                 else:
                     for item in kwargs['mask']:
-                        if not isinstance(item,str):
+                        if not isinstance(item, str):
                             raise TypeError("non-string element in mask")
-                    self.lMask=kwargs['mask']
+                    self.lMask = kwargs['mask']
             else:
-                self.lMask=[kwargs['mask']]
-            reportStr=str(len(self.lMask))+" mask(s) defined\n"
+                self.lMask = [kwargs['mask']]
+            reportStr = str(len(self.lMask)) + " mask(s) defined\n"
             sys.stderr.write(reportStr)
-            
+
         if 'ignoretype' in kwargs:
-            if not isinstance(kwargs['ignoretype'],str):
-                if not isinstance(kwargs['ignoretype'],list):
+            if not isinstance(kwargs['ignoretype'], str):
+                if not isinstance(kwargs['ignoretype'], list):
                     raise TypeError("if ignoretype is passed, it must be a string or list of strings")
                 else:
                     for item in kwargs['ignoretype']:
-                        if not isinstance(item,str):
+                        if not isinstance(item, str):
                             raise TypeError("non-string element in mask")
-                    self.lIgnoreTypes=kwargs['ignoretype']
+                    self.lIgnoreTypes = kwargs['ignoretype']
             else:
-                self.lIgnoreTypes=[kwargs['ignoretype']]
-            reportStr=str(len(self.lIgnoreTypes))+" ignoretype defined\n"
+                self.lIgnoreTypes = [kwargs['ignoretype']]
+            reportStr = str(len(self.lIgnoreTypes)) + " ignoretype defined\n"
             sys.stderr.write(reportStr)
-            
+
         if 'markers' in kwargs:
-            if not isinstance(kwargs['markers'],str):
-                if not isinstance(kwargs['markers'],list):
+            if not isinstance(kwargs['markers'], str):
+                if not isinstance(kwargs['markers'], list):
                     raise TypeError("if markers is passed, it must be a string or list of strings")
                 else:
                     for item in kwargs['markers']:
-                        if not isinstance(item,str):
+                        if not isinstance(item, str):
                             raise TypeError("non-string element in markers")
-                    self.lMarkers=kwargs['markers']
+                    self.lMarkers = kwargs['markers']
             else:
-                self.lMarkers=[kwargs['markers']]
+                self.lMarkers = [kwargs['markers']]
 
         if 'flourochrome_area_filter' in kwargs:
-            if not isinstance(kwargs['flourochrome_area_filter'],bool):
+            if not isinstance(kwargs['flourochrome_area_filter'], bool):
                 raise TypeError("flourochrome_area_filter must be a bool (True/False).")
             else:
-                self.flourochrome_area_filter=[kwargs['flourochrome_area_filter']]
-        
+                self.flourochrome_area_filter = [kwargs['flourochrome_area_filter']]
+
         if 'nOfEvents' in kwargs:
-            if not isinstance(kwargs['nOfEvents'],int):
+            if not isinstance(kwargs['nOfEvents'], int):
                 raise TypeError("nOfEvents has to be an integer.")
             elif kwargs['nOfEvents'] <= 0:
                 raise TypeError("nOfEvents has to be a positive integer")
             else:
                 if kwargs['nOfEvents'] < agconf.cellFilter:
-                    raise AliGaterError("In AGExperiment","Experiment object initialized with nOfEvents parameter less than the cellFilter specified in AGConfig")
-                self.nOfEvents=kwargs['nOfEvents']
-        
+                    raise AliGaterError("In AGExperiment",
+                                        "Experiment object initialized with nOfEvents parameter less than the cellFilter specified in AGConfig")
+                self.nOfEvents = kwargs['nOfEvents']
+
         if 'normaliseOn' in kwargs:
-            if not isinstance(kwargs['normaliseOn'],str):
+            if not isinstance(kwargs['normaliseOn'], str):
                 raise (TypeError("normaliseOn must be string"))
-            self.normalise=True
-            self.normaliseLevel=kwargs['normaliseOn']
-            reportStr="Plate normalisation/outlier detection requested\nNOT IMPLEMENTED YET\n"
+            self.normalise = True
+            self.normaliseLevel = kwargs['normaliseOn']
+            reportStr = "Plate normalisation/outlier detection requested\nNOT IMPLEMENTED YET\n"
             sys.stderr.write(reportStr)
-            
+
         if 'QC' in kwargs:
-            if not isinstance(kwargs['QC'],bool):
+            if not isinstance(kwargs['QC'], bool):
                 raise (TypeError("QC must be bool (True/False)"))
-            self.bQC=kwargs['QC']
+            self.bQC = kwargs['QC']
             if self.bQC:
-                reportStr="QC requested\n"
+                reportStr = "QC requested\n"
                 sys.stderr.write(reportStr)
-        
+
         if 'QCbins' in kwargs:
             if self.bQC:
-                if not isinstance(kwargs['QCbins'],int):
+                if not isinstance(kwargs['QCbins'], int):
                     raise (TypeError("QCbins must be int"))
-                self.QCbins=kwargs['QCbins']
+                self.QCbins = kwargs['QCbins']
             else:
-                raise(ValueError("QCbins specified but QC not requested"))
-        
+                raise (ValueError("QCbins specified but QC not requested"))
+
         if 'compMatrix' in kwargs:
-            if not isinstance(kwargs['compMatrix'],np.ndarray):
+            if not isinstance(kwargs['compMatrix'], np.ndarray):
                 raise TypeError("compensation matrix must be np array if passed")
-            self.comp_matrix=kwargs['compMatrix']
-            self.man_comp=True
-            reportStr="Manual compensation specified\n"
+            self.comp_matrix = kwargs['compMatrix']
+            self.man_comp = True
+            reportStr = "Manual compensation specified\n"
             sys.stderr.write(reportStr)
-        
+
         if 'compList' in kwargs:
-            if not isinstance(kwargs['compList'],list):
+            if not isinstance(kwargs['compList'], list):
                 raise TypeError("compList must be passed as list of tuples (file, file with compensation)")
             else:
                 for elem in kwargs['compList']:
@@ -1318,201 +1319,278 @@ class AGExperiment:
                         raise TypeError("elements in complist must be tuples (file, file with compensation)")
             if self.man_comp:
                 raise ValueError("Cannot both give compensation exception list and provide manual compensation matrix")
-            self.compensation_exceptions=kwargs['compList']
-        
+            self.compensation_exceptions = kwargs['compList']
+
         if 'experiment_name' in kwargs:
-            if not isinstance(kwargs['experiment_name'],str):
+            if not isinstance(kwargs['experiment_name'], str):
                 raise (TypeError("experiment_name must be specified as string"))
             try:
                 self.exp_name = kwargs['experiment_name']
-                self.output_folder=str(agconf.ag_out)+"/"+self.exp_name
+                self.output_folder = str(agconf.ag_out) + "/" + self.exp_name
                 if check_filePath(self.output_folder) != "dir":
                     os.makedirs(self.output_folder)
             except FileExistsError:
-                reportStr="WARNING: specified output directory ("+str(agconf.ag_out)+str(kwargs['experiment_name'])+") already exists, content in folder might be overwritten without warning\n"
+                reportStr = "WARNING: specified output directory (" + str(agconf.ag_out) + str(kwargs[
+                                                                                                   'experiment_name']) + ") already exists, content in folder might be overwritten without warning\n"
                 sys.stderr.write(reportStr)
                 pass
-            
+
         if 'HDF5Fileset' in kwargs:
-            if not isinstance(kwargs['HDF5Fileset'],bool):
+            if not isinstance(kwargs['HDF5Fileset'], bool):
                 raise TypeError("HDF5Fileset must be specified as True/False")
             self.HDF5Fileset = kwargs['HDF5Fileset']
-        
+
         if self.output_folder is None:
-            self.exp_name = 'AGexperiment_'+str(datetime.datetime.now().date()) + '_' + str(datetime.datetime.now().time()).replace(':', '_')
-            self.output_folder=str(agconf.ag_out)+"/"+self.exp_name
-            reportStr="No experiment name specified, generated name: "+self.exp_name+"\n"
+            self.exp_name = 'AGexperiment_' + str(datetime.datetime.now().date()) + '_' + str(
+                datetime.datetime.now().time()).replace(':', '_')
+            self.output_folder = str(agconf.ag_out) + "/" + self.exp_name
+            reportStr = "No experiment name specified, generated name: " + self.exp_name + "\n"
             sys.stderr.write(reportStr)
             if check_filePath(self.output_folder) != "dir":
                 os.makedirs(self.output_folder)
-        
-        #Check that output folder path variable ends with a slash, no matter if its generated or manually specified
-        #And save it as a class member
+
+        # Check that output folder path variable ends with a slash, no matter if its generated or manually specified
+        # And save it as a class member
         if self.output_folder[-1] != "/":
-            self.output_folder = self.output_folder+"/"
+            self.output_folder = self.output_folder + "/"
         else:
             self.output_folder = self.output_folder
-        
-        
-        if not isinstance(experimentRoot,str):
+
+        if not isinstance(experimentRoot, str):
             if not isinstance(experimentRoot, list):
-                raise AliGaterError("in AGExperiment initialisation: ","ExperimentRoot must be str filepath or list of str filepaths")
+                raise AliGaterError("in AGExperiment initialisation: ",
+                                    "ExperimentRoot must be str filepath or list of str filepaths")
             else:
-                bList=True
+                bList = True
         else:
-            bList=False
-            
-        #If no normalisation, collect all files
+            bList = False
+
+        # If no normalisation, collect all files
         if not bList:
-            self.fcsList=collectFiles(experimentRoot,self.lFilter,self.lMask,self.lIgnoreTypes, self.HDF5Fileset)
+            self.fcsList = collectFiles(experimentRoot, self.lFilter, self.lMask, self.lIgnoreTypes, self.HDF5Fileset)
         else:
             sys.stderr.write("Experiment initialised with file list. Checking entries...\n")
-            file_list=check_exists(experimentRoot)
-            lFlaggedIndicies=applyFilter(file_list, self.lFilter,self.lMask, self.lIgnoreTypes,self.HDF5Fileset)
+            file_list = check_exists(experimentRoot)
+            lFlaggedIndicies = applyFilter(file_list, self.lFilter, self.lMask, self.lIgnoreTypes, self.HDF5Fileset)
             lOutput = [i for j, i in enumerate(file_list) if j not in lFlaggedIndicies]
-            sOutputString="Collected "+str(len(lOutput))+" files, "+str(len(lFlaggedIndicies))+" files did not pass filter(s) and mask(s).\n"
+            sOutputString = "Collected " + str(len(lOutput)) + " files, " + str(
+                len(lFlaggedIndicies)) + " files did not pass filter(s) and mask(s).\n"
             sys.stderr.write(sOutputString)
-            self.fcsList=lOutput
-            
+            self.fcsList = lOutput
+
         if self.normalise:
-            #Otherwise (plate normalisation) collect abs path to all end-of-tree folders
-            self.plateList=listDir(experimentRoot)
+            # Otherwise (plate normalisation) collect abs path to all end-of-tree folders
+            self.plateList = listDir(experimentRoot)
             self.checkPlateList()
-            reportStr="Files are distributed in "+str(len(self.plateList))+" plates\n"
+            reportStr = "Files are distributed in " + str(len(self.plateList)) + " plates\n"
             sys.stderr.write(reportStr)
-        
-        
+
     def checkPlateList(self):
-        #Function that goes through the list of folders and removes those that do not contain fcs files
-        #The remaining folders are considered plates
-        lFlaggedFolders=[]
-        for index,folder in enumerate(self.plateList):
-            filesInFolder=next(os.walk(folder))[2]
+        # Function that goes through the list of folders and removes those that do not contain fcs files
+        # The remaining folders are considered plates
+        lFlaggedFolders = []
+        for index, folder in enumerate(self.plateList):
+            filesInFolder = next(os.walk(folder))[2]
             if not filesInFolder:
                 lFlaggedFolders.append(index)
-        #To avoid cascading indicies while deleting go from last element->first
-        lFlaggedFolders=np.sort(lFlaggedFolders)[::-1]
+        # To avoid cascading indicies while deleting go from last element->first
+        lFlaggedFolders = np.sort(lFlaggedFolders)[::-1]
         for index in lFlaggedFolders:
             del self.plateList[index]
-    
-    def apply(self, strategy, n_ray_workers=1, *args, **kwargs):
+
+    def load_sample(self, filepath):
+        if self.HDF5Fileset:
+            sample = loadHDF5sample(filepath, sampling_resolution=self.QCbins)
+        else:
+            if self.man_comp:
+                comp_matrix = self.comp_matrix
+            else:
+                comp_matrix = None
+            if self.compensation_exceptions is not None:
+                comp_matrix = self.check_compensation_exception(filepath)
+
+            sample = loadFCS(filepath, return_type="AGSample", comp_matrix=comp_matrix, markers=self.lMarkers,
+                             flourochrome_area_filter=self.flourochrome_area_filter, sampling_resolution=self.QCbins,
+                             nOfEvents=self.nOfEvents)
+        return sample
+
+
+
+    def apply(self, strategy, n_processes: int=1, *args, **kwargs):
         if not hasattr(strategy, '__call__'):
             raise TypeError("Passed strategy does not seem to be a function")
         if self.bQC:
-            QCObj=AGQC(downSamplingBins=self.QCbins)
-        
-        for fcs in self.fcsList:
-            if 'ag_verbose' in kwargs:
-                agconf.ag_verbose = kwargs['ag_verbose']
-            if self.HDF5Fileset:
-                sample = loadHDF5sample(fcs, sampling_resolution=self.QCbins)
-            else:
-                if self.man_comp:
-                    comp_matrix=self.comp_matrix
-                else:
-                    comp_matrix=None
-                if self.compensation_exceptions is not None:
-                    comp_matrix=self.check_compensation_exception(fcs)
+            QCObj = AGQC(downSamplingBins=self.QCbins)
+        else:
+            QCObj = None
 
-                sample = loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=self.lMarkers, flourochrome_area_filter=self.flourochrome_area_filter, sampling_resolution=self.QCbins, nOfEvents = self.nOfEvents)
-            if sample is None:
-                continue
-            sys.stderr.write("Applying strategy\n")
-            gatedSample=self.fcs_apply_strategy(sample,strategy, *args, **kwargs)
+        if n_processes == 1:
+            self.apply_single_core(strategy, QCObj, *args, **kwargs)
+        else:
+            self.apply_multiprocess(strategy, QCObj, n_processes, *args, **kwargs)
+
+        nOfFlagged = len(self.flaggedSamples)
+        if "/" in self.exp_name:
+            fixed_exp_name = self.exp_name.split('/')[-1]
+        else:
+            fixed_exp_name = self.exp_name
+        log_file_name = self.output_folder + fixed_exp_name + ".log.txt"
+        fhandle = open(log_file_name, 'w')
+        reportStr = "Complete, "
+        if nOfFlagged > 0:
+            reportStr = reportStr + str(nOfFlagged) + " samples had at least one gate with an invalid flag set"
+        else:
+            reportStr = reportStr + "no samples had populations with invalid flags"
+        reportStr = reportStr + "\n"
+        sys.stderr.write(reportStr)
+        fhandle.write(reportStr)
+        for elem in self.flaggedSamples:
+            reportStr = elem + "\n"
+            sys.stderr.write(reportStr)
+            fhandle.write(reportStr)
+        if self.bQC:
+            # if 'folder' in kwargs:
+            #    folder=kwargs['folder']
+            # TODO: default folder
+            # QCObj.reportPCs(self.output_folder)
+            if "/" in self.exp_name:
+                fixed_exp_name = self.exp_name.split('/')[-1]
+            else:
+                fixed_exp_name = self.exp_name
+            QC_file_name = self.output_folder + fixed_exp_name + ".QC.HDF5"
+            QCObj.saveHDF5_QC_obj(destFilePath=QC_file_name, experiment_name=self.exp_name)
+
+    def apply_single_core(self, strategy, QCObj, *args, **kwargs):
+
+        for fcs_file in self.fcsList:
+            sample = self.load_sample(fcs_file)
+            result = strategy(sample, *args, **kwargs)
+
             if self.resultHeader is None:
-                    self.initResultMatrix(sample)  #BIG WARNING IN DOC FOR THIS BEHAVIOR
-            self.collectGateData(gatedSample)
-            self.sampleList.append(gatedSample.sample)
+                self.initResultMatrix(result)  # SEE DOC FOR THIS BEHAVIOR
+
+            self.collectGateData(result)
+
+            self.sampleList.append(result.sample)
+
             if self.bQC:
-                QCObj(gatedSample)
+                QCObj(result)
             sys.stderr.write("Sample gating ")
+
             if self.bQC:
                 sys.stderr.write("and QC metrics collection ")
             sys.stderr.write("done\n")
             sys.stderr.flush()
-                    
-        nOfFlagged=len(self.flaggedSamples)
-        if "/" in self.exp_name:
-            fixed_exp_name=self.exp_name.split('/')[-1]
-        else:
-            fixed_exp_name=self.exp_name
-        log_file_name = self.output_folder+fixed_exp_name+".log.txt"
-        fhandle=open(log_file_name,'w')
-        reportStr="Complete, "
-        if nOfFlagged>0:
-            reportStr=reportStr+str(nOfFlagged)+" samples had at least one gate with an invalid flag set"
-        else:
-            reportStr=reportStr+"no samples had populations with invalid flags"
-        reportStr=reportStr+"\n"
-        sys.stderr.write(reportStr)
-        fhandle.write(reportStr)
-        for elem in self.flaggedSamples:
-            reportStr=elem+"\n"
-            sys.stderr.write(reportStr)
-            fhandle.write(reportStr)
-        if self.bQC:
-            #if 'folder' in kwargs:
-            #    folder=kwargs['folder']
-            #TODO: default folder
-            #QCObj.reportPCs(self.output_folder)
-            if "/" in self.exp_name:
-                fixed_exp_name=self.exp_name.split('/')[-1]
-            else:
-                fixed_exp_name=self.exp_name
-            QC_file_name=self.output_folder+fixed_exp_name+".QC.HDF5"
-            QCObj.saveHDF5_QC_obj(destFilePath=QC_file_name, experiment_name=self.exp_name)
+        return
 
-    
+    def apply_multiprocess(self, strategy, QCObj, n_processes, *args, **kwargs):
+
+        for fcs_index in range(0, len(self.fcsList), n_processes):
+            if 'ag_verbose' in kwargs:
+                agconf.ag_verbose = kwargs['ag_verbose']
+            # Adjust for end of fcsList
+            if fcs_index + n_processes >= len(self.fcsList):
+                n_processes = len(self.fcsList) - fcs_index
+            try:
+                with DelayedInterrupt([signal.SIGTERM, signal.SIGINT]):
+                    with ProcessPoolExecutor(n_processes) as executor:
+                        # Load samples
+                        reportStr = "Loading sample " + str(fcs_index) + " to " + str(fcs_index + n_processes) + "\n"
+                        sys.stderr.write(reportStr)
+                        sample_ref_list = [self.load_sample(self.fcsList[i]) for i in
+                                           range(fcs_index, fcs_index + n_processes)]
+                        #Check for failed loads
+                        for i, sample_ref in enumerate(sample_ref_list):
+                            if sample_ref is None:
+                                reportStr="Sample "+self.fcsList[i+fcs_index]+" failed loading, skipping\n"
+                                sys.stderr.write(reportStr)
+                        # Distribute
+                        reportStr = "Applying strategy to sample " + str(fcs_index) + " to " + str(
+                            fcs_index + n_processes) + "\n"
+                        sys.stderr.write(reportStr)
+                        futures = [executor.submit(self.fcs_apply_strategy, sample_ref, strategy, *args, **kwargs) for
+                                   sample_ref in sample_ref_list if sample_ref is not None]
+
+                    results = []
+                    for future in as_completed(futures):
+                        results.append(future.result())
+            except KeyboardInterrupt:
+                # Keep thread alive for a bit and try to kill all processes
+                # See delayedinterrupt.py
+                sys.stderr.write("KeyboardInterrupt caught, terminating...\n")
+                for future in futures:
+                    future.cancel()
+                executor.shutdown(wait=False)
+                raise KeyboardInterrupt
+
+            for result in results:
+                if self.resultHeader is None:
+                    self.initResultMatrix(result)  # SEE DOC FOR THIS BEHAVIOR
+                self.collectGateData(result)
+                self.sampleList.append(result.sample)
+                if self.bQC:
+                    QCObj(result)
+                sys.stderr.write("Sample gating ")
+                if self.bQC:
+                    sys.stderr.write("and QC metrics collection ")
+                sys.stderr.write("done\n")
+                sys.stderr.flush()
+
+            # Delete/clean up reference
+            del futures
+            del sample_ref_list
+            del results
+
     def initResultMatrix(self, fcs):
         assert len(fcs.vGates) > 0
-        self.resultMatrix=[]
-        self.resultHeader=["sampleName"]
+        self.resultMatrix = []
+        self.resultHeader = ["sampleName"]
         for gate in fcs.vGates:
-            if gate.name==None or gate.parentName is None:
+            if gate.name == None or gate.parentName is None:
                 raise AliGaterError("Error when initializing resultmatrix gatename or parentname missing")
-            self.resultHeader.extend([gate.name, gate.name+str("/")+gate.parentName])
-        
-        if len(fcs.MFI_Series) > 0 :
-            #if MFI available, also init MFI table
+            self.resultHeader.extend([gate.name, gate.name + str("/") + gate.parentName])
+
+        if len(fcs.MFI_Series) > 0:
+            # if MFI available, also init MFI table
             self.result_MFI_DF = pd.DataFrame()
             self.has_MFI = True
-            
+
     def collectGateData(self, fcs):
         assert all(isinstance(i, list) for i in [self.resultHeader, self.resultMatrix])
-        #Create empty python list of correct size
-        sampleResults=[None]*len(self.resultHeader)
+        # Create empty python list of correct size
+        sampleResults = [None] * len(self.resultHeader)
         sampleResults[0] = fcs.sample
-        bFlagged=False
+        bFlagged = False
         for gate in fcs.vGates:
             try:
-                indexOfGate=self.resultHeader.index(gate.name)
+                indexOfGate = self.resultHeader.index(gate.name)
             except ValueError:
-                reportStr="sample contain unknown gate: "+gate.name+", skipping gate\n"
+                reportStr = "sample contain unknown gate: " + gate.name + ", skipping gate\n"
                 sys.stderr.write(reportStr)
                 sys.stderr.write(fcs.filePath)
                 continue
-            currentGate=float(len(gate.current))
+            currentGate = float(len(gate.current))
             if gate.parent is not None:
-                currentGateParent=len(gate.parent)
-            else: 
-                currentGateParent=len(fcs.full_index())
-            if currentGateParent==0:
-                currentRatio="NA"
+                currentGateParent = len(gate.parent)
             else:
-                currentRatio=currentGate/currentGateParent
+                currentGateParent = len(fcs.full_index())
+            if currentGateParent == 0:
+                currentRatio = "NA"
+            else:
+                currentRatio = currentGate / currentGateParent
             if gate.bInvalid:
-                bFlagged=True
-                sampleResults[indexOfGate]=currentGate
-                sampleResults[indexOfGate+1]=currentRatio
+                bFlagged = True
+                sampleResults[indexOfGate] = currentGate
+                sampleResults[indexOfGate + 1] = currentRatio
             elif gate.bRatioGate:
-                sampleResults[indexOfGate]="NA"
-                sampleResults[indexOfGate+1]=currentRatio
+                sampleResults[indexOfGate] = "NA"
+                sampleResults[indexOfGate + 1] = currentRatio
             else:
                 sampleResults[indexOfGate] = currentGate
-                sampleResults[indexOfGate+1] = currentRatio
+                sampleResults[indexOfGate + 1] = currentRatio
         self.resultMatrix.append(sampleResults)
-        
-        #****Check/Add MFI*****
+
+        # ****Check/Add MFI*****
         if len(fcs.MFI_Series) > 0:
             #Make sure duplicate entries are dropped (can happen if extra MFIs are applied etc)
             non_dup_series = fcs.MFI_Series[~fcs.MFI_Series.index.duplicated(keep='first')] #equal MFI's allowed but not equal mfi index
@@ -1520,122 +1598,123 @@ class AGExperiment:
             non_dup_series.name = fcs.sample
             #Append
             self.result_MFI_DF = self.result_MFI_DF.append(non_dup_series)
-        
+
         if bFlagged:
             self.flaggedSamples.append(fcs.sample)
-    
+
     def printExperiment(self, file=None, MFI_file=None):
         if file is None:
-            file=self.fallback_filepath()
-        elif not isinstance(file,str) or not (check_filePath(file) in ["dir_exists", "file"]):
-                #filepath should be string path to output file. Must either exist, or it's directory must exist
-                sys.stderr.write("Warning, in aligater.AliGaterExperiment.printExperiment: file filepath invalid, falling back to ag_out directory.")
-                file=self.fallback_filepath()
-        
-        
+            file = self.fallback_filepath()
+        elif not isinstance(file, str) or not (check_filePath(file) in ["dir_exists", "file"]):
+            # filepath should be string path to output file. Must either exist, or it's directory must exist
+            sys.stderr.write(
+                "Warning, in aligater.AliGaterExperiment.printExperiment: file filepath invalid, falling back to ag_out directory.")
+            file = self.fallback_filepath()
+
         if not all(isinstance(i, list) for i in [self.resultHeader, self.resultMatrix]):
             sys.stderr.write("No count and/or ratio data to print.\n")
-            #No ratio/count data, but maybe MFI?
+            # No ratio/count data, but maybe MFI?
             if not self.has_MFI:
                 sys.stderr.write("Experiment result tables are empty, no results to print.\n")
                 return None
         else:
             fhandle = open(file, 'w')
             for elem in self.resultHeader:
-                outputStr=str(elem)+"\t"
+                outputStr = str(elem) + "\t"
                 fhandle.write(outputStr)
             fhandle.write("\n")
             for sample in self.resultMatrix:
                 for elem in sample:
-                    outputStr=str(elem)+"\t"
+                    outputStr = str(elem) + "\t"
                     fhandle.write(outputStr)
                 fhandle.write("\n")
             fhandle.close()
-        
-        #MFI stuff
+
+        # MFI stuff
         if self.has_MFI:
             sys.stderr.write("printing MFI data\n")
             if len(self.result_MFI_DF) == 0:
                 sys.stderr.write("No MFI data to print.\n")
                 return None
             if MFI_file is None:
-                MFI_file=self.fallback_filepath(".MFI")
-            elif not isinstance(MFI_file,str) or not (check_filePath(MFI_file) in ["dir_exists", "file"]):
-                    #filepath should be string path to output file. Must either exist, or it's directory must exist
-                    sys.stderr.write("Warning, in aligater.AliGaterExperiment.printExperiment: MFI_file filepath invalid, falling back to ag_out directory.")
-                    MFI_file = self.fallback_filepath(".MFI")
+                MFI_file = self.fallback_filepath(".MFI")
+            elif not isinstance(MFI_file, str) or not (check_filePath(MFI_file) in ["dir_exists", "file"]):
+                # filepath should be string path to output file. Must either exist, or it's directory must exist
+                sys.stderr.write(
+                    "Warning, in aligater.AliGaterExperiment.printExperiment: MFI_file filepath invalid, falling back to ag_out directory.")
+                MFI_file = self.fallback_filepath(".MFI")
 
             self.result_MFI_DF.to_csv(MFI_file, sep="\t")
-          
+
     def fallback_filepath(self, suffix=""):
-        fixed_exp_name=self.exp_name.split('/')[-1]
-        fallback_path = self.output_folder+fixed_exp_name+suffix+".results.txt"
+        fixed_exp_name = self.exp_name.split('/')[-1]
+        fallback_path = self.output_folder + fixed_exp_name + suffix + ".results.txt"
         return fallback_path
-    
+
     def parse_folder(self, strategy, folder, comp_matrix=None, *args, **kwargs):
-        #NOT USED/WORK IN PROGRESS
+        # NOT USED/WORK IN PROGRESS
         if 'ag_verbose' in kwargs:
             agconf.ag_verbose = kwargs['ag_verbose']
 
-        reportStr="Parsing plate: "+folder+" \n"
+        reportStr = "Parsing plate: " + folder + " \n"
         sys.stderr.write(reportStr)
-        fcs_in_folder = collectFiles(folder, lFilter=self.lFilter, lMask=self.lMask, lIgnoreTypes=self.lIgnoreTypes, HDF5 = self.HDF5Fileset)
-        samples_in_plate=[]
+        fcs_in_folder = collectFiles(folder, lFilter=self.lFilter, lMask=self.lMask, lIgnoreTypes=self.lIgnoreTypes,
+                                     HDF5=self.HDF5Fileset)
+        samples_in_plate = []
         for fcs in fcs_in_folder:
             if self.man_comp:
-                comp_matrix=self.comp_matrix
+                comp_matrix = self.comp_matrix
             if self.compensation_exceptions is not None:
-                    comp_matrix=self.check_compensation_exception(fcs)
+                comp_matrix = self.check_compensation_exception(fcs)
             sample = loadFCS(fcs, return_type="AGSample", comp_matrix=comp_matrix, markers=self.lMarkers)
             if sample is None:
                 continue
             sample = self.fcs_apply_strategy(sample, strategy, *args, **kwargs)
             if self.resultHeader is None:
                 self.initResultMatrix(sample)
-            sample.fcsDF=[]
+            sample.fcsDF = []
             samples_in_plate.append(sample)
         return samples_in_plate
-    
-    def fcs_apply_strategy(self, fcs, strategy, *args, **kwargs):
-        #Check for strategy __Call__ functionality
-        fcs = strategy(fcs, *args, **kwargs)
-        return fcs
-    
-    
-    def check_metadata_internal(self, filePath, fcsDF, lFlagged, metaDict):
-        bOk=True
-        lFlags=[]
-        if 'SPILL' in metaDict.keys():
-            spill_keyword='SPILL'
-        elif '$SPILL' in metaDict.keys():
-            spill_keyword='$SPILL'
-        elif 'SPILLOVER' in metaDict.keys():
-            spill_keyword='SPILLOVER'
-        elif '$SPILLOVER' in metaDict.keys():
-            spill_keyword='$SPILLOVER'
-        else:
-            reportStr="Unknown spillover keyword in metadata"
-            lFlags.append(reportStr)
-            bOk=False
 
-        spill_matrix=metaDict[spill_keyword].split(',')
-        
-        if len(fcsDF) < agconf.cellFilter:
-            reportStr="Sample has fewer events than cellFilter treshold"
+    @staticmethod
+    def fcs_apply_strategy(sample, strategy, *args, **kwargs):
+        fcs = strategy(sample, *args, **kwargs)
+        return fcs
+
+    def check_metadata_internal(self, filePath, fcsDF, lFlagged, metaDict):
+        bOk = True
+        lFlags = []
+        if 'SPILL' in metaDict.keys():
+            spill_keyword = 'SPILL'
+        elif '$SPILL' in metaDict.keys():
+            spill_keyword = '$SPILL'
+        elif 'SPILLOVER' in metaDict.keys():
+            spill_keyword = 'SPILLOVER'
+        elif '$SPILLOVER' in metaDict.keys():
+            spill_keyword = '$SPILLOVER'
+        else:
+            reportStr = "Unknown spillover keyword in metadata"
             lFlags.append(reportStr)
-            bOk=False
-        
-        n = int(spill_matrix[0]) #number of colors
-        columns=fcsDF.columns.tolist()
-        exclude_cols = ['tlsw',	'tmsw', 'event info','time']
-        indicies_to_drop=[]
-        fsc_ssc_count=0
-        for index,col in enumerate(columns):
-            bExclusion=False
+            bOk = False
+
+        spill_matrix = metaDict[spill_keyword].split(',')
+
+        if len(fcsDF) < agconf.cellFilter:
+            reportStr = "Sample has fewer events than cellFilter treshold"
+            lFlags.append(reportStr)
+            bOk = False
+
+        n = int(spill_matrix[0])  # number of colors
+        columns = fcsDF.columns.tolist()
+        exclude_cols = ['tlsw', 'tmsw', 'event info', 'time']
+        indicies_to_drop = []
+        fsc_ssc_count = 0
+        for index, col in enumerate(columns):
+            bExclusion = False
             for exclusion in exclude_cols:
                 if exclusion in col.lower():
                     indicies_to_drop.append(index)
-                    bExclusion=True
+                    bExclusion = True
             if 'fsc' not in col.lower() and 'ssc' not in col.lower():
                 if col.lower()[-2:] != '-a' and not bExclusion and self.flourochrome_area_filter:
                     indicies_to_drop.append(index)
@@ -1643,21 +1722,21 @@ class AGExperiment:
             else:
                 fsc_ssc_count += 1
         fcsDF.drop(fcsDF.columns[indicies_to_drop], axis=1, inplace=True)
-        colNames = fcsDF.columns        
-        #Check that the fcs has a supported fcs version
+        colNames = fcsDF.columns
+        # Check that the fcs has a supported fcs version
         try:
             fcs_vs = metaDict['__header__']['FCS format'].decode('UTF-8')
         except UnicodeError:
-            reportStr="Unexpected encoding in metadata (not UTF-8), proceed with caution"
-            bOk=False
+            reportStr = "Unexpected encoding in metadata (not UTF-8), proceed with caution"
+            bOk = False
             lFlags.append(reportStr)
-        if not fcs_vs in ['FCS3.0','FCS2.0','FCS3.1']:
-            reportStr="FCS file version ("+fcs_vs+") not guaranteed to work, procced with caution"
-            bOk=False
+        if not fcs_vs in ['FCS3.0', 'FCS2.0', 'FCS3.1']:
+            reportStr = "FCS file version (" + fcs_vs + ") not guaranteed to work, procced with caution"
+            bOk = False
             lFlags.append(reportStr)
-            
-        #Check that the first four fields in the fcs are forward and side scatters
-        #Deprecated, uneccessary check
+
+        # Check that the first four fields in the fcs are forward and side scatters
+        # Deprecated, uneccessary check
         # if not self.flourochrome_area_filter:
         #     scatter_cols=fcsDF.columns[0:4]
         #     if not all([scatter in ['FSC-A', 'FSC-H', 'SSC-A', 'SSC-H'] for scatter in scatter_cols]):
@@ -1670,153 +1749,161 @@ class AGExperiment:
         #         reportStr="First four columns in fcs are not forward and side scatters"
         #         bOk=False
         #         lFlags.append(reportStr)
-            
-        #If markers have been passed to the experiment object, check that they are
-        #correctly specified for each sample
+
+        # If markers have been passed to the experiment object, check that they are
+        # correctly specified for each sample
         if self.lMarkers is not None:
             if not set(colNames) == set(self.lMarkers):
-                reportStr="Specified markers not in fcs"
-                bOk=False
+                reportStr = "Specified markers not in fcs"
+                bOk = False
                 lFlags.append(reportStr)
-                
-        #Check that compensation data is available (non-zero)
-        comp_matrix = np.array(spill_matrix[n+1:]).reshape(n, n).astype(float)
+
+        # Check that compensation data is available (non-zero)
+        comp_matrix = np.array(spill_matrix[n + 1:]).reshape(n, n).astype(float)
         tmp_identity = np.identity(n)
         if np.array_equal(comp_matrix, tmp_identity):
-            reportStr="No compensation data available"
-            bOk=False
+            reportStr = "No compensation data available"
+            bOk = False
             lFlags.append(reportStr)
-            
+
         if not bOk:
             lFlags.append(filePath)
-            lFlagged.append(lFlags[::-1])  
+            lFlagged.append(lFlags[::-1])
         return bOk
-    
+
     def check_metadata(self, *args, **kwargs):
         if len(self.fcsList) == 0:
             raise ValueError("This AGExperiment does not have any fcs files associated with it")
-        bOk=True
-        metadata_warnings=0
-        reportStr="Checking metadata for all "+str(len(self.fcsList))+" fcs files in experiment:\n"
+        bOk = True
+        metadata_warnings = 0
+        reportStr = "Checking metadata for all " + str(len(self.fcsList)) + " fcs files in experiment:\n"
         sys.stderr.write(reportStr)
-        lFlagged=[]
-        nOfEventsArray=[]
-        progress_counter=0
+        lFlagged = []
+        nOfEventsArray = []
+        progress_counter = 0
         for fcs in self.fcsList:
-            progress_counter+=1
-            metadata,fcsDF = parse(fcs,output_format='DataFrame')
+            progress_counter += 1
+            metadata, fcsDF = parse(fcs, output_format='DataFrame')
             if metadata is None:
-                metadata_warnings+=1
-                lFlagged.append([fcs,"Could not parse metadata"])
+                metadata_warnings += 1
+                lFlagged.append([fcs, "Could not parse metadata"])
                 continue
-            bOk=self.check_metadata_internal(fcs,fcsDF,lFlagged,metadata)
+            bOk = self.check_metadata_internal(fcs, fcsDF, lFlagged, metadata)
             if not bOk:
-                metadata_warnings+=1
-                
-            if bOk: #count events
+                metadata_warnings += 1
+
+            if bOk:  # count events
                 nOfEventsArray.append(len(fcsDF))
             elif not bOk and lFlagged[-1] == "No compensation data available":
-                #if just missing compensation, still count events
+                # if just missing compensation, still count events
                 nOfEventsArray.append(len(fcsDF))
-            if progress_counter%10==0:
-                progress=progress_counter/len(self.fcsList)
+            if progress_counter % 10 == 0:
+                progress = progress_counter / len(self.fcsList)
                 update_progress(progress)
-                
-        #Calculate statistics
-        mean=np.mean(nOfEventsArray)
-        median=np.median(nOfEventsArray)
+
+        # Calculate statistics
+        mean = np.mean(nOfEventsArray)
+        median = np.median(nOfEventsArray)
         min_events = np.min(nOfEventsArray)
         max_events = np.max(nOfEventsArray)
         update_progress(1.0)
-        reportStr=str(metadata_warnings)+" files had metadata flags\n"
-        sys.stderr.write(reportStr)   
+        reportStr = str(metadata_warnings) + " files had metadata flags\n"
+        sys.stderr.write(reportStr)
         if len(lFlagged) > 0:
             for sample in lFlagged:
-                reportStr=sample[0]+"\nFlags:\n"
+                reportStr = sample[0] + "\nFlags:\n"
                 sys.stderr.write(reportStr)
-                for i in np.arange(1,len(sample),1):
-                    reportStr=sample[i]+"\n"
+                for i in np.arange(1, len(sample), 1):
+                    reportStr = sample[i] + "\n"
                     sys.stderr.write(reportStr)
-        reportStr="Event statistics of valid samples (including samples with missing compensation):\nmean: "+str(mean)+"\nmedian: "+str(median)+"\nmin: "+str(min_events)+"\nmax_events: "+str(max_events)+"\n"
+        reportStr = "Event statistics of valid samples (including samples with missing compensation):\nmean: " + str(
+            mean) + "\nmedian: " + str(median) + "\nmin: " + str(min_events) + "\nmax_events: " + str(max_events) + "\n"
         sys.stderr.write(reportStr)
-        return lFlagged            
-    
+        return lFlagged
+
     def check_compensation_exception(self, fcs):
-        for i in np.arange(0, len(self.compensation_exceptions),1):
+        for i in np.arange(0, len(self.compensation_exceptions), 1):
             if fcs.lower() == self.compensation_exceptions[i][0].lower():
-                reportStr="Sample ("+str(fcs)+") is in compensation exception list, collecting external compensation matrix\n"
+                reportStr = "Sample (" + str(
+                    fcs) + ") is in compensation exception list, collecting external compensation matrix\n"
                 sys.stderr.write(reportStr)
                 try:
-                    metadata, fcsDF = loadFCS(self.compensation_exceptions[i][1], return_type="index", metadata=True,ignore_minCell_filter=True)
+                    metadata, fcsDF = loadFCS(self.compensation_exceptions[i][1], return_type="index", metadata=True,
+                                              ignore_minCell_filter=True)
                 except FileNotFoundError:
-                    reportStr="WARNING, file for collecting external compensation matrix does not exist. Could not retrieve the external compensation matrix for this sample\n"
+                    reportStr = "WARNING, file for collecting external compensation matrix does not exist. Could not retrieve the external compensation matrix for this sample\n"
                     sys.stderr.write(reportStr)
                     return None
-                comp_matrix=getCompensationMatrix(fcsDF, metadata)[1]
+                comp_matrix = getCompensationMatrix(fcsDF, metadata)[1]
                 if comp_matrix is not None:
-                    reportStr="Succesfully collected external compensation matrix\n"
+                    reportStr = "Succesfully collected external compensation matrix\n"
                     sys.stderr.write(reportStr)
                     return comp_matrix
                 else:
-                    reportStr="WARNING, in check_compensation_exception: external compensation sample "+self.compensation_exceptions[i][1]+" had a zero or none compensation matrix\n"
+                    reportStr = "WARNING, in check_compensation_exception: external compensation sample " + \
+                                self.compensation_exceptions[i][1] + " had a zero or none compensation matrix\n"
                     sys.stderr.write(reportStr)
-                    self.flaggedSamples.append((fcs,"NO EXTERNAL COMP"))
+                    self.flaggedSamples.append((fcs, "NO EXTERNAL COMP"))
         return None
-    
+
     def create_HDF5_files(self, target_root_dir, folder_naming_levels=0):
-        reportStr="Creating compressed compensated files for all fcs files loaded in the experiment.\nMetadata and filter checks will be limited, it is strongly recommended to run check_metadata first and update experiment file filters and masks in the AGExperiment accordingly.\nRoot folder for binary files: "+str(target_root_dir)+"\n"
+        reportStr = "Creating compressed compensated files for all fcs files loaded in the experiment.\nMetadata and filter checks will be limited, it is strongly recommended to run check_metadata first and update experiment file filters and masks in the AGExperiment accordingly.\nRoot folder for binary files: " + str(
+            target_root_dir) + "\n"
         sys.stderr.write(reportStr)
         bFolderExists = os.path.isdir(target_root_dir)
         if not bFolderExists:
             sys.stderr.write("target_root_dir doesn't exists, attempting to create\n")
             os.mkdir(target_root_dir)
 
-        #Load FCSes here
+        # Load FCSes here
         for fcs in self.fcsList:
             if self.man_comp:
-                comp_matrix=self.comp_matrix
+                comp_matrix = self.comp_matrix
             else:
-                comp_matrix=None
+                comp_matrix = None
             if self.compensation_exceptions is not None:
-                comp_matrix=self.check_compensation_exception(fcs)
-            sample = loadFCS(fcs, comp_matrix=comp_matrix, compensate=True, markers=self.lMarkers, flourochrome_area_filter=self.flourochrome_area_filter, return_type="agsample")
+                comp_matrix = self.check_compensation_exception(fcs)
+            sample = loadFCS(fcs, comp_matrix=comp_matrix, compensate=True, markers=self.lMarkers,
+                             flourochrome_area_filter=self.flourochrome_area_filter, return_type="agsample")
             if sample is None:
                 continue
 
-            tmp_filePath=sample.filePath
+            tmp_filePath = sample.filePath
             if folder_naming_levels > 0:
-                parent_folder_names=[]
-                parent_folder_paths=[]
-                for i in np.arange(0, folder_naming_levels,1):
-                    parentFolder = getParent(tmp_filePath) 
+                parent_folder_names = []
+                parent_folder_paths = []
+                for i in np.arange(0, folder_naming_levels, 1):
+                    parentFolder = getParent(tmp_filePath)
                     parent_folder_paths.append(parentFolder)
                     parent_folder_names.append(getFileName(parentFolder))
                     tmp_filePath = parentFolder
 
-            target_folder=target_root_dir
+            target_folder = target_root_dir
             for folder in parent_folder_names[::-1]:
                 if target_folder[-1] != "/":
-                    target_folder=target_folder+"/"+folder
+                    target_folder = target_folder + "/" + folder
                 else:
-                    target_folder=target_folder+folder
+                    target_folder = target_folder + folder
                 if not os.path.isdir(target_folder):
                     os.mkdir(target_folder)
-                    
-            #Subfolders exists construct h5py binary filename
-            h5py_filehandle=target_root_dir+"/".join(parent_folder_names[::-1])+"/"+getFileName(sample.filePath)+".h5"
-            h5py_internal_name = "/".join(parent_folder_names[::-1])+"/"+getFileName(sample.filePath)+".fcs"
-            self.__create_hdf5_file(sample = sample(), h5py_filehandle = h5py_filehandle, h5py_internal_name = h5py_internal_name)
-            
+
+            # Subfolders exists construct h5py binary filename
+            h5py_filehandle = target_root_dir + "/".join(parent_folder_names[::-1]) + "/" + getFileName(
+                sample.filePath) + ".h5"
+            h5py_internal_name = "/".join(parent_folder_names[::-1]) + "/" + getFileName(sample.filePath) + ".fcs"
+            self.__create_hdf5_file(sample=sample(), h5py_filehandle=h5py_filehandle,
+                                    h5py_internal_name=h5py_internal_name)
+
         return None
-    
+
     def __create_hdf5_file(self, sample, h5py_filehandle, h5py_internal_name):
-        #sample is supposedly a pandas dataframe here
+        # sample is supposedly a pandas dataframe here
         if not isinstance(sample, pd.DataFrame):
-            raise #Todo: better raise
-        
-        HDF5_metadata = pd.Series([h5py_filehandle,h5py_internal_name])
-        
+            raise  # Todo: better raise
+
+        HDF5_metadata = pd.Series([h5py_filehandle, h5py_internal_name])
+
         sample.to_hdf(h5py_filehandle, key='fcs', mode='w')
         HDF5_metadata.to_hdf(h5py_filehandle, key='filenames', mode='a')
-        
+
         return None

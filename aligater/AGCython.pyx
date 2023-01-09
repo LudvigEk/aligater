@@ -37,7 +37,7 @@ from operator import itemgetter
 import aligater.AGConfig as agconf
 from aligater.AGFileSystem import getGatedVector, getGatedVectors, reportGateResults, invalidAGgateParentError, invalidSampleError, filePlotError, AliGaterError, markerError
 from aligater.AGPlotRoutines import addLine, addAxLine, getHeatmap, logicleTransform, inverselogicleTransform, plotHeatmap, plot_densityFunc, convertTologiclePlotCoordinate, logicleLocator, logicleFormatter, BiLogLocator, BiLogFormatter, transformWrapper
-from aligater.AGClasses import AGsample,AGgate
+from aligater.AGClasses import AGSample,AGgate
 
 #For cython optimisations with boundscheck and wraparound
 cimport cython
@@ -216,7 +216,7 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
         plot=True
     else:
         plot=False
-    if not isinstance(fcs,AGsample):
+    if not isinstance(fcs, AGSample):
         raise invalidSampleError("in gateThreshold:")
     if parentGate is None:
         vI=fcs.full_index()
@@ -292,23 +292,21 @@ def gateThreshold(fcs, str name, str xCol, yCol=None, thresh=None, orientation="
         addAxLine(fig,ax,thresh,orientation,scale=scale, xscale=xscale, yscale=yscale, T=T)
             
         if filePlot is not None:
-            plt.savefig(filePlot)
-            if not plot:
-                plt.close(fig)
+            fig.savefig(filePlot)
         if plot:
             plt.show()
-            plt.clf()
-            plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale,xscale=xscale,yscale=yscale,thresh=T)
+            fig2,ax2=plotHeatmap(fcsDF, xCol, yCol, vOutput, scale=scale,xscale=xscale,yscale=yscale,thresh=T)
             plt.show()
+            plt.close(fig2)
+        plt.close(fig)
     if (plot or filePlot is not None) and densityPlot:
-        fig,ax =plot_densityFunc(fcsDF,xCol, vI, scale=scale, T=T,*args,**kwargs)
-        addAxLine(fig,ax,thresh,orientation,scale=scale, T=T)
+        fig3, ax3 = plot_densityFunc(fcsDF,xCol, vI, scale=scale, T=T,*args,**kwargs)
+        addAxLine(fig3,ax3,thresh,orientation,scale=scale, T=T)
         if filePlot is not None:
-            plt.savefig(filePlot)
-            if not plot:
-                plt.close(fig)
+            fig3.savefig(filePlot)
         if plot:
             plt.show()
+        plt.close(fig3)
     if agconf.ag_verbose:
         reportGateResults(vI, vOutput)
     
@@ -326,8 +324,8 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
     else:
         plot=False
     cdef list vI, originalvI
-    if not fcs.__class__.__name__=="AGsample":
-        raise TypeError("invalid AGsample object")
+    if not fcs.__class__.__name__=="AGSample":
+        raise TypeError("invalid AGSample object")
     if parentGate is None:
         vI=fcs.full_index()
         startingGate=None
@@ -467,22 +465,20 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
     cdef list coord
     if plot or filePlot is not None:
         heatmap=np.ma.masked_where(smoothedHeatmap == 0, smoothedHeatmap)
-        plt.clf()
-        fig, ax = plt.subplots()
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
         extent = [xedges[0], xedges[bins], yedges[0], yedges[bins]]
-        plt.imshow(heatmap.T, extent=extent, origin='lower',aspect='auto')
-        plt.xlabel(xCol)
-        plt.ylabel(yCol)
+        ax.imshow(heatmap.T, extent=extent, origin='lower',aspect='auto')
+        ax.xlabel(xCol)
+        ax.ylabel(yCol)
         cmap=plt.get_cmap()
         cmap.set_bad(color='white')
         if scale.lower()=='logicle':
-            ax=plt.gca()
             ax.xaxis.set_major_locator(logicleLocator(linCutOff=T))
             ax.xaxis.set_major_formatter(logicleFormatter(linCutOff=T))
             ax.yaxis.set_major_locator(logicleLocator(linCutOff=T))
             ax.yaxis.set_major_formatter(logicleFormatter(linCutOff=T))
         elif scale.lower()=='bilog':
-            ax=plt.gca()
             ax.xaxis.set_major_locator(BiLogLocator(linCutOff=T))
             ax.xaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
             ax.yaxis.set_major_locator(BiLogLocator(linCutOff=T))
@@ -500,7 +496,7 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
             previousCoord=coord
             count+=1
         if filePlot is not None:
-            plt.savefig(filePlot)
+            fig.savefig(filePlot)
         if plot:
             plt.show()
         plt.close(fig)
@@ -509,9 +505,9 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
     reportGateResults(originalvI,vOut)
     
     if plot:
-        plt.clf()
-        plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
+        fig,ax = plotHeatmap(fcsDF, xCol, yCol, vOut, scale=scale)
         plt.show()
+        plt.close(fig)
     if parentGate is not None:
         outputGate=AGgate(vOut, parentGate, xCol, yCol, name)
     else:
@@ -530,8 +526,8 @@ def horizontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
     else:
         plot=False
     cdef list vI, originalvI
-    if not fcs.__class__.__name__=="AGsample":
-        raise TypeError("invalid AGsample object")
+    if not fcs.__class__.__name__=="AGSample":
+        raise TypeError("invalid AGSample object")
     if parentGate is None:
         vI=fcs.full_index()
         startingGate=None
@@ -729,12 +725,12 @@ def horizontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
         outputGate=AGgate(vOut, None, xCol, yCol, name)
         
     if plot:
-        plt.clf()
-        fig, ax = plt.subplots()
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
         extent = [min(xedges), max(xedges), min(yedges), max(yedges)]
-        plt.imshow(plot_heatmap.T, extent=extent, origin='lower',aspect='auto')
-        plt.xlabel(xCol)
-        plt.ylabel(yCol)
+        ax.imshow(plot_heatmap.T, extent=extent, origin='lower',aspect='auto')
+        ax.xlabel(xCol)
+        ax.ylabel(yCol)
         cmap=plt.get_cmap()
         cmap.set_bad(color='white')
         count=0
@@ -747,9 +743,10 @@ def horizontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
             previousCoord=coord
             count+=1
         plt.show()
-        plt.clf()
-        plotHeatmap(fcs(), xCol, yCol, outputGate(), scale=scale,thresh=T)
+        plt.close(fig)
+        fig2, ax2 = plotHeatmap(fcs(), xCol, yCol, outputGate(), scale=scale,thresh=T)
         plt.show()
+        plt.close(fig2)
         
     return outputGate
 
@@ -761,8 +758,8 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
     else:
         plot=False
     cdef list vI, originalvI
-    if not fcs.__class__.__name__=="AGsample":
-        raise TypeError("invalid AGsample object")
+    if not fcs.__class__.__name__=="AGSample":
+        raise TypeError("invalid AGSample object")
     #TODO HANDLE START/END X TYPES
     if parentGate is None:
         vI=fcs.full_index()
@@ -907,12 +904,12 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
         outputGate=AGgate(vOut, None, xCol, yCol, name)
         
     if plot or filePlot is not None:
-        plt.clf()
-        fig, ax = plt.subplots()
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
         extent = [min(xedges), max(xedges), min(yedges), max(yedges)]
-        plt.imshow(plot_heatmap, extent=extent, origin='lower',aspect='auto')
-        plt.xlabel(xCol)
-        plt.ylabel(yCol)
+        ax.imshow(plot_heatmap, extent=extent, origin='lower',aspect='auto')
+        ax.xlabel(xCol)
+        ax.ylabel(yCol)
         cmap=plt.get_cmap()
         cmap.set_bad(color='white')
         count=0
@@ -925,17 +922,15 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
             previousCoord=coord
             count+=1
         if filePlot is not None:
-            plt.savefig(filePlot)
-            
-        if plot:
-            plt.show()
-            
-        plt.clf()
+            fig.savefig(filePlot)
+
         
         if plot:
-            plotHeatmap(fcs(), xCol, yCol, outputGate(), scale=scale,thresh=T)
             plt.show()
-        
+            plt.close(fig)
+            fig, ax = plotHeatmap(fcs(), xCol, yCol, outputGate(), scale=scale,thresh=T)
+            plt.show()
+            plt.close(fig)
     return outputGate
 
 def _minCostPath(np.ndarray[dtype_t, ndim=2] cost, int nCols, int nRows, int maxStep=5, bool reverse = False, float phi=0.0, str direction='right') :
