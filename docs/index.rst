@@ -7,7 +7,7 @@ Welcome to AliGater's documentation!
 ====================================
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
 
    README
    Getting_started
