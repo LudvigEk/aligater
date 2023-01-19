@@ -730,7 +730,7 @@ def horizontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
         extent = [min(xedges), max(xedges), min(yedges), max(yedges)]
         cmap=plt.get_cmap().copy()
         cmap.set_bad(color='white')
-        ax.imshow(plot_heatmap.T, extent=extent, origin='lower',aspect='auto')
+        ax.imshow(plot_heatmap.T, extent=extent, origin='lower',aspect='auto', cmap=cmap)
         ax.set_xlabel(xCol)
         ax.set_ylabel(yCol)
         count=0
