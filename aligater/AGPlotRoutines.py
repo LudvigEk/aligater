@@ -7,7 +7,7 @@
 #               /^^\
 #   /^^\_______/0  \_
 #  (                 `~+++,,_________,,++~^^^^^^^
-#..V^V^V^V^V^V^\.................................
+# ..V^V^V^V^V^V^\.................................
 #
 #
 #	Parsing .fcs files with fcsparser from Eugene Yurtsevs FlowCytometryTools (very slightly modified)
@@ -24,23 +24,26 @@ import numpy as np
 import math
 import six
 from scipy.ndimage.filters import gaussian_filter1d
-#For computing bin width similarly to scipys histogram_bin_edges
+# For computing bin width similarly to scipys histogram_bin_edges
 from scipy.stats import iqr
 from sklearn.decomposition import PCA
 
 import sys
 
-#AliGater imports
+# AliGater imports
 import aligater.AGConfig as agconf
 from aligater.AGFileSystem import getGatedVector, AliGaterError
-from aligater.AGCythonUtils import __vectorlogicleTransform, __vectorInverselogicleTransform, __vectorBilogTransform, __vectorInverseBilogTransform
+from aligater.AGCythonUtils import __vectorlogicleTransform, __vectorInverselogicleTransform, __vectorBilogTransform, \
+    __vectorInverseBilogTransform
 
 import matplotlib
+
 if agconf.execMode == "jupyter":
     # Use default backend/Let matplotlib decide
     pass
 else:
-    matplotlib.use('Agg')  # Solves tkinter backend problems using ray multithreading - gives some problems in notebooks though
+    matplotlib.use(
+        'Agg')  # Solves tkinter backend problems using ray multithreading - gives some problems in notebooks though
 
 from matplotlib import pyplot as plt
 import matplotlib.colors
@@ -52,7 +55,8 @@ from matplotlib import rcParams
 sentinel = object()
 
 
-def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='linear', yscale='linear', thresh=1000, aspect='auto', **kwargs):
+def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='linear', yscale='linear', thresh=1000,
+                aspect='auto', **kwargs):
     """
     Core plotting function of AliGater. Mainly intended to be called internally, but may be called directly.
     Only plots. No gating functionalities.
@@ -104,120 +108,119 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
         None currently.
     """
     if vI is sentinel:
-        vI=fcsDF.index
-    elif len(vI)<2:
+        vI = fcsDF.index
+    elif len(vI) < 2:
         sys.stderr.write("Passed index contains no events\n")
         return None, None
-    if not isinstance(bins,str) and len(vI)<bins:
-        bins=len(vI)
-    if scale.lower()=='logicle':
-        xscale='logicle'
-        yscale='logicle'
-    if scale.lower()=='bilog':
-        xscale='bilog'
-        yscale='bilog'
-    #Default x and y lims
-    bYlim=False
-    bXlim=False
+    if not isinstance(bins, str) and len(vI) < bins:
+        bins = len(vI)
+    if scale.lower() == 'logicle':
+        xscale = 'logicle'
+        yscale = 'logicle'
+    if scale.lower() == 'bilog':
+        xscale = 'bilog'
+        yscale = 'bilog'
+    # Default x and y lims
+    bYlim = False
+    bXlim = False
     if 'xlim' in kwargs:
-            if not isinstance(kwargs['xlim'],list):
-                raise TypeError("if xlim is passed, it must be a list of float/int")
-            elif not all(isinstance(i,(float,int)) for i in kwargs['xlim']):
-                raise TypeError("Non float/int element encountered in xlim")
-            else:
-                xscale_limits=kwargs['xlim']
-                if xscale.lower()=='logicle':
-                    xscale_limits=logicleTransform(xscale_limits,thresh)
-                    bXlim=True
+        if not isinstance(kwargs['xlim'], list):
+            raise TypeError("if xlim is passed, it must be a list of float/int")
+        elif not all(isinstance(i, (float, int)) for i in kwargs['xlim']):
+            raise TypeError("Non float/int element encountered in xlim")
+        else:
+            xscale_limits = kwargs['xlim']
+            if xscale.lower() == 'logicle':
+                xscale_limits = logicleTransform(xscale_limits, thresh)
+                bXlim = True
     if 'ylim' in kwargs:
-            if not isinstance(kwargs['ylim'],list):
-                raise TypeError("if ylim is passed, it must be a list of float/int")
-            elif not all(isinstance(i,(float,int)) for i in kwargs['ylim']):
-                raise TypeError("Non float/int element encountered in ylim")
-            else:
-                yscale_limits=kwargs['ylim'] 
-                if yscale.lower()=='logicle':
-                    yscale_limits=logicleTransform(yscale_limits,thresh)
-                    bYlim=True
-    
-        
+        if not isinstance(kwargs['ylim'], list):
+            raise TypeError("if ylim is passed, it must be a list of float/int")
+        elif not all(isinstance(i, (float, int)) for i in kwargs['ylim']):
+            raise TypeError("Non float/int element encountered in ylim")
+        else:
+            yscale_limits = kwargs['ylim']
+            if yscale.lower() == 'logicle':
+                yscale_limits = logicleTransform(yscale_limits, thresh)
+                bYlim = True
+
     if 'cmap' in kwargs:
         cmap = kwargs['cmap']
         if not isinstance(cmap, str):
-            collect_default=False
+            collect_default = False
         else:
-            collect_default=True
+            collect_default = True
     else:
-        collect_default=True
-        cmap='jet'
-    
+        collect_default = True
+        cmap = 'jet'
+
     if 'rcParams' in kwargs:
-        if not isinstance(kwargs['rcParams'],dict):
+        if not isinstance(kwargs['rcParams'], dict):
             raise TypeError("if rcParams is passed, it must be a dict")
         else:
-            rcParams=kwargs['rcParams']
-            custom_rcParams=True
+            rcParams = kwargs['rcParams']
+            custom_rcParams = True
     else:
-        custom_rcParams=False
-    
+        custom_rcParams = False
+
     if 'mask_where' in kwargs:
         mask_value = kwargs['mask_where']
-        assert isinstance(mask_value,(float,int))
+        assert isinstance(mask_value, (float, int))
     else:
-        mask_value=0
-    
-    vX=getGatedVector(fcsDF, x, vI, return_type="nparray")
-    vY=getGatedVector(fcsDF, y, vI, return_type="nparray")
-    if len(vX)<2 or len(vY)<2:
+        mask_value = 0
+
+    vX = getGatedVector(fcsDF, x, vI, return_type="nparray")
+    vY = getGatedVector(fcsDF, y, vI, return_type="nparray")
+    if len(vX) < 2 or len(vY) < 2:
         sys.stderr.write("Passed index contains no events\n")
         return None, None
     if custom_rcParams:
-        plt.rcParams=rcParams
+        plt.rcParams = rcParams
     else:
-        plt.rcParams['figure.figsize']=10,10
-        plt.rcParams['image.cmap']=cmap
-        
-        #extra
+        plt.rcParams['figure.figsize'] = 10, 10
+        plt.rcParams['image.cmap'] = cmap
+
+        # extra
         plt.rcParams['font.size'] = 22
         plt.rcParams['xtick.labelsize'] = 16
         plt.rcParams['ytick.labelsize'] = 16
-        #plt.rcParams['label.size': 22]
-    
+        # plt.rcParams['label.size': 22]
+
     heatmap, xedges, yedges = getHeatmap(vX, vY, bins, scale, xscale, yscale, thresh)
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
-        
-    heatmap=np.ma.masked_where(heatmap <= mask_value, heatmap)
+
+    heatmap = np.ma.masked_where(heatmap <= mask_value, heatmap)
 
     figure = plt.figure()
     axes = figure.add_subplot(111)
-    #matplotlib 3.2.x changed behaviour of interpolation
-    #see https://github.com/matplotlib/matplotlib/issues/17722
-    #and https://matplotlib.org/3.2.1/api/api_changes.html#default-image-interpolation
+    # matplotlib 3.2.x changed behaviour of interpolation
+    # see https://github.com/matplotlib/matplotlib/issues/17722
+    # and https://matplotlib.org/3.2.1/api/api_changes.html#default-image-interpolation
     if collect_default:
-        cmap=plt.get_cmap()
-    cmap.set_bad(color='white') #Zeroes should be white, not blue
+        cmap = plt.get_cmap().copy()
+    cmap.set_bad(color='white')  # Zeroes should be white, not blue
 
-    axes.imshow(heatmap.T, extent=extent, origin='lower',aspect=aspect, interpolation='none', cmap=cmap)
+    axes.imshow(heatmap.T, extent=extent, origin='lower', aspect=aspect, interpolation='none', cmap=cmap)
 
     axes.set_xlabel(x)
     axes.set_ylabel(y)
 
-    if xscale.lower()=='logicle':
+    if xscale.lower() == 'logicle':
         axes.xaxis.set_major_locator(logicleLocator(linCutOff=thresh))
         axes.xaxis.set_major_formatter(logicleFormatter(linCutOff=thresh))
 
-    if yscale.lower()=='logicle':
+    if yscale.lower() == 'logicle':
         axes.yaxis.set_major_locator(logicleLocator(linCutOff=thresh))
         axes.yaxis.set_major_formatter(logicleFormatter(linCutOff=thresh))
-    
-    if xscale.lower()=='bilog':
+
+    if xscale.lower() == 'bilog':
         axes.xaxis.set_major_locator(BiLogLocator(linCutOff=thresh))
         axes.xaxis.set_major_formatter(BiLogFormatter(linCutOff=thresh))
 
-    if yscale.lower()=='bilog':
+    if yscale.lower() == 'bilog':
         axes.yaxis.set_major_locator(BiLogLocator(linCutOff=thresh))
         axes.yaxis.set_major_formatter(BiLogFormatter(linCutOff=thresh))
-    
+
     if bXlim:
         axes.xaxis.set_xlim(left=xscale_limits[0], right=xscale_limits[1])
 
@@ -225,54 +228,56 @@ def plotHeatmap(fcsDF, x, y, vI=sentinel, bins=300, scale='linear', xscale='line
         axes.yaxis.set_xlim(left=yscale_limits[0], right=yscale_limits[1])
 
     return figure, axes
-    
 
-def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='linear', T=1000, normalize=False, xlim=None, ylim=None, range=None):
-    if not any(isinstance(i,str) for i in [scale,xscale,yscale]):
+
+def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='linear', T=1000, normalize=False,
+               xlim=None, ylim=None, range=None):
+    if not any(isinstance(i, str) for i in [scale, xscale, yscale]):
         raise TypeError("scale, xscale, yscale must be specified as string, such as: 'linear', 'logicle'")
-    if not all(i.lower() in ['linear', 'logicle', 'bilog'] for i in [scale,xscale,yscale]):
+    if not all(i.lower() in ['linear', 'logicle', 'bilog'] for i in [scale, xscale, yscale]):
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logicle'")
-    if not isinstance(bins,(int,str)):
+    if not isinstance(bins, (int, str)):
         raise TypeError("bins can only be either of int or str")
     if range is not None:
-        if isinstance(range,list):
-            if len(range)==2:
-                if not all(isinstance(i,(list)) for i in range):
+        if isinstance(range, list):
+            if len(range) == 2:
+                if not all(isinstance(i, (list)) for i in range):
                     AliGaterError("in getHeatmap, invalid dtype encountered in range, expected two list-likes")
                 else:
-                    if not all(isinstance(i,(float,int)) for i in range[0]) or not all(isinstance(i,(float,int)) for i in range[1]):
+                    if not all(isinstance(i, (float, int)) for i in range[0]) or not all(
+                            isinstance(i, (float, int)) for i in range[1]):
                         AliGaterError("in getHeatmap,invalid dtype encountered in range")
                     else:
-                        defaultRange=range
-                        xRange=range[0]
-                        yRange=range[1]
+                        defaultRange = range
+                        xRange = range[0]
+                        yRange = range[1]
             else:
-                AliGaterError("in getHeatmap, range must be list, found "+str(type(range)))
+                AliGaterError("in getHeatmap, range must be list, found " + str(type(range)))
         else:
-            AliGaterError("in getHeatmap, custom range passed but is not list, found type: "+str(type(range)))
+            AliGaterError("in getHeatmap, custom range passed but is not list, found type: " + str(type(range)))
     else:
-        defaultRange=None
-        xRange=None
-        yRange=None
-    
+        defaultRange = None
+        xRange = None
+        yRange = None
+
     if not len(vX) == len(vY):
-        raise AliGaterError("in getHeatmap: ","Coordinate vectors are of unequal length")
-    if len(vX)==0:
-        raise AliGaterError("in getHeatmap: ","Coordinate vectors are empty")
-        
-    if not isinstance(vX,np.ndarray):
+        raise AliGaterError("in getHeatmap: ", "Coordinate vectors are of unequal length")
+    if len(vX) == 0:
+        raise AliGaterError("in getHeatmap: ", "Coordinate vectors are empty")
+
+    if not isinstance(vX, np.ndarray):
         try:
-            vX=np.asarray(vX)
+            vX = np.asarray(vX)
         except:
             raise AliGaterError("in getHeatmap: ", "Couldn't coerce x-value vectors into numpy array format")
-    if not isinstance(vY,np.ndarray):
+    if not isinstance(vY, np.ndarray):
         try:
-            vY=np.asarray(vY)
+            vY = np.asarray(vY)
         except:
-            raise AliGaterError("in getHeatmap: ", "Couldn't coerce x-value vectors into numpy array format")  
-    index_mask=[]
-    for i in np.arange(len(vX)-1,-1,-1):
-       if xlim is not None:
+            raise AliGaterError("in getHeatmap: ", "Couldn't coerce x-value vectors into numpy array format")
+    index_mask = []
+    for i in np.arange(len(vX) - 1, -1, -1):
+        if xlim is not None:
             if vX[i] < xlim[0] or vX[i] > xlim[1]:
                 index_mask.append(i)
                 continue
@@ -284,93 +289,92 @@ def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='lin
         assert len(vX) == len(vY)
 
     if isinstance(bins, str):
-        xbin_edges=np.histogram_bin_edges(vX,bins=bins)
-        ybin_edges=np.histogram_bin_edges(vY,bins=bins)
-    else:
-        xbin_edges=bins
-        ybin_edges=bins
-   
-    
-    if scale.lower()=='linear' and xscale.lower()=='linear' and yscale.lower() == 'linear':
-        return np.histogram2d(vX, vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
-    
-    #if not linear probably just transform and calc edges after
-    #attempt at fix, still some redundancy...
-    t_xbin_edges = t_ybin_edges = None
-    if scale.lower()!='linear' or (xscale.lower()!='linear' and yscale.lower()!='linear'):
-        #Solve case where scale != linear but xscale/yscale = linear
-        if xscale.lower() == 'linear' and scale.lower()!='linear':
-            xscale=scale
-        t_vX = transformWrapper(vX, scale=xscale, T=T)
-        t_xbin_edges=np.histogram_bin_edges(t_vX,bins=bins)
-        xbin_edges = inverseTransformWrapper(t_xbin_edges, scale=xscale, T=T)
-        
-        if yscale.lower() == 'linear' and scale.lower()!='linear':
-            yscale=scale
-        t_vY = transformWrapper(vY, scale=yscale, T=T)
-        t_ybin_edges=np.histogram_bin_edges(t_vY,bins=bins)      
-        ybin_edges = inverseTransformWrapper(t_ybin_edges, scale=yscale, T=T)
-        return np.histogram2d(vX,vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
-    
-    if xscale.lower()!='linear' and scale.lower() == 'linear':
-        t_vX = transformWrapper(vX, scale=xscale, T=T)
-        t_xbin_edges=np.histogram_bin_edges(t_vX,bins=bins)
-        xbin_edges = inverseTransformWrapper(t_xbin_edges, scale=xscale, T=T)
-        
-        ybin_edges = np.histogram_bin_edges(vY, bins=bins)
-        
-    if yscale.lower()!='linear' and scale.lower() == 'linear':
-        t_vY = transformWrapper(vY, scale=yscale, T=T)
-        t_ybin_edges=np.histogram_bin_edges(t_vY,bins=bins)
-        ybin_edges = inverseTransformWrapper(t_ybin_edges, scale=yscale, T=T)
-        
         xbin_edges = np.histogram_bin_edges(vX, bins=bins)
-        
-    #print(ybin_edges)
-    #print("\n\n")
-    #print(xbin_edges)
-    #print("\n\n")
-    return np.histogram2d(vX,vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
-    
-    #-------------------------DEPRECATED below---------------------------
-    if scale=='logicle' or (xscale == 'logicle' and yscale == 'logicle'):
-        xBinEdges=logicleBin(vX,bins,T, xRange)
-        yBinEdges=logicleBin(vY,bins,T, yRange)
-        return np.histogram2d(vX, vY, [xBinEdges,yBinEdges], normed=normalize)
-    if xscale=='logicle':
-        xBinEdges=logicleBin(vX,bins,T, xRange)
-        return np.histogram2d(vX, vY, [xBinEdges,bins], normed=normalize)
-    if yscale=='logicle':
-        yBinEdges=logicleBin(vY,bins,T, yRange)
-        return np.histogram2d(vX, vY, [bins,yBinEdges], normed=normalize)
-    if scale=='bilog' or (xscale == 'bilog' and yscale == 'bilog'):
-        xBinEdges=bilogBin(vX,bins,T, xRange)
-        yBinEdges=bilogBin(vY,bins,T, yRange)
-        #print("xBinEdges: ")
-        #print(xBinEdges)
-        #print("\n\n")
-        #print("yBinEdges: ")
-        #print(yBinEdges)        
-        return np.histogram2d(vX, vY, [xBinEdges,yBinEdges], normed=normalize)
-    if xscale=='bilog':
-        xBinEdges=bilogBin(vX,bins,T, xRange)
-        return np.histogram2d(vX, vY, [xBinEdges,bins], normed=normalize)
-    if yscale=='bilog':
-        yBinEdges=bilogBin(vY,bins,T, yRange)
-        return np.histogram2d(vX, vY, [bins,yBinEdges], normed=normalize)
+        ybin_edges = np.histogram_bin_edges(vY, bins=bins)
+    else:
+        xbin_edges = bins
+        ybin_edges = bins
+
+    if scale.lower() == 'linear' and xscale.lower() == 'linear' and yscale.lower() == 'linear':
+        return np.histogram2d(vX, vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
+
+    # if not linear probably just transform and calc edges after
+    # attempt at fix, still some redundancy...
+    t_xbin_edges = t_ybin_edges = None
+    if scale.lower() != 'linear' or (xscale.lower() != 'linear' and yscale.lower() != 'linear'):
+        # Solve case where scale != linear but xscale/yscale = linear
+        if xscale.lower() == 'linear' and scale.lower() != 'linear':
+            xscale = scale
+        t_vX = transformWrapper(vX, scale=xscale, T=T)
+        t_xbin_edges = np.histogram_bin_edges(t_vX, bins=bins)
+        xbin_edges = inverseTransformWrapper(t_xbin_edges, scale=xscale, T=T)
+
+        if yscale.lower() == 'linear' and scale.lower() != 'linear':
+            yscale = scale
+        t_vY = transformWrapper(vY, scale=yscale, T=T)
+        t_ybin_edges = np.histogram_bin_edges(t_vY, bins=bins)
+        ybin_edges = inverseTransformWrapper(t_ybin_edges, scale=yscale, T=T)
+        return np.histogram2d(vX, vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
+
+    if xscale.lower() != 'linear' and scale.lower() == 'linear':
+        t_vX = transformWrapper(vX, scale=xscale, T=T)
+        t_xbin_edges = np.histogram_bin_edges(t_vX, bins=bins)
+        xbin_edges = inverseTransformWrapper(t_xbin_edges, scale=xscale, T=T)
+
+        ybin_edges = np.histogram_bin_edges(vY, bins=bins)
+
+    if yscale.lower() != 'linear' and scale.lower() == 'linear':
+        t_vY = transformWrapper(vY, scale=yscale, T=T)
+        t_ybin_edges = np.histogram_bin_edges(t_vY, bins=bins)
+        ybin_edges = inverseTransformWrapper(t_ybin_edges, scale=yscale, T=T)
+
+        xbin_edges = np.histogram_bin_edges(vX, bins=bins)
+
+    # print(ybin_edges)
+    # print("\n\n")
+    # print(xbin_edges)
+    # print("\n\n")
+    return np.histogram2d(vX, vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
+
+    # -------------------------DEPRECATED below---------------------------
+    if scale == 'logicle' or (xscale == 'logicle' and yscale == 'logicle'):
+        xBinEdges = logicleBin(vX, bins, T, xRange)
+        yBinEdges = logicleBin(vY, bins, T, yRange)
+        return np.histogram2d(vX, vY, [xBinEdges, yBinEdges], normed=normalize)
+    if xscale == 'logicle':
+        xBinEdges = logicleBin(vX, bins, T, xRange)
+        return np.histogram2d(vX, vY, [xBinEdges, bins], normed=normalize)
+    if yscale == 'logicle':
+        yBinEdges = logicleBin(vY, bins, T, yRange)
+        return np.histogram2d(vX, vY, [bins, yBinEdges], normed=normalize)
+    if scale == 'bilog' or (xscale == 'bilog' and yscale == 'bilog'):
+        xBinEdges = bilogBin(vX, bins, T, xRange)
+        yBinEdges = bilogBin(vY, bins, T, yRange)
+        # print("xBinEdges: ")
+        # print(xBinEdges)
+        # print("\n\n")
+        # print("yBinEdges: ")
+        # print(yBinEdges)
+        return np.histogram2d(vX, vY, [xBinEdges, yBinEdges], normed=normalize)
+    if xscale == 'bilog':
+        xBinEdges = bilogBin(vX, bins, T, xRange)
+        return np.histogram2d(vX, vY, [xBinEdges, bins], normed=normalize)
+    if yscale == 'bilog':
+        yBinEdges = bilogBin(vY, bins, T, yRange)
+        return np.histogram2d(vX, vY, [bins, yBinEdges], normed=normalize)
+
 
 def plot_flattened_heatmap(heatmap_array, nOfBins, mask=True):
-    
     reshaped_array = heatmap_array.reshape(nOfBins, nOfBins)
     fig = plt.figure()
     ax = fig.add_subplot(111)
     if mask:
-        heatmap=np.ma.masked_where(reshaped_array == 0, reshaped_array)
-        cmap=plt.get_cmap()
+        heatmap = np.ma.masked_where(reshaped_array == 0, reshaped_array)
+        cmap = plt.get_cmap().copy()
         cmap.set_bad(color='white')
     else:
-        heatmap=reshaped_array
-    ax.imshow(heatmap.T[::-1])
+        heatmap = reshaped_array
+    ax.imshow(heatmap.T[::-1], cmap=cmap)
     plt.show()
     plt.close(fig)
     return None
@@ -400,36 +404,37 @@ def transformWrapper(vX, T, scale):
 
     None currently.
     """
-    result=None
-    single_val=False
-    #ToDo raise if more than 1 dim?
-        
+    result = None
+    single_val = False
+
     if not isinstance(vX, (list, np.ndarray, tuple)):
         if isinstance(vX, (float, int)):
-            vInput=np.asarray(vX).reshape(1,)
-            single_val=True
+            vInput = np.asarray(vX).reshape(1, )
+            single_val = True
         else:
-            raise AliGaterError("in transformWrapper","invalid dType of passed vX, must be either a single float/int value or list/np.ndarray/tuple of float/int values")
+            raise AliGaterError("in transformWrapper",
+                                "invalid dType of passed vX, must be either a single float/int value or list/np.ndarray/tuple of float/int values")
     else:
-        vInput=vX
+        vInput = vX
 
-    if not isinstance(vX,np.ndarray):
+    if not isinstance(vX, np.ndarray):
         try:
-            vX=np.asarray(vX)
+            vX = np.asarray(vX)
         except:
             raise AliGaterError("in transformWrapper: ", "Couldn't coerce input vector to numpy array format")
 
     if scale.lower() == 'logicle':
         result = logicleTransform(vInput, T)
     elif scale.lower() == 'bilog':
-        result=bilogTransform(vInput, T)
+        result = bilogTransform(vInput, T)
     elif scale.lower() == 'linear':
-        result=vX
+        result = vX
     if result is None:
         raise
     if single_val:
-        result=result[0]
+        result = result[0]
     return result
+
 
 def inverseTransformWrapper(vX, T, scale):
     """
@@ -455,50 +460,52 @@ def inverseTransformWrapper(vX, T, scale):
 
     None currently.
     """
-    result=None
-    single_val=False
+    result = None
+    single_val = False
     if not isinstance(vX, (list, np.ndarray, tuple)):
         if isinstance(vX, (float, int)):
-            vInput=np.asarray(vX).reshape(1,)
-            single_val=True
+            vInput = np.asarray(vX).reshape(1, )
+            single_val = True
         else:
-            raise AliGaterError("in inverseTransformWrapper","invalid dType of passed vX, must be either a single float/int value or list/np.ndarray/tuple of float/int values")
+            raise AliGaterError("in inverseTransformWrapper",
+                                "invalid dType of passed vX, must be either a single float/int value or list/np.ndarray/tuple of float/int values")
     else:
-        vInput=vX
+        vInput = vX
 
-    if not isinstance(vX,np.ndarray):
+    if not isinstance(vX, np.ndarray):
         try:
-            vX=np.asarray(vX)
+            vX = np.asarray(vX)
         except:
             raise AliGaterError("in inverseTransformWrapper: ", "Couldn't coerce input vector to numpy array format")
-      
+
     if scale.lower() == 'logicle':
         result = inverselogicleTransform(vInput, T)
     elif scale.lower() == 'bilog':
-        result=inverseBilogTransform(vInput, T)
+        result = inverseBilogTransform(vInput, T)
     elif scale.lower() == 'linear':
-        result=vX
+        result = vX
     if result is None:
         raise
     if single_val:
-        result=result[0]
-    return result    
-    
+        result = result[0]
+    return result
+
+
 def bilogBin(vX, bins, T, customRange=None):
     if customRange is not None:
-        defaultRange=customRange
+        defaultRange = customRange
     else:
-        defaultRange=[min(vX),max(vX)]
-    transformedRange=bilogTransform(defaultRange,T)
-    transformedBinEdges=np.linspace(transformedRange[0],transformedRange[1],bins+1)
+        defaultRange = [min(vX), max(vX)]
+    transformedRange = bilogTransform(defaultRange, T)
+    transformedBinEdges = np.linspace(transformedRange[0], transformedRange[1], bins + 1)
     return inverseBilogTransform(transformedBinEdges, T)
 
+
 def bilogTransform(a, T):
-    
-    vA = np.asarray(a, dtype = np.float64, order='C')
-    tA=__vectorBilogTransform(vA, np.float64(T))
+    vA = np.asarray(a, dtype=np.float64, order='C')
+    tA = __vectorBilogTransform(vA, np.float64(T))
     return tA
-    
+
     # old python implementation, moved to AGCythonUtils
     # tA = np.empty_like(a).astype(float)
     # a_idx=0
@@ -512,12 +519,12 @@ def bilogTransform(a, T):
     #     a_idx+=1
     # return tA
 
+
 def inverseBilogTransform(a, T):
-    
-    vA = np.asarray(a, dtype = np.float64, order='C')
+    vA = np.asarray(a, dtype=np.float64, order='C')
     invA = __vectorInverseBilogTransform(vA, np.float64(T))
     return invA
-    
+
     # old python implementation, moved to AGCythonUtils
     # invA=np.empty_like(a).astype(float)
     # a_idx=0
@@ -532,21 +539,22 @@ def inverseBilogTransform(a, T):
     #     a_idx+=1
     # return invA
 
+
 def logicleBin(vX, bins, T, customRange=None):
     if customRange is not None:
-        defaultRange=customRange
+        defaultRange = customRange
     else:
-        defaultRange=[min(vX),max(vX)]
-    transformedRange=logicleTransform(defaultRange,T)
-    transformedBinEdges=np.linspace(transformedRange[0],transformedRange[1],bins+1)
+        defaultRange = [min(vX), max(vX)]
+    transformedRange = logicleTransform(defaultRange, T)
+    transformedBinEdges = np.linspace(transformedRange[0], transformedRange[1], bins + 1)
     return inverselogicleTransform(transformedBinEdges, T)
 
+
 def logicleTransform(a, linCutOff):
-    
-    vA = np.asarray(a, dtype = np.float64, order='C')
-    
-    tA=__vectorlogicleTransform(vA, np.float64(linCutOff))
-    
+    vA = np.asarray(a, dtype=np.float64, order='C')
+
+    tA = __vectorlogicleTransform(vA, np.float64(linCutOff))
+
     return tA
 
     # old python implementation, moved to AGCythonUtils
@@ -558,13 +566,13 @@ def logicleTransform(a, linCutOff):
     #     else:
     #         tA[a_idx] = (a[a_idx]/linCutOff + np.log(10.0) - 1)/np.log(10)
     #     a_idx+=1
-    #return tA
+    # return tA
+
 
 def inverselogicleTransform(a, linCutOff):
-    
-    vA = np.asarray(a, dtype = np.float64, order='C')
+    vA = np.asarray(a, dtype=np.float64, order='C')
     invA = __vectorInverselogicleTransform(vA, np.float64(linCutOff))
-    
+
     return invA
     # old python implementation, moved to AGCythonUtils
     # invA=np.empty_like(a).astype(float)
@@ -577,98 +585,109 @@ def inverselogicleTransform(a, linCutOff):
     #         invA[a_idx] = linCutOff*(np.log(10.0)*a[a_idx] - np.log(10.0) + 1)
     #     a_idx+=1
     # return invA
-    
 
 
 def addAxLine(fig, ax, pos, orientation, size=2, scale='linear', xscale='linear', yscale='linear', T=1000):
     if not all(i in ['linear', 'logicle', 'bilog'] for i in [scale, xscale, yscale]):
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logicle', 'bilog'")
-    if orientation.lower()=='vertical':
+    if orientation.lower() == 'vertical':
         if scale.lower() != 'linear' or xscale.lower() != 'linear':
-            lims=ax.get_xlim()
+            lims = ax.get_xlim()
             vmin = lims[0]
             vmax = lims[1]
             if scale.lower() == 'logicle' or xscale.lower() == 'logicle':
-                pos = convertTologiclePlotCoordinate(pos,vmin,vmax,T)
+                pos = convertTologiclePlotCoordinate(pos, vmin, vmax, T)
             if scale.lower() == 'bilog' or xscale.lower() == 'bilog':
-                pos = convertToBiLogPlotCoordinate(pos,vmin,vmax,T)
+                pos = convertToBiLogPlotCoordinate(pos, vmin, vmax, T)
         ax.axvline(pos, c='r')
     else:
-        if scale.lower() !='linear' or yscale.lower() != 'linear':
-            lims=ax.get_ylim()
+        if scale.lower() != 'linear' or yscale.lower() != 'linear':
+            lims = ax.get_ylim()
             vmin = lims[0]
             vmax = lims[1]
-            if scale=='logicle' or yscale.lower() == 'logicle':
-                pos = convertTologiclePlotCoordinate(pos,vmin,vmax,T)
+            if scale == 'logicle' or yscale.lower() == 'logicle':
+                pos = convertTologiclePlotCoordinate(pos, vmin, vmax, T)
             if scale.lower() == 'bilog' or yscale.lower() == 'bilog':
-                pos = convertToBiLogPlotCoordinate(pos,vmin,vmax,T)
-        ax.axhline(pos,  c='r')
+                pos = convertToBiLogPlotCoordinate(pos, vmin, vmax, T)
+        ax.axhline(pos, c='r')
     return fig
+
 
 def addLine(fig, ax, lStartCoordinate, lEndCoordinate, size=2, scale='linear', T=1000):
     if not scale.lower() in ['linear', 'logicle', 'bilog']:
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logicle', 'bilog'")
-    if scale.lower()=='logicle':
-        view=ax.xaxis.get_view_interval()
-        xCoordinates=convertTologiclePlotCoordinates([lStartCoordinate[0],lEndCoordinate[0]], vmin=view[0], vmax=view[1], T=T)
-        view=ax.yaxis.get_view_interval()
-        yCoordinates=convertTologiclePlotCoordinates([lStartCoordinate[1],lEndCoordinate[1]], vmin=view[0], vmax=view[1], T=T)
-        lStartCoordinate=[xCoordinates[0],yCoordinates[0]]
-        lEndCoordinate=[xCoordinates[1],yCoordinates[1]]
-    if scale.lower()=='bilog':
-        view=ax.xaxis.get_view_interval()
-        xCoordinates=convertToBiLogPlotCoordinates([lStartCoordinate[0],lEndCoordinate[0]], vmin=view[0], vmax=view[1], T=T)
-        view=ax.yaxis.get_view_interval()
-        yCoordinates=convertToBiLogPlotCoordinates([lStartCoordinate[1],lEndCoordinate[1]], vmin=view[0], vmax=view[1], T=T)
-        lStartCoordinate=[xCoordinates[0],yCoordinates[0]]
-        lEndCoordinate=[xCoordinates[1],yCoordinates[1]]
-    ax.plot([lStartCoordinate[0], lEndCoordinate[0]], [lStartCoordinate[1], lEndCoordinate[1]], color='r', linestyle='-', linewidth=size,figure=fig)
+    if scale.lower() == 'logicle':
+        view = ax.xaxis.get_view_interval()
+        xCoordinates = convertTologiclePlotCoordinates([lStartCoordinate[0], lEndCoordinate[0]], vmin=view[0],
+                                                       vmax=view[1], T=T)
+        view = ax.yaxis.get_view_interval()
+        yCoordinates = convertTologiclePlotCoordinates([lStartCoordinate[1], lEndCoordinate[1]], vmin=view[0],
+                                                       vmax=view[1], T=T)
+        lStartCoordinate = [xCoordinates[0], yCoordinates[0]]
+        lEndCoordinate = [xCoordinates[1], yCoordinates[1]]
+    if scale.lower() == 'bilog':
+        view = ax.xaxis.get_view_interval()
+        xCoordinates = convertToBiLogPlotCoordinates([lStartCoordinate[0], lEndCoordinate[0]], vmin=view[0],
+                                                     vmax=view[1], T=T)
+        view = ax.yaxis.get_view_interval()
+        yCoordinates = convertToBiLogPlotCoordinates([lStartCoordinate[1], lEndCoordinate[1]], vmin=view[0],
+                                                     vmax=view[1], T=T)
+        lStartCoordinate = [xCoordinates[0], yCoordinates[0]]
+        lEndCoordinate = [xCoordinates[1], yCoordinates[1]]
+    ax.plot([lStartCoordinate[0], lEndCoordinate[0]], [lStartCoordinate[1], lEndCoordinate[1]], color='r',
+            linestyle='-', linewidth=size, figure=fig)
     return fig, ax
 
+
 def addArrow(fig, ax, lStartCoordinate, lEndCoordinate, size=5000):
-    arrow=Arrow(lStartCoordinate[0],lStartCoordinate[1],lEndCoordinate[0]-lStartCoordinate[0],lEndCoordinate[1]-lStartCoordinate[1],width=size, transform=ax.transAxes,head_width=size, head_length=size, fc='r', ec='r')
-    #ax.arrow(lStartCoordinate[0], lStartCoordinate[1], lEndCoordinate[0]-lStartCoordinate[0], lEndCoordinate[1]-lStartCoordinate[1], head_width=size, head_length=size, fc='r', ec='r')
+    arrow = Arrow(lStartCoordinate[0], lStartCoordinate[1], lEndCoordinate[0] - lStartCoordinate[0],
+                  lEndCoordinate[1] - lStartCoordinate[1], width=size, transform=ax.transAxes, head_width=size,
+                  head_length=size, fc='r', ec='r')
+    # ax.arrow(lStartCoordinate[0], lStartCoordinate[1], lEndCoordinate[0]-lStartCoordinate[0], lEndCoordinate[1]-lStartCoordinate[1], head_width=size, head_length=size, fc='r', ec='r')
     ax.add_patch(arrow)
     return fig
 
+
 def draw_ellipse(position, covariance, sigma=2, ax=None, **kwargs):
-    if agconf.execMode in ["jupyter","ipython"]:
-        plot=True
+    if agconf.execMode in ["jupyter", "ipython"]:
+        plot = True
     else:
-        plot=False
+        plot = False
     if plot:
         ax = ax or plt.gca();
-    
+
     # Convert covariance to principal axes
     if covariance.shape == (2, 2):
         U, s, Vt = np.linalg.svd(covariance)
         angle = np.degrees(np.arctan2(U[1, 0], U[0, 0]))
-        width,height = np.sqrt(s)*sigma
+        width, height = np.sqrt(s) * sigma
     else:
         angle = 0
-        width = height = np.sqrt(covariance)*sigma
-    #Note width, height here is the full width and height and not the semiaxis length
+        width = height = np.sqrt(covariance) * sigma
+    # Note width, height here is the full width and height and not the semiaxis length
     # Draw the Ellipse
     if plot:
         ax.add_patch(Ellipse(position, width, height,
-                                 angle, **kwargs));
+                             angle, **kwargs));
     return width, height, angle
 
-def plot_gmm(fcsDF, xCol, yCol, vI, gmm, sigma, ax):  
-    if agconf.execMode in ["jupyter","ipython"]:
-        plot=True
+
+def plot_gmm(fcsDF, xCol, yCol, vI, gmm, sigma, ax):
+    if agconf.execMode in ["jupyter", "ipython"]:
+        plot = True
     else:
-        plot=False    
+        plot = False
     ax = ax or plt.gca()
-    vEllipses=[]
-    for pos, covar, w in zip(gmm.means_, gmm.covariances_, gmm.weights_): 
-        width, height, angle = draw_ellipse(pos, covar, sigma, fill=False,edgecolor='#FF0000', linestyle='dashed');
-        vEllipses.append([pos,width,height,angle])
+    vEllipses = []
+    for pos, covar, w in zip(gmm.means_, gmm.covariances_, gmm.weights_):
+        width, height, angle = draw_ellipse(pos, covar, sigma, fill=False, edgecolor='#FF0000', linestyle='dashed');
+        vEllipses.append([pos, width, height, angle])
     if plot:
         plt.show();
     return vEllipses
 
-def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',  T=1000, *args, **kwargs):
+
+def plot_densityFunc(fcsDF, xCol, vI=sentinel, sigma=3, bins=300, scale='linear', T=1000, *args, **kwargs):
     """
     General function for converting values or arrays of values from AliGater scales; bilog and logicle back to linear values.
     See transformWrapper to convert into AliGater scales.
@@ -695,113 +714,119 @@ def plot_densityFunc(fcsDF, xCol,vI=sentinel, sigma=3, bins=300, scale='linear',
     if xCol not in fcsDF.columns:
         raise TypeError("Specified gate not in dataframe, check spelling or control your dataframe.columns labels")
     if vI is sentinel:
-        vI=fcsDF.index
-    elif len(vI)==0:
+        vI = fcsDF.index
+    elif len(vI) == 0:
         sys.stderr.write("Passed index contains no events\n")
         return None
     if not all(i in ['linear', 'logicle', 'bilog'] for i in [scale]):
         raise TypeError("scale, xscale, yscale can only be either of: 'linear', 'logicle', 'bilog'")
-    if not isinstance(sigma,(float,int)): 
-        raise AliGaterError("Sigma must be float or int, found: "+str(type(sigma)),"in plot_densityFunc")
+    if not isinstance(sigma, (float, int)):
+        raise AliGaterError("Sigma must be float or int, found: " + str(type(sigma)), "in plot_densityFunc")
     if 'sigma' in kwargs:
-            if not isinstance(kwargs['sigma'],(float,int)):
-                raise AliGaterError("Sigma must be float or int, found: "+str(type(sigma)),"in plot_densityFunc")
-            else:
-                sigma=kwargs['sigma']
+        if not isinstance(kwargs['sigma'], (float, int)):
+            raise AliGaterError("Sigma must be float or int, found: " + str(type(sigma)), "in plot_densityFunc")
+        else:
+            sigma = kwargs['sigma']
 
-    data=getGatedVector(fcsDF, xCol, vI, return_type="nparray")
-    
-    if isinstance(bins,int):
-        if len(vI)<bins:
+    data = getGatedVector(fcsDF, xCol, vI, return_type="nparray")
+
+    if isinstance(bins, int):
+        if len(vI) < bins:
             sys.stderr.write("Fewer events than bins, readjusting number of bins\n")
-            bins=len(vI)
-    elif bins=='auto':
-        if scale.lower()!='linear':
+            bins = len(vI)
+    elif bins == 'auto':
+        if scale.lower() != 'linear':
             t_data = transformWrapper(data, T=T, scale=scale)
         else:
-            t_data=data
-        bins=__autoBinCount(t_data)
+            t_data = data
+        bins = __autoBinCount(t_data)
     else:
-        raise AliGaterError("bins must be integer or string 'auto'","in plot_densityFunc")
-    
+        raise AliGaterError("bins must be integer or string 'auto'", "in plot_densityFunc")
+
     if scale == 'logicle':
-        BinEdges=logicleBin(data,bins,T)
+        BinEdges = logicleBin(data, bins, T)
         histo = np.histogram(data, BinEdges)
     elif scale == 'bilog':
-        BinEdges=bilogBin(data,bins,T)
+        BinEdges = bilogBin(data, bins, T)
         histo = np.histogram(data, BinEdges)
     else:
-        histo=np.histogram(data, bins)
-    vHisto=np.linspace(min(histo[1]),max(histo[1]),bins)
-    smoothedHisto=gaussian_filter1d(histo[0].astype(float),sigma)
+        histo = np.histogram(data, bins)
+    vHisto = np.linspace(min(histo[1]), max(histo[1]), bins)
+    smoothedHisto = gaussian_filter1d(histo[0].astype(float), sigma)
     figure = plt.figure()
     axes = figure.add_subplot(111)
-    axes.plot(vHisto,smoothedHisto, label="pdf for "+str(xCol)+"\nsigma: "+str(sigma))
+    axes.plot(vHisto, smoothedHisto, label="pdf for " + str(xCol) + "\nsigma: " + str(sigma))
     axes.legend(loc='upper right', shadow=True, fontsize='medium')
-    if scale.lower()!='linear':
-        axes.set_xlim(left=min(data),right=max(data))
-        if scale.lower()=='logicle':
+    if scale.lower() != 'linear':
+        axes.set_xlim(left=min(data), right=max(data))
+        if scale.lower() == 'logicle':
             axes.xaxis.set_major_locator(logicleLocator(linCutOff=T))
             axes.xaxis.set_major_formatter(logicleFormatter(linCutOff=T))
-        if scale.lower()=='bilog':
+        if scale.lower() == 'bilog':
             axes.xaxis.set_major_locator(BiLogLocator(linCutOff=T))
             axes.xaxis.set_major_formatter(BiLogFormatter(linCutOff=T))
     return figure, axes
 
-def __autoBinCount(data):
-    #Internal function that mimics numpus numpy.histogram_bin_edges functionality to guess appropriate number of bins
-    #https://docs.scipy.org/doc/numpy/reference/generated/numpy.histogram_bin_edges.html
-    data_IQR = iqr(data)
-    n=len(data)
-    fd_h = 2*(data_IQR/(np.power(n,(1/3))))  #Freedman Diaconis Estimator
-    fd_bins = np.round(np.ceil((max(data)-min(data)) / fd_h))    #np.round(np.ceil(range / h))
-    s_bins = np.log2(n)+1                    #Sturges estimator        
-    bins=int(max([fd_bins,s_bins]))
-    
-    return bins
-    
-def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
-    immatrix = np.array([im.flatten() for im in imlist],'f')
 
-    #Check for nan elements in matrix
+def __autoBinCount(data):
+    # Internal function that mimics numpus numpy.histogram_bin_edges functionality to guess appropriate number of bins
+    # https://docs.scipy.org/doc/numpy/reference/generated/numpy.histogram_bin_edges.html
+    data_IQR = iqr(data)
+    n = len(data)
+    fd_h = 2 * (data_IQR / (np.power(n, (1 / 3))))  # Freedman Diaconis Estimator
+    fd_bins = np.round(np.ceil((max(data) - min(data)) / fd_h))  # np.round(np.ceil(range / h))
+    s_bins = np.log2(n) + 1  # Sturges estimator
+    bins = int(max([fd_bins, s_bins]))
+
+    return bins
+
+
+def imagePCA_cluster(imlist, samplelist, nOfComponents=2):
+    immatrix = np.array([im.flatten() for im in imlist], 'f')
+
+    # Check for nan elements in matrix
     if np.isnan(immatrix).any():
         array_has_nan = np.array([np.isnan(arr).any() for arr in immatrix])
         removed_images = samplelist[array_has_nan]
         imlist = imlist[~array_has_nan]
-        samplelist=samplelist[~array_has_nan]
-        n_of_nan=array_has_nan.sum()
-        reportStr=str(n_of_nan)+" samples had invalid images and where removed:\n"+"\n".join(removed_images)+"\n"
+        samplelist = samplelist[~array_has_nan]
+        n_of_nan = array_has_nan.sum()
+        reportStr = str(n_of_nan) + " samples had invalid images and where removed:\n" + "\n".join(
+            removed_images) + "\n"
         sys.stderr.write(reportStr)
-        immatrix = np.array([im.flatten() for im in imlist],'f')
-    
+        immatrix = np.array([im.flatten() for im in imlist], 'f')
+
     if immatrix.shape[0] == 0:
-        reportStr="No data in passed image matrix\n"
+        reportStr = "No data in passed image matrix\n"
         sys.stderr.write(reportStr)
         return None
     if immatrix.shape[0] < nOfComponents:
-        reportStr="WARNING: fewer samples than requested components for PC analysis, adjusting\n"
+        reportStr = "WARNING: fewer samples than requested components for PC analysis, adjusting\n"
         sys.stderr.write(reportStr)
-        nOfComponents=immatrix.shape[0]
+        nOfComponents = immatrix.shape[0]
     pca_obj = PCA(n_components=nOfComponents)
     pca_obj.fit(immatrix)
     projection_d = pca_obj.transform(immatrix)
     projection_d_df = pd.DataFrame(projection_d)
     projection_d_df.index = samplelist
-    columnNames=[]
-    for i in np.arange(1,nOfComponents+1,1):
-        columnStr="PC"+str(i)
+    columnNames = []
+    for i in np.arange(1, nOfComponents + 1, 1):
+        columnStr = "PC" + str(i)
         columnNames.append(columnStr)
     projection_d_df.columns = columnNames
-    reportStr="PCs explained variance: \n"+str(pca_obj.explained_variance_ratio_)+"\nTotal visual variation explained: "+str(sum(pca_obj.explained_variance_ratio_))+"\n"
+    reportStr = "PCs explained variance: \n" + str(
+        pca_obj.explained_variance_ratio_) + "\nTotal visual variation explained: " + str(
+        sum(pca_obj.explained_variance_ratio_)) + "\n"
     sys.stderr.write(reportStr)
-    #center the coordinate system on the mean of each PC
+    # center the coordinate system on the mean of each PC
     projection_d_df = projection_d_df - projection_d_df.mean()
 
-    projection_d_df['length']=np.sqrt(np.square(projection_d_df).sum(axis=1))
+    projection_d_df['length'] = np.sqrt(np.square(projection_d_df).sum(axis=1))
     projection_d_df.sort_values(by='length', inplace=True)
-    
+
     return projection_d_df
-    
+
+
 def imagePCA(imlist):
     """
     Perform Principal Component Analysis of downsampled heatmap images, plots results.
@@ -820,26 +845,26 @@ def imagePCA(imlist):
 
     None currently.
     """
-    m=16
-    n=16
+    m = 16
+    n = 16
     # create matrix to store all flattened images
-    immatrix = np.array([im.flatten() for im in imlist],'f')
-    
+    immatrix = np.array([im.flatten() for im in imlist], 'f')
+
     # perform PCA
     V, S, immean = image_pca(immatrix)
-    #show some images (mean and 7 first modes)
-    plt.figure(figsize=(20,30))
-    plt.subplot(2,4,1)
-    plt.imshow(immean.reshape(m,n))
+    # show some images (mean and 7 first modes)
+    plt.figure(figsize=(20, 30))
+    plt.subplot(2, 4, 1)
+    plt.imshow(immean.reshape(m, n))
     for i in range(20):
-      plt.subplot(4,5,i+1)
-      plt.imshow(V[i].reshape(m,n).T[::-1], cmap="bwr")
+        plt.subplot(4, 5, i + 1)
+        plt.imshow(V[i].reshape(m, n).T[::-1], cmap="bwr")
     plt.show()
 
 
 def image_pca(X):
-    #Based on Stack Overflow discussion and code here
-    #https://math.stackexchange.com/questions/409239/compute-pca-with-this-useful-trick
+    # Based on Stack Overflow discussion and code here
+    # https://math.stackexchange.com/questions/409239/compute-pca-with-this-useful-trick
     """
     Principal Component Analysis of flattened heatmap images, main purpose is to be called internally by imagePCA
     
@@ -864,32 +889,33 @@ def image_pca(X):
 
     # get dimensions
     try:
-        num_data,dim = X.shape
+        num_data, dim = X.shape
     except ValueError:
         sys.stderr.write("WARNING in image_pca: input matrix invalid\n")
-        return None,None,None
+        return None, None, None
     # center data
     mean_X = X.mean(axis=0)
     X = X - mean_X
 
-    if dim>num_data:
+    if dim > num_data:
         # PCA - compact trick used
-        M = np.dot(X,X.T) # covariance matrix
-        e,EV = np.linalg.eigh(M) # eigenvalues and eigenvectors
-        tmp = np.dot(X.T,EV).T # this is the compact trick
-        V = tmp[::-1] # reverse since last eigenvectors are the ones we want
-        S = np.sqrt(e)[::-1] # reverse since eigenvalues are in increasing order
+        M = np.dot(X, X.T)  # covariance matrix
+        e, EV = np.linalg.eigh(M)  # eigenvalues and eigenvectors
+        tmp = np.dot(X.T, EV).T  # this is the compact trick
+        V = tmp[::-1]  # reverse since last eigenvectors are the ones we want
+        S = np.sqrt(e)[::-1]  # reverse since eigenvalues are in increasing order
         for i in range(V.shape[1]):
-            V[:,i] /= S
+            V[:, i] /= S
     else:
         # PCA - SVD used
-        U,S,V = np.linalg.svd(X)
-        V = V[:num_data] # only makes sense to return the first num_data
+        U, S, V = np.linalg.svd(X)
+        V = V[:num_data]  # only makes sense to return the first num_data
 
     # return the projection matrix, the variance and the mean
-    return V,S,mean_X
+    return V, S, mean_X
 
-#From Ticker.py
+
+# From Ticker.py
 def decade_down(x, base=10):
     'floor x to the nearest lower decade'
     if x == 0.0:
@@ -897,7 +923,8 @@ def decade_down(x, base=10):
     lx = np.floor(np.log(x) / np.log(base))
     return base ** lx
 
-#From Ticker.py
+
+# From Ticker.py
 def decade_up(x, base=10):
     'ceil x to the nearest higher decade'
     if x == 0.0:
@@ -914,13 +941,15 @@ def is_decade(x, base=10):
     lx = np.log(np.abs(x)) / np.log(base)
     return is_close_to_int(lx)
 
-#From Ticker.py
+
+# From Ticker.py
 def is_close_to_int(x):
     if not np.isfinite(x):
         return False
     return abs(x - nearest_int(x)) < 1e-10
 
-#From Ticker.py
+
+# From Ticker.py
 def nearest_int(x):
     if x == 0:
         return int(0)
@@ -929,97 +958,103 @@ def nearest_int(x):
     else:
         return int(x - 0.5)
 
+
 def convertToBiLogPlotCoordinates(Ticlocs, vmin, vmax, T):
-    actualRange=vmax-vmin
+    actualRange = vmax - vmin
     tMinMax = bilogTransform([vmin, vmax], T)
-    transformedRange = tMinMax[1]-tMinMax[0]
-    tTiclocs=bilogTransform(Ticlocs, T)
-    plotTics=[]
+    transformedRange = tMinMax[1] - tMinMax[0]
+    tTiclocs = bilogTransform(Ticlocs, T)
+    plotTics = []
     for tTic in tTiclocs:
-        plotTic=(tTic-tMinMax[0])/transformedRange*actualRange+vmin
+        plotTic = (tTic - tMinMax[0]) / transformedRange * actualRange + vmin
         plotTics.append(plotTic)
-    assert len(tTiclocs)==len(Ticlocs)
+    assert len(tTiclocs) == len(Ticlocs)
     return plotTics
+
 
 def convertToBiLogPlotCoordinate(Ticloc, vmin, vmax, T):
-    actualRange=vmax-vmin
+    actualRange = vmax - vmin
     tMinMax = bilogTransform([vmin, vmax], T)
-    transformedRange = tMinMax[1]-tMinMax[0]
-    tTicloc=bilogTransform([Ticloc], T)[0]
-    plotTic=(tTicloc-tMinMax[0])/transformedRange*actualRange+vmin
+    transformedRange = tMinMax[1] - tMinMax[0]
+    tTicloc = bilogTransform([Ticloc], T)[0]
+    plotTic = (tTicloc - tMinMax[0]) / transformedRange * actualRange + vmin
     return plotTic
+
 
 def invertBiLogPlotcoordinates(plotTics, vmin, vmax, T):
-    actualRange=vmax-vmin
+    actualRange = vmax - vmin
     tMinMax = bilogTransform([vmin, vmax], T)
-    transformedRange = tMinMax[1]-tMinMax[0]
-    invPlotTics=[]
+    transformedRange = tMinMax[1] - tMinMax[0]
+    invPlotTics = []
     for tTic in plotTics:
-        invPlotTic=(tTic-vmin)/actualRange*transformedRange+tMinMax[0]
+        invPlotTic = (tTic - vmin) / actualRange * transformedRange + tMinMax[0]
         invPlotTics.append(invPlotTic)
-    result=inverseBilogTransform(invPlotTics, T)
+    result = inverseBilogTransform(invPlotTics, T)
     return result
+
 
 def invertBiLogPlotcoordinate(plotTic, vmin, vmax, T):
-    actualRange=vmax-vmin
+    actualRange = vmax - vmin
     tMinMax = bilogTransform([vmin, vmax], T)
-    transformedRange = tMinMax[1]-tMinMax[0]
-    invPlotTic=(plotTic-vmin)/actualRange*transformedRange+tMinMax[0]
-    result=inverseBilogTransform([invPlotTic], T)[0]
+    transformedRange = tMinMax[1] - tMinMax[0]
+    invPlotTic = (plotTic - vmin) / actualRange * transformedRange + tMinMax[0]
+    result = inverseBilogTransform([invPlotTic], T)[0]
     return result
 
-        
+
 def convertTologiclePlotCoordinates(Ticlocs, vmin, vmax, T):
-    actualRange=vmax-vmin
+    actualRange = vmax - vmin
     tMinMax = logicleTransform([vmin, vmax], T)
-    transformedRange = tMinMax[1]-tMinMax[0]
-    tTiclocs=logicleTransform(Ticlocs, T)
-    plotTics=[]
+    transformedRange = tMinMax[1] - tMinMax[0]
+    tTiclocs = logicleTransform(Ticlocs, T)
+    plotTics = []
     for tTic in tTiclocs:
-        plotTic=(tTic-tMinMax[0])/transformedRange*actualRange+vmin
+        plotTic = (tTic - tMinMax[0]) / transformedRange * actualRange + vmin
         plotTics.append(plotTic)
-    assert len(tTiclocs)==len(Ticlocs)
+    assert len(tTiclocs) == len(Ticlocs)
     return plotTics
 
+
 def convertTologiclePlotCoordinate(Ticloc, vmin, vmax, T):
-    actualRange=vmax-vmin
+    actualRange = vmax - vmin
     tMinMax = logicleTransform([vmin, vmax], T)
-    transformedRange = tMinMax[1]-tMinMax[0]
-    tTicloc=logicleTransform([Ticloc], T)[0]
-    plotTic=(tTicloc-tMinMax[0])/transformedRange*actualRange+vmin
+    transformedRange = tMinMax[1] - tMinMax[0]
+    tTicloc = logicleTransform([Ticloc], T)[0]
+    plotTic = (tTicloc - tMinMax[0]) / transformedRange * actualRange + vmin
     return plotTic
 
+
 def invertlogiclePlotcoordinates(plotTics, vmin, vmax, T):
-    actualRange=vmax-vmin
+    actualRange = vmax - vmin
     tMinMax = logicleTransform([vmin, vmax], T)
-    transformedRange = tMinMax[1]-tMinMax[0]
-    invPlotTics=[]
+    transformedRange = tMinMax[1] - tMinMax[0]
+    invPlotTics = []
     for tTic in plotTics:
-        invPlotTic=(tTic-vmin)/actualRange*transformedRange+tMinMax[0]
+        invPlotTic = (tTic - vmin) / actualRange * transformedRange + tMinMax[0]
         invPlotTics.append(invPlotTic)
-    result=inverselogicleTransform(invPlotTics, T)
+    result = inverselogicleTransform(invPlotTics, T)
     return result
+
 
 def invertlogiclePlotcoordinate(plotTic, vmin, vmax, T):
-    actualRange=vmax-vmin
+    actualRange = vmax - vmin
     tMinMax = logicleTransform([vmin, vmax], T)
-    transformedRange = tMinMax[1]-tMinMax[0]
-    invPlotTic=(plotTic-vmin)/actualRange*transformedRange+tMinMax[0]
-    result=inverselogicleTransform([invPlotTic], T)[0]
+    transformedRange = tMinMax[1] - tMinMax[0]
+    invPlotTic = (plotTic - vmin) / actualRange * transformedRange + tMinMax[0]
+    result = inverselogicleTransform([invPlotTic], T)[0]
     return result
-
 
 
 class logicleLocator(Locator):
-    #Modified from matplotlibs LogLocator
-    #https://matplotlib.org/3.1.1/_modules/matplotlib/ticker.html#LogLocator
+    # Modified from matplotlibs LogLocator
+    # https://matplotlib.org/3.1.1/_modules/matplotlib/ticker.html#LogLocator
     """
     Determine the tick locations for logicle axes based on LogLocator. Only locates and formats tics for the plot view.
     Transform of underlying data and heatmap is handled outside matplotlib.
     Hacked version of LogLogator that covers normal usecases of the logicle scale
     Only defined with ticlocations for data in range -1 000 000 < x 
     """
-                                            
+
     def __init__(self, linCutOff=1000, subs=(1.0,), numdecs=4, numticks=None):
         """
         Place ticks on the locations : subs[j] * base**i
@@ -1042,18 +1077,18 @@ class logicleLocator(Locator):
                 numticks = 15
             else:
                 numticks = 'auto'
-                
-        self._base=10.0 #np.exp(1)
+
+        self._base = 10.0  # np.exp(1)
         self.subs(subs)
         self.numdecs = numdecs
         self.numticks = numticks
- 
+
         if linCutOff > 10000:
-            raise AliGaterError("in logicleLocator: ","linear-log scale threshold can max be 10000")
-        if linCutOff <=0:
-            raise AliGaterError("in logicleLocator: ","linear-log scale threshold must be > 0")
+            raise AliGaterError("in logicleLocator: ", "linear-log scale threshold can max be 10000")
+        if linCutOff <= 0:
+            raise AliGaterError("in logicleLocator: ", "linear-log scale threshold must be > 0")
         self.T = linCutOff
-        
+
     def set_params(self, subs=None, numdecs=4, numticks=None):
         """Set parameters within this locator."""
         if subs is not None:
@@ -1093,28 +1128,28 @@ class logicleLocator(Locator):
                 numticks = 9
         else:
             numticks = self.numticks
-        
+
         if vmax < vmin:
             vmin, vmax = vmax, vmin
-        #If vmax-vmin flipped, correct it
- 
-            
-        #How many decs in the log part?
+        # If vmax-vmin flipped, correct it
+
+        # How many decs in the log part?
         log_vmin = math.log(self.T) / math.log(self._base)
         try:
-            log_vmax = math.log(vmax) / math.log(self._base)      #If empty input in log-span this can lead to math domain error. Return small default span in that case
+            log_vmax = math.log(vmax) / math.log(
+                self._base)  # If empty input in log-span this can lead to math domain error. Return small default span in that case
         except ValueError:
             log_vmax = log_vmin + 1.0
 
         numdec = math.floor(log_vmax) - math.ceil(log_vmin)
-        ticklocs = self._base ** numdec   #Base ** decades
+        ticklocs = self._base ** numdec  # Base ** decades
 
         if numdec > 10:
             subs = np.array([1.0])
         else:
-            subs = np.arange(1.0, self._base) #(1.0, Base)
+            subs = np.arange(1.0, self._base)  # (1.0, Base)
         stride = 1
-        
+
         if rcParams['_internal.classic_mode']:
             # Leave the bug left over from the PY2-PY3 transition.
             while numdec / stride + 1 > numticks:
@@ -1126,44 +1161,43 @@ class logicleLocator(Locator):
         # Does subs include anything other than 1?
         have_subs = len(subs) > 1 or (len(subs == 1) and subs[0] != 1.0)
         decades = np.arange(math.ceil(log_vmin) - stride, math.ceil(log_vmax) + 2 * stride, stride)
-       
+
         if have_subs:
             ticklocs = []
             if stride == 1:
                 for decadeStart in self._base ** decades:
                     ticklocs.extend(subs * decadeStart)
         else:
-            ticklocs = self._base ** decades #Base ** decades
-            
-        #Now we have number of tics and decs in the log part
+            ticklocs = self._base ** decades  # Base ** decades
 
-        
-        tmpTicLoc=[]
+        # Now we have number of tics and decs in the log part
+
+        tmpTicLoc = []
         if vmin < -100000:
-            tmpTicLoc.extend(np.arange(-1000000,-90000,100000))
-        
+            tmpTicLoc.extend(np.arange(-1000000, -90000, 100000))
+
         if vmin < -10000:
-            tmpTicLoc.extend(np.arange(-100000,-9000,10000))
-            
+            tmpTicLoc.extend(np.arange(-100000, -9000, 10000))
+
         if vmin < -1000:
-            tmpTicLoc.extend(np.arange(-10000,-900,1000))
-            
+            tmpTicLoc.extend(np.arange(-10000, -900, 1000))
+
         if vmin < 0:
-            tmpTicLoc.extend(np.arange(-1000,1,200))
-        
+            tmpTicLoc.extend(np.arange(-1000, 1, 200))
+
         Ticlocs = list(set(np.clip(tmpTicLoc, vmin, self.T)))
         Ticlocs = list(np.sort(Ticlocs))
         if vmax >= 0:
             tmpTicLoc.extend(np.arange(0, self.T, 1000))
             Ticlocs.extend(tmpTicLoc)
-            
-        #ticklocs.extend(Ticlocs)    
-        Ticlocs.extend(ticklocs) 
-        clip_Ticlocs=np.sort(list(set(np.clip(Ticlocs,vmin, vmax))))
-        Ticlocs=convertTologiclePlotCoordinates(np.sort(clip_Ticlocs),vmin, vmax, self.T)
-        #ADD HOC POSSIBLY
-        Ticlocs=Ticlocs[1:-1]
-        #Ticlocs=convertTologiclePlotCoordinates(Ticlocs, vmin, vmax, self.T)
+
+        # ticklocs.extend(Ticlocs)
+        Ticlocs.extend(ticklocs)
+        clip_Ticlocs = np.sort(list(set(np.clip(Ticlocs, vmin, vmax))))
+        Ticlocs = convertTologiclePlotCoordinates(np.sort(clip_Ticlocs), vmin, vmax, self.T)
+        # ADD HOC POSSIBLY
+        Ticlocs = Ticlocs[1:-1]
+        # Ticlocs=convertTologiclePlotCoordinates(Ticlocs, vmin, vmax, self.T)
         return self.raise_if_exceeds(np.asarray(Ticlocs))
 
     def view_limits(self, vmin=None, vmax=None):
@@ -1173,8 +1207,8 @@ class logicleLocator(Locator):
 
 
 class logicleFormatter(Formatter):
-    #Modified from matplotlibs LogFormatter
-    #https://matplotlib.org/3.1.1/_modules/matplotlib/ticker.html#LogFormatter
+    # Modified from matplotlibs LogFormatter
+    # https://matplotlib.org/3.1.1/_modules/matplotlib/ticker.html#LogFormatter
     """
     Base class for formatting ticks on a logicle scale. Only locates and formats tics for the plot view.
     Transform of underlying data and heatmap is handled outside matplotlib.
@@ -1223,10 +1257,11 @@ class logicleFormatter(Formatter):
     To label all minor ticks when the view limits span up to 1.5
     decades, use ``minor_thresholds=(1.5, 1.5)``.
     """
+
     def __init__(self, labelOnlyBase=True,
                  minor_thresholds=None,
                  linCutOff=1000):
-        
+
         self.labelOnlyBase = labelOnlyBase
         if minor_thresholds is None:
             if rcParams['_internal.classic_mode']:
@@ -1238,10 +1273,8 @@ class logicleFormatter(Formatter):
         self._linthresh = linCutOff
         self._base = np.exp(1)
 
-
-
     def _num_to_string(self, x, vmin, vmax):
-        x = round(x,0)
+        x = round(x, 0)
         s = self.pprint_val(x, vmax - vmin)
         return s
 
@@ -1253,35 +1286,34 @@ class logicleFormatter(Formatter):
             return '0'
         vmin, vmax = self.axis.get_view_interval()
 
-        tx=invertlogiclePlotcoordinate(x,vmin,vmax,self._linthresh)
-        
-        if tx > self._linthresh+1:
+        tx = invertlogiclePlotcoordinate(x, vmin, vmax, self._linthresh)
+
+        if tx > self._linthresh + 1:
             fx = math.log(tx) / math.log(10.0)
             is_x_decade = is_close_to_int(fx)
             exponent = np.round(fx) if is_x_decade else np.floor(fx)
             coeff = np.round(x / 10.0 ** exponent)
-    
+
             if self.labelOnlyBase and not is_x_decade:
                 return ''
             if self._sublabels is not None and coeff not in self._sublabels:
                 return ''
-        else:    
-            #Manually define acceptable negative values
-            accepted_range=list(np.arange(-1000,1001,500))
-            accepted_range.extend(np.arange(-10000,-1000,5000))
-            accepted_range.extend(np.arange(-100000,-9000,10000))
-            accepted_range.extend(np.arange(-1000000,-90000,100000))
+        else:
+            # Manually define acceptable negative values
+            accepted_range = list(np.arange(-1000, 1001, 500))
+            accepted_range.extend(np.arange(-10000, -1000, 5000))
+            accepted_range.extend(np.arange(-100000, -9000, 10000))
+            accepted_range.extend(np.arange(-1000000, -90000, 100000))
             if not np.round(tx) in accepted_range:
                 return ''
         s = self._num_to_string(tx, vmin, vmax)
         return self.fix_minus(s)
-        
 
     def pprint_val(self, x, d):
-        #If the number is at or below the set lin-cutoff (_lintrehsh)
-        #Print it as an int
+        # If the number is at or below the set lin-cutoff (_lintrehsh)
+        # Print it as an int
 
-        if x <= self._linthresh+1:
+        if x <= self._linthresh + 1:
             return '%d' % x
 
         fmt = '%1.3e'
@@ -1302,8 +1334,6 @@ class logicleFormatter(Formatter):
         return s
 
 
-
-
 class BiLogLocator(Locator):
     """
     Modified version of SymmetricalLogLocator. Only locates and formats tics for the plot view.
@@ -1315,11 +1345,11 @@ class BiLogLocator(Locator):
         """
         place ticks on the location= base**i*subs[j]
         """
-        self._base = 10 #np.exp(1)
-        if isinstance(linCutOff, (float,int)):
+        self._base = 10  # np.exp(1)
+        if isinstance(linCutOff, (float, int)):
             self.T = linCutOff
         else:
-            raise AliGaterError("in BiLogLocator: ","linthresh must be float/int. Found: "+str(type(linCutOff)))
+            raise AliGaterError("in BiLogLocator: ", "linthresh must be float/int. Found: " + str(type(linCutOff)))
         if subs is None:
             self._subs = [1.0]
         else:
@@ -1336,8 +1366,8 @@ class BiLogLocator(Locator):
     def __call__(self):
         'Return the locations of the ticks'
         # Note, these are untransformed coordinates
-        #if view limits are to be chosen intelligently it must be done prior to heatmap creation,
-        #thus at the level of plotheatmap. Before any ticformatting is made.
+        # if view limits are to be chosen intelligently it must be done prior to heatmap creation,
+        # thus at the level of plotheatmap. Before any ticformatting is made.
         vmin, vmax = self.axis.get_view_interval()
         return self.tick_values(vmin, vmax)
 
@@ -1347,7 +1377,7 @@ class BiLogLocator(Locator):
 
         if vmax < vmin:
             vmin, vmax = vmax, vmin
-        
+
         # The domain is divided into three sections, only some of
         # which may actually be present.
         #
@@ -1442,20 +1472,21 @@ class BiLogLocator(Locator):
                 if len(subs) > 1:
                     ticklocs.extend(subs * decade)
 
-        clip_Ticlocs=np.sort(list(set(np.clip(ticklocs,vmin, vmax))))
-        Ticlocs=convertToBiLogPlotCoordinates(np.sort(clip_Ticlocs),vmin, vmax, self.T)
-        #dont want extra tic at min and max val
-        Ticlocs=Ticlocs[1:-1]
+        clip_Ticlocs = np.sort(list(set(np.clip(ticklocs, vmin, vmax))))
+        Ticlocs = convertToBiLogPlotCoordinates(np.sort(clip_Ticlocs), vmin, vmax, self.T)
+        # dont want extra tic at min and max val
+        Ticlocs = Ticlocs[1:-1]
 
         return self.raise_if_exceeds(np.array(Ticlocs))
-    
+
     def view_limits(self, vmin=None, vmax=None):
         'Try to choose the view limits intelligently'
-        #if view limits are to be chosen intelligently it must be done prior to heatmap creation,
-        #thus at the level of plotheatmap. Before any ticformatting is made.
+        # if view limits are to be chosen intelligently it must be done prior to heatmap creation,
+        # thus at the level of plotheatmap. Before any ticformatting is made.
         vmin, vmax = self.axis.get_view_interval()
         return vmin, vmax
-    
+
+
 class BiLogFormatter(Formatter):
     """
     Base class for formatting ticks on a log or symlog scale.
@@ -1507,10 +1538,11 @@ class BiLogFormatter(Formatter):
     decades, use ``minor_thresholds=(1.5, 1.5)``.
     
     """
+
     def __init__(self, labelOnlyBase=True,
                  minor_thresholds=None,
                  linCutOff=20):
-        
+
         self.labelOnlyBase = labelOnlyBase
         if minor_thresholds is None:
             if rcParams['_internal.classic_mode']:
@@ -1522,10 +1554,8 @@ class BiLogFormatter(Formatter):
         self._linthresh = linCutOff
         self._base = np.exp(1)
 
-
-
     def _num_to_string(self, x, vmin, vmax):
-        x = round(x,0)
+        x = round(x, 0)
         s = self.pprint_val(x, vmax - vmin)
         return s
 
@@ -1536,44 +1566,43 @@ class BiLogFormatter(Formatter):
         if x == 0.0:  # Symlog
             return '0'
         vmin, vmax = self.axis.get_view_interval()
-        
-        tx=invertBiLogPlotcoordinate(x,vmin,vmax,self._linthresh)
-        tx=np.round(tx)
 
-        if tx > self._linthresh+1:
+        tx = invertBiLogPlotcoordinate(x, vmin, vmax, self._linthresh)
+        tx = np.round(tx)
+
+        if tx > self._linthresh + 1:
             fx = math.log(tx) / math.log(10.0)
             is_x_decade = is_close_to_int(fx)
             exponent = np.round(fx) if is_x_decade else np.floor(fx)
             coeff = np.round(x / 10.0 ** exponent)
-    
+
             if self.labelOnlyBase and not is_x_decade:
                 return ''
             if self._sublabels is not None and coeff not in self._sublabels:
                 return ''
-        elif tx < -self._linthresh-1:
+        elif tx < -self._linthresh - 1:
             fx = math.log(abs(tx)) / math.log(10.0)
             is_x_decade = is_close_to_int(fx)
             exponent = np.round(fx) if is_x_decade else np.floor(fx)
             coeff = -np.round(x / 10.0 ** exponent)
-    
+
             if self.labelOnlyBase and not is_x_decade:
                 return ''
             if self._sublabels is not None and coeff not in self._sublabels:
                 return ''
-        else:    
-            #Manually define acceptable negative values
-            accepted_range=list([-self._linthresh, 100, 0, 100, self._linthresh])
+        else:
+            # Manually define acceptable negative values
+            accepted_range = list([-self._linthresh, 100, 0, 100, self._linthresh])
             if not np.round(tx) in accepted_range:
                 return ''
         s = self._num_to_string(tx, vmin, vmax)
         return self.fix_minus(s)
-        
 
     def pprint_val(self, x, d):
-        #If the number is at or below the set lin-cutoff (_lintrehsh)
-        #Print it as an int
+        # If the number is at or below the set lin-cutoff (_lintrehsh)
+        # Print it as an int
 
-        if x <= self._linthresh+1 and x >= -self._linthresh-1:
+        if x <= self._linthresh + 1 and x >= -self._linthresh - 1:
             return '%d' % x
 
         fmt = '%1.3e'
@@ -1592,10 +1621,11 @@ class BiLogFormatter(Formatter):
         else:
             s = s.rstrip('0').rstrip('.')
         return s
-    
+
+
 class SymmetricalLogLocator(Locator):
-    #Modified from matplotlibs SymmetricalLogLocator
-    #https://matplotlib.org/3.1.1/_modules/matplotlib/ticker.html#SymmetricalLogLocator
+    # Modified from matplotlibs SymmetricalLogLocator
+    # https://matplotlib.org/3.1.1/_modules/matplotlib/ticker.html#SymmetricalLogLocator
     """
     Determine the tick locations for symmetric log axes
     """

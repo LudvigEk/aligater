@@ -468,11 +468,11 @@ def shortestPathMatrix(fcs, str name, str xCol, str yCol, list xboundaries, list
         fig = plt.figure()
         ax = fig.add_subplot(111)
         extent = [xedges[0], xedges[bins], yedges[0], yedges[bins]]
-        ax.imshow(heatmap.T, extent=extent, origin='lower',aspect='auto')
-        ax.xlabel(xCol)
-        ax.ylabel(yCol)
-        cmap=plt.get_cmap()
+        cmap=plt.get_cmap().copy()
         cmap.set_bad(color='white')
+        ax.imshow(heatmap.T, extent=extent, origin='lower',aspect='auto', cmap=cmap)
+        ax.set_xlabel(xCol)
+        ax.set_ylabel(yCol)
         if scale.lower()=='logicle':
             ax.xaxis.set_major_locator(logicleLocator(linCutOff=T))
             ax.xaxis.set_major_formatter(logicleFormatter(linCutOff=T))
@@ -728,11 +728,11 @@ def horizontalPath(fcs, str name, str xCol, str yCol, parentGate=None, populatio
         fig = plt.figure()
         ax = fig.add_subplot(111)
         extent = [min(xedges), max(xedges), min(yedges), max(yedges)]
-        ax.imshow(plot_heatmap.T, extent=extent, origin='lower',aspect='auto')
-        ax.xlabel(xCol)
-        ax.ylabel(yCol)
-        cmap=plt.get_cmap()
+        cmap=plt.get_cmap().copy()
         cmap.set_bad(color='white')
+        ax.imshow(plot_heatmap.T, extent=extent, origin='lower',aspect='auto')
+        ax.set_xlabel(xCol)
+        ax.set_ylabel(yCol)
         count=0
         for coord in path:
             if count==0:
@@ -907,11 +907,11 @@ def verticalPath(fcs, str name, str xCol, str yCol, parentGate=None, population=
         fig = plt.figure()
         ax = fig.add_subplot(111)
         extent = [min(xedges), max(xedges), min(yedges), max(yedges)]
-        ax.imshow(plot_heatmap, extent=extent, origin='lower',aspect='auto')
-        ax.xlabel(xCol)
-        ax.ylabel(yCol)
-        cmap=plt.get_cmap()
+        cmap=plt.get_cmap().copy()
         cmap.set_bad(color='white')
+        ax.imshow(plot_heatmap, extent=extent, origin='lower',aspect='auto', cmap=cmap)
+        ax.set_xlabel(xCol)
+        ax.set_ylabel(yCol)
         count=0
         for coord in path:
             if count==0:
