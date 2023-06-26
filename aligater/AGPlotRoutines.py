@@ -355,22 +355,22 @@ def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='lin
         # print("\n\n")
         # print("yBinEdges: ")
         # print(yBinEdges)
-        return np.histogram2d(vX, vY, [xBinEdges, yBinEdges], normed=normalize)
+        return np.histogram2d(vX, vY, [xBinEdges, yBinEdges], density=normalize)
     if xscale == 'bilog':
         xBinEdges = bilogBin(vX, bins, T, xRange)
-        return np.histogram2d(vX, vY, [xBinEdges, bins], normed=normalize)
+        return np.histogram2d(vX, vY, [xBinEdges, bins], density=normalize)
     if yscale == 'bilog':
         yBinEdges = bilogBin(vY, bins, T, yRange)
-        return np.histogram2d(vX, vY, [bins, yBinEdges], normed=normalize)
+        return np.histogram2d(vX, vY, [bins, yBinEdges], density=normalize)
 
 
 def plot_flattened_heatmap(heatmap_array, nOfBins, mask=True):
     reshaped_array = heatmap_array.reshape(nOfBins, nOfBins)
     fig = plt.figure()
     ax = fig.add_subplot(111)
+    cmap = plt.get_cmap().copy()
     if mask:
         heatmap = np.ma.masked_where(reshaped_array == 0, reshaped_array)
-        cmap = plt.get_cmap().copy()
         cmap.set_bad(color='white')
     else:
         heatmap = reshaped_array
