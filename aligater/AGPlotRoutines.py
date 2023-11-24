@@ -296,7 +296,7 @@ def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='lin
         ybin_edges = bins
 
     if scale.lower() == 'linear' and xscale.lower() == 'linear' and yscale.lower() == 'linear':
-        return np.histogram2d(vX, vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
+        return np.histogram2d(vX, vY, [xbin_edges, ybin_edges], density=normalize, range=defaultRange)
 
     # if not linear probably just transform and calc edges after
     # attempt at fix, still some redundancy...
@@ -314,7 +314,7 @@ def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='lin
         t_vY = transformWrapper(vY, scale=yscale, T=T)
         t_ybin_edges = np.histogram_bin_edges(t_vY, bins=bins)
         ybin_edges = inverseTransformWrapper(t_ybin_edges, scale=yscale, T=T)
-        return np.histogram2d(vX, vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
+        return np.histogram2d(vX, vY, [xbin_edges, ybin_edges], density=normalize, range=defaultRange)
 
     if xscale.lower() != 'linear' and scale.lower() == 'linear':
         t_vX = transformWrapper(vX, scale=xscale, T=T)
@@ -334,19 +334,19 @@ def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='lin
     # print("\n\n")
     # print(xbin_edges)
     # print("\n\n")
-    return np.histogram2d(vX, vY, [xbin_edges, ybin_edges], normed=normalize, range=defaultRange)
+    return np.histogram2d(vX, vY, [xbin_edges, ybin_edges], density=normalize, range=defaultRange)
 
     # -------------------------DEPRECATED below---------------------------
     if scale == 'logicle' or (xscale == 'logicle' and yscale == 'logicle'):
         xBinEdges = logicleBin(vX, bins, T, xRange)
         yBinEdges = logicleBin(vY, bins, T, yRange)
-        return np.histogram2d(vX, vY, [xBinEdges, yBinEdges], normed=normalize)
+        return np.histogram2d(vX, vY, [xBinEdges, yBinEdges], density=normalize)
     if xscale == 'logicle':
         xBinEdges = logicleBin(vX, bins, T, xRange)
-        return np.histogram2d(vX, vY, [xBinEdges, bins], normed=normalize)
+        return np.histogram2d(vX, vY, [xBinEdges, bins], density=normalize)
     if yscale == 'logicle':
         yBinEdges = logicleBin(vY, bins, T, yRange)
-        return np.histogram2d(vX, vY, [bins, yBinEdges], normed=normalize)
+        return np.histogram2d(vX, vY, [bins, yBinEdges], density=normalize)
     if scale == 'bilog' or (xscale == 'bilog' and yscale == 'bilog'):
         xBinEdges = bilogBin(vX, bins, T, xRange)
         yBinEdges = bilogBin(vY, bins, T, yRange)
@@ -355,13 +355,13 @@ def getHeatmap(vX, vY, bins='auto', scale='linear', xscale='linear', yscale='lin
         # print("\n\n")
         # print("yBinEdges: ")
         # print(yBinEdges)
-        return np.histogram2d(vX, vY, [xBinEdges, yBinEdges], normed=normalize)
+        return np.histogram2d(vX, vY, [xBinEdges, yBinEdges], density=normalize)
     if xscale == 'bilog':
         xBinEdges = bilogBin(vX, bins, T, xRange)
-        return np.histogram2d(vX, vY, [xBinEdges, bins], normed=normalize)
+        return np.histogram2d(vX, vY, [xBinEdges, bins], density=normalize)
     if yscale == 'bilog':
         yBinEdges = bilogBin(vY, bins, T, yRange)
-        return np.histogram2d(vX, vY, [bins, yBinEdges], normed=normalize)
+        return np.histogram2d(vX, vY, [bins, yBinEdges], density=normalize)
 
 
 def plot_flattened_heatmap(heatmap_array, nOfBins, mask=True):
@@ -757,6 +757,8 @@ def plot_densityFunc(fcsDF, xCol, vI=sentinel, sigma=3, bins=300, scale='linear'
     axes = figure.add_subplot(111)
     axes.plot(vHisto, smoothedHisto, label="pdf for " + str(xCol) + "\nsigma: " + str(sigma))
     axes.legend(loc='upper right', shadow=True, fontsize='medium')
+    # TEMP
+    axes.legend.remove()
     if scale.lower() != 'linear':
         axes.set_xlim(left=min(data), right=max(data))
         if scale.lower() == 'logicle':
