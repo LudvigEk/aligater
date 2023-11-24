@@ -854,9 +854,9 @@ class AGQC:
                 # Read all images in the file
                 while True:
                     try:
-                        image = np.load(fhandle,
+                        image = np.lib.format.read_array(fhandle,
                                         allow_pickle=True)  # CAVE: https://stackoverflow.com/questions/60191681/cannot-load-file-containing-pickled-data-python-npy-i-o
-                    except OSError:
+                    except ValueError:
                         break
                     # Image data is from third element and onwards
                     arr = image[2:].astype(float)
@@ -866,6 +866,8 @@ class AGQC:
                     # Sample name is at position 0, we recode to UTF-8 for H5py compatibility
                     sample_name = image[0].encode('UTF-8')
                     sample_names.append(sample_name)
+
+                fhandle.close()
 
                 dataset = h5pyfile.create_dataset(population_name, data=population_array)
                 dataset.attrs['resolution'] = downSamplingBins
