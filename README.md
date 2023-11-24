@@ -28,11 +28,25 @@ Installation
 Download AliGater by running below:
 
 	git clone https://github.com/LudvigEk/aligater
+    cd aligater
 
+After downloading, if you do not have cython installed in your environment it's recommended to pre-install it.
 
-After downloading, install AliGater by running in the aligater root directory:
+	pip install cython
 
-	pip3 install -e .
+You should then be able to install AliGater by running:
+
+    pip install -e .
+
+Getting AliGater up and running in a jupyter notebook environment
+------------
+If you installed AliGater in a local environment such as conda, a few extra steps might be necessary to set up 
+a jupyter kernel with the environment containing aligater. Below commands should work for a conda environment.
+
+    conda install -c anaconda ipykernel
+    python -m ipykernel install --user --name=aligater
+
+Where --name=aligater is the name of the local conda environment where aligater was installed.
 
 Contribute & Support
 ---------------------
@@ -47,8 +61,9 @@ Lead dev; ludvig.ekdahl@med.lu.se
 
 Citation
 --------
-Paper in prep;
-AliGater: framework for computer-assisted analysis of large-scale flow-cytometry data. Ekdahl et. al.
+AliGater: a framework for the development of bioinformatic pipelines for large-scale, high-dimensional cytometry data
+
+Bioinformatics Advances, Volume 3, Issue 1, 2023, vbad103, https://doi.org/10.1093/bioadv/vbad103
 
 License
 -------
