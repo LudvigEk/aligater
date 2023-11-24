@@ -566,7 +566,7 @@ def gatePC(fcs, xCol, yCol, name, parentGate=None, widthScale=1, heightScale=1, 
     if plot or filePlot is not None:
         #addLine(fig, ax, center, PC1)
         #addLine(fig, ax, center, PC2)
-        ax.add_patch(Ellipse(center, 2*width, 2*height, np.degrees(angle), fill=False, edgecolor='#FF0000', linestyle='dashed'))
+        ax.add_patch(Ellipse(xy=center, width=2*width, height=2*height, angle=np.degrees(angle), fill=False, edgecolor='#FF0000', linestyle='dashed'))
         if filePlot is not None:
             fig.savefig(filePlot)
         if plot:
