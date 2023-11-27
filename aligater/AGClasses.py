@@ -568,8 +568,8 @@ class AGSample:
             x_median = np.median(vX)
 
         x_median_MFI_label = gate.name +"_" + marker + "_median"
-        
-        self.MFI_Series = self.MFI_Series.append(pd.Series(data=[x_mean, x_median], index=[x_mean_MFI_label,  x_median_MFI_label], name=self.sample))
+
+        self.MFI_Series = pd.concat([self.MFI_Series, pd.Series(data=[x_mean, x_median], index=[x_mean_MFI_label,  x_median_MFI_label])], axis=0)
         return None
 
     def collect_all_MFI(self, gate, include_scatter_cols=False):
@@ -1199,6 +1199,7 @@ class AGExperiment:
     resultHeader = None
     resultMatrix = None
     result_MFI_DF = None
+    MFI_series_list = []
     has_MFI = False
     output_folder = None
     exp_name = None
@@ -1431,6 +1432,12 @@ class AGExperiment:
         else:
             self.apply_multiprocess(strategy, QCObj, n_processes, *args, **kwargs)
 
+        # Finalize MFI dataframe from MFI series list
+        if self.has_MFI:
+            self.result_MFI_DF = pd.DataFrame(self.MFI_series_list)
+            if not isinstance(self.result_MFI_DF, pd.DataFrame):
+                raise AliGaterError("In AGExperiment.apply", "result_MFI_DF is not a dataframe")
+
         nOfFlagged = len(self.flaggedSamples)
         if "/" in self.exp_name:
             fixed_exp_name = self.exp_name.split('/')[-1]
@@ -1553,8 +1560,7 @@ class AGExperiment:
             self.resultHeader.extend([gate.name, gate.name + str("/") + gate.parentName])
 
         if len(fcs.MFI_Series) > 0:
-            # if MFI available, also init MFI table
-            self.result_MFI_DF = pd.DataFrame()
+            # if MFI available, set has mfi flag
             self.has_MFI = True
 
     def collectGateData(self, fcs):
@@ -1598,8 +1604,9 @@ class AGExperiment:
             non_dup_series = fcs.MFI_Series[~fcs.MFI_Series.index.duplicated(keep='first')] #equal MFI's allowed but not equal mfi index
             #Make sure the series has the correct name
             non_dup_series.name = fcs.sample
-            #Append
-            self.result_MFI_DF = self.result_MFI_DF.append(non_dup_series)
+            # Since pandas deprecated series/df append, move over to list-of-sereis
+            # and construct dataframe in one shot later. More efficient anyway.
+            self.MFI_series_list.append(non_dup_series)
 
         if bFlagged:
             self.flaggedSamples.append(fcs.sample)

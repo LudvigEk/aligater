@@ -757,8 +757,6 @@ def plot_densityFunc(fcsDF, xCol, vI=sentinel, sigma=3, bins=300, scale='linear'
     axes = figure.add_subplot(111)
     axes.plot(vHisto, smoothedHisto, label="pdf for " + str(xCol) + "\nsigma: " + str(sigma))
     axes.legend(loc='upper right', shadow=True, fontsize='medium')
-    # TEMP
-    axes.legend.remove()
     if scale.lower() != 'linear':
         axes.set_xlim(left=min(data), right=max(data))
         if scale.lower() == 'logicle':
