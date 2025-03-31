@@ -4,7 +4,7 @@ channels:
   - bioconda
   - defaults
 dependencies: 
-  - python==3.11.10 
+  - python==3.11.10 slack
   - pip:
       - cython==3.0.0
       - matplotlib==3.9.3
@@ -13,4 +13,4 @@ dependencies:
       - scikit-learn==1.6.0
       - scipy==1.14.1
       - setuptools==72.1.0
-prefix: /home/antton/miniforge3/envs/aligater
+
