@@ -1,4 +1,3 @@
--e .[docs]
 ipykernel
 nbsphinx>=0.8.11
 cython>=0.28
