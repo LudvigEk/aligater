@@ -12,6 +12,10 @@ build:
     python: "mambaforge-22.9"
   apt_packages:
     - build-essential
-
+  jobs:
+    install:
+      - pip install sphinx-rtd-theme
+      - pip install -r docs/requirements.txt
+      
 conda:
   environment: aligater_environment.yaml
