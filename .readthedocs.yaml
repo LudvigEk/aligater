@@ -10,6 +10,9 @@ build:
   os: ubuntu-20.04
   tools:
     python: "3.9"
+    apt_packages:
+    - build-essential
+    - cython
 
 python:
    install:
