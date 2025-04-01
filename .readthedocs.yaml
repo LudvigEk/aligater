@@ -15,6 +15,9 @@ build:
   jobs:
     install:
       - pip install cython==3.0.0
+  build:
+        html:
+          - aligater --settings docs/conf.py --output $READTHEDOCS_OUTPUT/html/ docs/
 
 python:
    install:
