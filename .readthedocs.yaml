@@ -12,10 +12,9 @@ build:
     python: "3.9"
   apt_packages:
     - build-essential
-    - cython
 
 python:
    install:
-   - method: pip
-     path: .
-   - requirements: docs/requirements.txt
+    - requirements: docs/requirements.txt
+    - method: pip
+      path: .
